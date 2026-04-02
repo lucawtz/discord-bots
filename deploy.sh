@@ -70,14 +70,14 @@ sudo cp "$REPO_DIR/services/dashboard.service" /etc/systemd/system/dashboard.ser
 sudo systemctl daemon-reload
 
 # ── 5b. Nginx Config installieren ───────────────────────────
-if [ -f "$REPO_DIR/nginx/beatbyte.conf" ]; then
+if [ -f "$REPO_DIR/nginx/bytebots.conf" ]; then
     echo ">> Nginx Config installieren..."
     sudo apt install -y nginx 2>/dev/null || true
-    sudo cp "$REPO_DIR/nginx/beatbyte.conf" /etc/nginx/sites-available/beatbyte
-    sudo ln -sf /etc/nginx/sites-available/beatbyte /etc/nginx/sites-enabled/beatbyte
-    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo cp "$REPO_DIR/nginx/bytebots.conf" /etc/nginx/sites-available/bytebots
+    sudo ln -sf /etc/nginx/sites-available/bytebots /etc/nginx/sites-enabled/bytebots
+    sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/beatbyte
     sudo nginx -t && sudo systemctl reload nginx
-    echo ">> Nginx konfiguriert fuer beatbyte.duckdns.org"
+    echo ">> Nginx konfiguriert fuer bytebots.de"
 fi
 
 # ── 6. Slash Commands registrieren ───────────────────────────
