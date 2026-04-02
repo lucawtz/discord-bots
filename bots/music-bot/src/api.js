@@ -1,6 +1,8 @@
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const { URL } = require('url');
+const fs = require('fs');
+const path = require('path');
 
 function startAPI(ctx, client) {
     const port = process.env.API_PORT || 3001;
@@ -46,19 +48,19 @@ function startAPI(ctx, client) {
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
         if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
 
-        // Auth
-        if (apiKey && req.headers['x-api-key'] !== apiKey) {
-            return json(res, { error: 'Ungültiger API-Key' }, 401);
-        }
-
         // Routing
         const url = new URL(req.url, `http://localhost:${port}`);
-        const path = url.pathname;
+        const urlPath = url.pathname;
+
+        // Auth (nur für API-Endpunkte, nicht für die Web-App)
+        if (apiKey && (urlPath.startsWith('/api/') || urlPath === '/status') && req.headers['x-api-key'] !== apiKey) {
+            return json(res, { error: 'Ungültiger API-Key' }, 401);
+        }
         const method = req.method;
 
         try {
             // GET /status — Browser-Statusseite
-            if (method === 'GET' && path === '/status') {
+            if (method === 'GET' && urlPath === '/status') {
                 const uptime = process.uptime();
                 const h = Math.floor(uptime / 3600);
                 const m = Math.floor((uptime % 3600) / 60);
@@ -107,7 +109,7 @@ function startAPI(ctx, client) {
             }
 
             // GET /api/guilds
-            if (method === 'GET' && path === '/api/guilds') {
+            if (method === 'GET' && urlPath === '/api/guilds') {
                 const guilds = client.guilds.cache.map(g => ({
                     id: g.id, name: g.name, icon: g.iconURL({ size: 128 }),
                 }));
@@ -115,7 +117,7 @@ function startAPI(ctx, client) {
             }
 
             // GET /api/search?q=...
-            if (method === 'GET' && path === '/api/search') {
+            if (method === 'GET' && urlPath === '/api/search') {
                 const q = url.searchParams.get('q');
                 if (!q) return json(res, { error: 'Query fehlt' }, 400);
                 const results = await ctx.searchTracks(q);
@@ -123,7 +125,7 @@ function startAPI(ctx, client) {
             }
 
             // GET /api/guild/:id/channels — Voice Channels auflisten
-            const channelsMatch = path.match(/^\/api\/guild\/(\d+)\/channels$/);
+            const channelsMatch = urlPath.match(/^\/api\/guild\/(\d+)\/channels$/);
             if (method === 'GET' && channelsMatch) {
                 const guild = client.guilds.cache.get(channelsMatch[1]);
                 if (!guild) return json(res, { error: 'Server nicht gefunden' }, 404);
@@ -135,7 +137,7 @@ function startAPI(ctx, client) {
             }
 
             // POST /api/guild/:id/join — Voice Channel beitreten
-            const joinMatch = path.match(/^\/api\/guild\/(\d+)\/join$/);
+            const joinMatch = urlPath.match(/^\/api\/guild\/(\d+)\/join$/);
             if (method === 'POST' && joinMatch) {
                 const { channelId } = await parseBody(req);
                 if (!channelId) return json(res, { error: 'channelId fehlt' }, 400);
@@ -145,13 +147,13 @@ function startAPI(ctx, client) {
             }
 
             // GET /api/guild/:id/state
-            const stateMatch = path.match(/^\/api\/guild\/(\d+)\/state$/);
+            const stateMatch = urlPath.match(/^\/api\/guild\/(\d+)\/state$/);
             if (method === 'GET' && stateMatch) {
                 return json(res, getGuildState(stateMatch[1]));
             }
 
             // POST /api/guild/:id/play
-            const playMatch = path.match(/^\/api\/guild\/(\d+)\/play$/);
+            const playMatch = urlPath.match(/^\/api\/guild\/(\d+)\/play$/);
             if (method === 'POST' && playMatch) {
                 const { query } = await parseBody(req);
                 if (!query) return json(res, { error: 'Query fehlt' }, 400);
@@ -172,7 +174,7 @@ function startAPI(ctx, client) {
             }
 
             // POST /api/guild/:id/skip
-            const skipMatch = path.match(/^\/api\/guild\/(\d+)\/skip$/);
+            const skipMatch = urlPath.match(/^\/api\/guild\/(\d+)\/skip$/);
             if (method === 'POST' && skipMatch) {
                 const queue = ctx.queues.get(skipMatch[1]);
                 if (!queue?.current) return json(res, { error: 'Nichts wird abgespielt' }, 400);
@@ -184,7 +186,7 @@ function startAPI(ctx, client) {
             }
 
             // POST /api/guild/:id/pause
-            const pauseMatch = path.match(/^\/api\/guild\/(\d+)\/pause$/);
+            const pauseMatch = urlPath.match(/^\/api\/guild\/(\d+)\/pause$/);
             if (method === 'POST' && pauseMatch) {
                 const queue = ctx.queues.get(pauseMatch[1]);
                 if (!queue?.current) return json(res, { error: 'Nichts wird abgespielt' }, 400);
@@ -200,7 +202,7 @@ function startAPI(ctx, client) {
             }
 
             // POST /api/guild/:id/stop
-            const stopMatch = path.match(/^\/api\/guild\/(\d+)\/stop$/);
+            const stopMatch = urlPath.match(/^\/api\/guild\/(\d+)\/stop$/);
             if (method === 'POST' && stopMatch) {
                 const queue = ctx.queues.get(stopMatch[1]);
                 if (!queue?.connection) return json(res, { error: 'Bot ist nicht verbunden' }, 400);
@@ -218,7 +220,7 @@ function startAPI(ctx, client) {
             }
 
             // DELETE /api/guild/:id/queue/:index
-            const removeMatch = path.match(/^\/api\/guild\/(\d+)\/queue\/(\d+)$/);
+            const removeMatch = urlPath.match(/^\/api\/guild\/(\d+)\/queue\/(\d+)$/);
             if (method === 'DELETE' && removeMatch) {
                 const queue = ctx.queues.get(removeMatch[1]);
                 if (!queue) return json(res, { error: 'Keine Queue' }, 400);
@@ -231,6 +233,27 @@ function startAPI(ctx, client) {
                 const removed = queue.tracks.splice(index, 1)[0];
                 broadcast('stateUpdate', getGuildState(removeMatch[1]));
                 return json(res, { removed });
+            }
+
+            // ── Web App (statische Dateien aus app/dist) ──────────────
+            const distDir = path.join(__dirname, '..', 'app', 'dist');
+            if (fs.existsSync(distDir)) {
+                const mimeTypes = {
+                    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+                    '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+                    '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+                };
+                let filePath = path.join(distDir, urlPath === '/' ? 'index.html' : urlPath);
+                if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+                    filePath = path.join(distDir, 'index.html');
+                }
+                if (fs.existsSync(filePath)) {
+                    const ext = path.extname(filePath);
+                    const contentType = mimeTypes[ext] || 'application/octet-stream';
+                    const content = fs.readFileSync(filePath);
+                    res.writeHead(200, { 'Content-Type': contentType });
+                    return res.end(content);
+                }
             }
 
             // 404

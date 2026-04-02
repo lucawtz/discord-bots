@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const DEFAULT_URL = 'http://localhost:3000';
+const DEFAULT_URL = 'http://localhost:3001';
 
 function App() {
   const [botUrl, setBotUrl] = useState(localStorage.getItem('botUrl') || DEFAULT_URL);
