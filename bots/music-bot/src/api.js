@@ -13,6 +13,30 @@ function startAPI(ctx, client) {
         process.exit(1);
     }
 
+    // ── Rate Limiting ────────────────────────────────────────────
+    function createRateLimiter(maxRequests, windowMs) {
+        const hits = new Map();
+        setInterval(() => {
+            const now = Date.now();
+            for (const [ip, timestamps] of hits) {
+                const valid = timestamps.filter(t => now - t < windowMs);
+                if (valid.length === 0) hits.delete(ip);
+                else hits.set(ip, valid);
+            }
+        }, 60000);
+        return (ip) => {
+            const now = Date.now();
+            const timestamps = (hits.get(ip) || []).filter(t => now - t < windowMs);
+            timestamps.push(now);
+            hits.set(ip, timestamps);
+            return timestamps.length > maxRequests;
+        };
+    }
+
+    // API: 100 Requests pro Minute, Search: 20 pro Minute
+    const isApiLimited = createRateLimiter(100, 60 * 1000);
+    const isSearchLimited = createRateLimiter(20, 60 * 1000);
+
     // CORS: Nur erlaubte Origins (kommagetrennt in .env)
     const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
         .split(',').map(o => o.trim()).filter(Boolean);
@@ -74,6 +98,14 @@ function startAPI(ctx, client) {
     // ── HTTP Server ──────────────────────────────────────────────
 
     const server = http.createServer(async (req, res) => {
+        // Security Headers
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('X-XSS-Protection', '0');
+        res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+        res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
         // CORS
         const corsOrigin = getCorsOrigin(req);
         if (corsOrigin) {
@@ -87,6 +119,18 @@ function startAPI(ctx, client) {
         // Routing
         const url = new URL(req.url, `http://localhost:${port}`);
         const urlPath = url.pathname;
+        const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+
+        // Rate Limiting
+        if (urlPath.startsWith('/api/')) {
+            // Strengeres Limit fuer Suche (yt-dlp Last)
+            if (urlPath === '/api/search' && isSearchLimited(clientIp)) {
+                return json(res, { error: 'Zu viele Suchanfragen. Bitte warte kurz.' }, 429);
+            }
+            if (isApiLimited(clientIp)) {
+                return json(res, { error: 'Zu viele Anfragen. Bitte warte kurz.' }, 429);
+            }
+        }
 
         // Auth: API-Endpunkte brauchen immer einen gueltigen Key
         // /status und statische Dateien (Web App) sind oeffentlich

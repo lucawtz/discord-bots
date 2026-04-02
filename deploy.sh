@@ -30,16 +30,36 @@ echo ">> Soundboard Bot: npm install..."
 cd "$REPO_DIR/bots/soundboard-bot"
 npm install --production
 
+echo ">> Dashboard: npm install..."
+cd "$REPO_DIR/dashboard"
+npm install --production
+
 # ── 3. Music Web App bauen ───────────────────────────────────
 echo ">> Music App: npm install + build..."
 cd "$REPO_DIR/bots/music-bot/app"
 npm install
 node node_modules/vite/bin/vite.js build
 
-# ── 4. .env Dateien kopieren (falls alte vorhanden) ──────────
+# ── 4. .env Dateien pruefen ─────────────────────────────────
+# Alte .env uebernehmen (Migration)
 if [ -d "$OLD_REPO_DIR" ]; then
     echo ">> .env aus altem Repo uebernehmen..."
-    [ -f "$OLD_REPO_DIR/.env" ] && cp "$OLD_REPO_DIR/.env" "$REPO_DIR/bots/music-bot/.env" 2>/dev/null || true
+    [ -f "$OLD_REPO_DIR/.env" ] && cp -n "$OLD_REPO_DIR/.env" "$REPO_DIR/bots/music-bot/.env" 2>/dev/null || true
+fi
+
+# Pruefen ob alle .env Dateien existieren
+MISSING_ENV=0
+for ENV_PATH in "$REPO_DIR/bots/music-bot/.env" "$REPO_DIR/bots/soundboard-bot/.env" "$REPO_DIR/dashboard/.env"; do
+    if [ ! -f "$ENV_PATH" ]; then
+        echo "!! FEHLT: $ENV_PATH (siehe .env.example im gleichen Ordner)"
+        MISSING_ENV=1
+    fi
+done
+if [ "$MISSING_ENV" -eq 1 ]; then
+    echo ""
+    echo "!! .env Dateien fehlen. Erstelle sie vor dem naechsten Neustart."
+    echo "!! API Key generieren: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+    echo ""
 fi
 
 # ── 5. Systemd Services aktualisieren ────────────────────────
@@ -48,6 +68,17 @@ sudo cp "$REPO_DIR/services/discord-bot.service" /etc/systemd/system/discord-bot
 sudo cp "$REPO_DIR/services/soundboard-bot.service" /etc/systemd/system/soundboard-bot.service
 sudo cp "$REPO_DIR/services/dashboard.service" /etc/systemd/system/dashboard.service
 sudo systemctl daemon-reload
+
+# ── 5b. Nginx Config installieren ───────────────────────────
+if [ -f "$REPO_DIR/nginx/beatbyte.conf" ]; then
+    echo ">> Nginx Config installieren..."
+    sudo apt install -y nginx 2>/dev/null || true
+    sudo cp "$REPO_DIR/nginx/beatbyte.conf" /etc/nginx/sites-available/beatbyte
+    sudo ln -sf /etc/nginx/sites-available/beatbyte /etc/nginx/sites-enabled/beatbyte
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo nginx -t && sudo systemctl reload nginx
+    echo ">> Nginx konfiguriert fuer beatbyte.duckdns.org"
+fi
 
 # ── 6. Slash Commands registrieren ───────────────────────────
 echo ">> Slash Commands registrieren..."

@@ -10,9 +10,19 @@ let fsTotalCount = 0;
 let fsCurrentQuery = '';
 let fsAddTarget = null;
 
+// API Key fuer schreibende Aktionen (Upload, Edit, Delete)
+let storedApiKey = localStorage.getItem('soundboardApiKey') || '';
+
+function getAuthHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (storedApiKey) headers['X-API-Key'] = storedApiKey;
+  return headers;
+}
+
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+  setupApiKeyPrompt();
   setupTabs();
   setupMobileMenu();
   setupUploadForm();
@@ -21,6 +31,18 @@ async function init() {
   setupSearch();
   setupFreesound();
   await refresh();
+}
+
+function setupApiKeyPrompt() {
+  const keyInput = document.getElementById('api-key-input');
+  const keySave = document.getElementById('api-key-save');
+  if (!keyInput || !keySave) return;
+  keyInput.value = storedApiKey;
+  keySave.addEventListener('click', () => {
+    storedApiKey = keyInput.value.trim();
+    localStorage.setItem('soundboardApiKey', storedApiKey);
+    showToast('API Key gespeichert', 'success');
+  });
 }
 
 // --- Tabs (Sidebar Navigation) ---
@@ -269,7 +291,7 @@ function setupEditModal() {
     try {
       const res = await fetch(`/api/sounds/${editTargetId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ name, category, predefined }),
       });
       const data = await res.json();
@@ -327,7 +349,7 @@ function setupDeleteModal() {
   document.getElementById('delete-confirm').addEventListener('click', async () => {
     if (!deleteTargetId) return;
     try {
-      const res = await fetch(`/api/sounds/${deleteTargetId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/sounds/${deleteTargetId}`, { method: 'DELETE', headers: getAuthHeaders() });
       const data = await res.json();
       if (res.ok) {
         showToast('Sound gelöscht!', 'success');
@@ -392,7 +414,7 @@ function setupUploadForm() {
     formData.append('predefined', document.getElementById('upload-predefined').checked ? 'true' : 'false');
 
     try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const res = await fetch('/api/upload', { method: 'POST', headers: getAuthHeaders(), body: formData });
       const data = await res.json();
       if (res.ok) {
         showToast(`"${data.name}" hochgeladen!`, 'success');
@@ -469,7 +491,7 @@ function setupFreesound() {
     try {
       const res = await fetch('/api/freesound/add', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           freesoundId: fsAddTarget.id,
           name,

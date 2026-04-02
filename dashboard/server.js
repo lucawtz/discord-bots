@@ -1,11 +1,47 @@
+require('dotenv').config();
 const http = require('http');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
-const PORT = config.port || 3000;
+const PORT = process.env.PORT || 3000;
+const DASHBOARD_USER = process.env.DASHBOARD_USER;
+const DASHBOARD_PASSWORD_HASH = process.env.DASHBOARD_PASSWORD_HASH;
+
+if (!DASHBOARD_USER || !DASHBOARD_PASSWORD_HASH) {
+    console.error('FEHLER: DASHBOARD_USER und DASHBOARD_PASSWORD_HASH muessen in .env gesetzt sein!');
+    process.exit(1);
+}
+
+// ── Rate Limiting ──────────────────────────────────────────────
+
+function createRateLimiter(maxRequests, windowMs) {
+    const hits = new Map();
+    // Cleanup alle 60s
+    setInterval(() => {
+        const now = Date.now();
+        for (const [ip, timestamps] of hits) {
+            const valid = timestamps.filter(t => now - t < windowMs);
+            if (valid.length === 0) hits.delete(ip);
+            else hits.set(ip, valid);
+        }
+    }, 60000);
+    return (ip) => {
+        const now = Date.now();
+        const timestamps = (hits.get(ip) || []).filter(t => now - t < windowMs);
+        timestamps.push(now);
+        hits.set(ip, timestamps);
+        return timestamps.length > maxRequests;
+    };
+}
+
+// Login: 5 Versuche pro 15 Minuten
+const isLoginLimited = createRateLimiter(5, 15 * 60 * 1000);
+// API: 60 Requests pro Minute
+const isApiLimited = createRateLimiter(60, 60 * 1000);
 
 // ── Auth ────────────────────────────────────────────────────────
 
@@ -120,6 +156,14 @@ const dashboardHTML = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'
 // ── HTTP Server ─────────────────────────────────────────────────
 
 const server = http.createServer(async (req, res) => {
+    // Security Headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '0');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const p = url.pathname;
     const method = req.method;
@@ -133,12 +177,18 @@ const server = http.createServer(async (req, res) => {
 
         // Login POST
         if (method === 'POST' && p === '/login') {
+            const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+            if (isLoginLimited(clientIp)) {
+                res.writeHead(429, { 'Content-Type': 'text/plain', 'Retry-After': '900' });
+                return res.end('Zu viele Login-Versuche. Bitte warte 15 Minuten.');
+            }
+
             const body = await parseBody(req);
             const params = new URLSearchParams(body);
             const user = params.get('username');
             const pass = params.get('password');
 
-            if (user === config.username && pass === config.password) {
+            if (user === DASHBOARD_USER && await bcrypt.compare(pass, DASHBOARD_PASSWORD_HASH)) {
                 const token = createSession();
                 res.writeHead(302, {
                     'Set-Cookie': `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
@@ -167,6 +217,14 @@ const server = http.createServer(async (req, res) => {
         if (!isValidSession(req)) {
             res.writeHead(302, { 'Location': '/login' });
             return res.end();
+        }
+
+        // Rate Limiting fuer API-Endpunkte
+        if (p.startsWith('/api/')) {
+            const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+            if (isApiLimited(clientIp)) {
+                return json(res, { error: 'Zu viele Anfragen. Bitte warte kurz.' }, 429);
+            }
         }
 
         // Dashboard HTML

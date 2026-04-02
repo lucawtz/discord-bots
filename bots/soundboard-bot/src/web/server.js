@@ -74,10 +74,79 @@ function downloadToBuffer(url) {
 }
 
 function startWebServer(port) {
+  const apiKey = process.env.API_KEY;
+
+  if (!apiKey) {
+    console.error('FEHLER: API_KEY muss in .env gesetzt sein! Soundboard-API startet ohne Key nicht.');
+    process.exit(1);
+  }
+
   const app = express();
+
+  // Security Headers
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '0');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+  });
+
+  // CORS: Nur erlaubte Origins
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+      .split(',').map(o => o.trim()).filter(Boolean);
+
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
 
   app.use(express.json());
   app.use(express.static(path.join(__dirname, 'public')));
+
+  // ── Rate Limiting ──────────────────────────────────────────────
+  const hits = new Map();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, timestamps] of hits) {
+      const valid = timestamps.filter(t => now - t < 60000);
+      if (valid.length === 0) hits.delete(ip);
+      else hits.set(ip, valid);
+    }
+  }, 60000);
+
+  app.use('/api', (req, res, next) => {
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+    const now = Date.now();
+    const timestamps = (hits.get(clientIp) || []).filter(t => now - t < 60000);
+    timestamps.push(now);
+    hits.set(clientIp, timestamps);
+    // Upload: 10/min, andere API: 60/min
+    const limit = (req.path === '/upload' && req.method === 'POST') ? 10 : 60;
+    if (timestamps.length > limit) {
+      return res.status(429).json({ error: 'Zu viele Anfragen. Bitte warte kurz.' });
+    }
+    next();
+  });
+
+  // Auth: Schreibende API-Endpunkte (POST/PUT/DELETE) brauchen gueltigen Key
+  // Lesende Endpunkte (GET) bleiben offen (Sounds anhoeren, Liste laden)
+  app.use('/api', (req, res, next) => {
+    if (req.method === 'GET') return next();
+    if (req.headers['x-api-key'] !== apiKey) {
+      return res.status(401).json({ error: 'Ungueltiger API-Key' });
+    }
+    next();
+  });
 
   // --- API: Health-Check ---
   app.get('/api/health', (req, res) => {
