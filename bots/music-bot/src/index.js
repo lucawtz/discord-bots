@@ -101,13 +101,10 @@ if (fs.existsSync(cookiePath)) {
     console.log('yt-dlp: Keine cookies.txt gefunden (optional)');
 }
 
-// ── yt-dlp Auto-Update ───────────────────────────────────────────
-try {
-    const updateOut = execFileSync(ytdlpPath, ['-U'], { timeout: 30_000, encoding: 'utf8' });
-    console.log('yt-dlp update:', updateOut.trim().split('\n').pop());
-} catch {
-    console.log('yt-dlp: Auto-Update übersprungen');
-}
+// ── yt-dlp Auto-Update (im Hintergrund, blockiert nicht den Start) ──
+spawn(ytdlpPath, ['-U']).on('close', (code) => {
+    if (code === 0) console.log('yt-dlp: Update geprüft');
+});
 
 async function searchTrack(query) {
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
@@ -117,7 +114,7 @@ async function searchTrack(query) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, '--js-runtimes', 'node', searchQuery,
+            ...cookieArgs, searchQuery,
         ]);
 
         let stdout = '';
@@ -155,7 +152,7 @@ async function searchTracks(query, limit = 5) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, '--js-runtimes', 'node', `ytsearch${limit}:${query}`,
+            ...cookieArgs, `ytsearch${limit}:${query}`,
         ]);
 
         let stdout = '';
@@ -186,7 +183,7 @@ async function searchPlaylist(url) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, '--js-runtimes', 'node', url,
+            ...cookieArgs, url,
         ]);
 
         let stdout = '';
@@ -233,7 +230,7 @@ function createStream(url, queue, onError) {
         '-f', 'bestaudio',
         '-o', '-', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
-        ...cookieArgs, '--js-runtimes', 'node', url,
+        ...cookieArgs, url,
     ]);
 
     const ffmpeg = spawn(ffmpegPath, [
