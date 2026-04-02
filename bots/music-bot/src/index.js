@@ -106,21 +106,23 @@ spawn(ytdlpPath, ['-U']).on('close', (code) => {
     if (code === 0) console.log('yt-dlp: Update geprüft');
 });
 
-// ── Piped API (schnelle Suche) ───────────────────────────────────
+// ── Piped API (schnelle Suche mit Instance-Rotation) ────────────
 const PIPED_INSTANCES = [
     'https://pipedapi.kavin.rocks',
     'https://pipedapi.adminforge.de',
     'https://pipedapi.in.projectsegfau.lt',
 ];
-let pipedInstance = PIPED_INSTANCES[0];
+let pipedInstanceIndex = 0;
 
-async function pipedFetch(endpoint) {
+function pipedFetchSingle(instance, endpoint) {
     const https = require('https');
-    const http = require('http');
     return new Promise((resolve, reject) => {
-        const url = `${pipedInstance}${endpoint}`;
-        const client = url.startsWith('https') ? https : http;
-        const req = client.get(url, { timeout: 5000 }, (res) => {
+        const url = `${instance}${endpoint}`;
+        const req = https.get(url, { timeout: 4000 }, (res) => {
+            if (res.statusCode >= 400) {
+                res.resume();
+                return reject(new Error(`Piped ${res.statusCode}`));
+            }
             let data = '';
             res.on('data', (d) => data += d);
             res.on('end', () => {
@@ -131,6 +133,21 @@ async function pipedFetch(endpoint) {
         req.on('error', reject);
         req.on('timeout', () => { req.destroy(); reject(new Error('Piped API: Timeout')); });
     });
+}
+
+async function pipedFetch(endpoint) {
+    // Alle Instanzen durchprobieren, beginnend bei der zuletzt erfolgreichen
+    for (let i = 0; i < PIPED_INSTANCES.length; i++) {
+        const idx = (pipedInstanceIndex + i) % PIPED_INSTANCES.length;
+        try {
+            const result = await pipedFetchSingle(PIPED_INSTANCES[idx], endpoint);
+            pipedInstanceIndex = idx; // Erfolgreiche Instanz merken
+            return result;
+        } catch (err) {
+            console.log(`Piped ${PIPED_INSTANCES[idx]} fehlgeschlagen: ${err.message}`);
+            if (i === PIPED_INSTANCES.length - 1) throw err; // Alle fehlgeschlagen
+        }
+    }
 }
 
 async function pipedSearch(query, limit = 5) {
@@ -397,14 +414,28 @@ async function ensureConnection(interaction, ctx) {
         }
     });
 
-    // Disconnect-Handling
-    connection.on(VoiceConnectionStatus.Disconnected, () => {
-        setTimeout(() => {
-            if (!queue.connection) return;
-            if (queue.connection.state.status === VoiceConnectionStatus.Disconnected) {
+    // Disconnect-Handling mit Reconnect-Versuch
+    connection.on(VoiceConnectionStatus.Disconnected, async () => {
+        try {
+            // Versuche Reconnect (bis zu 5s warten)
+            await Promise.race([
+                new Promise(resolve => {
+                    const check = (_, newState) => {
+                        if (newState.status === VoiceConnectionStatus.Ready || newState.status === VoiceConnectionStatus.Signalling) {
+                            connection.removeListener('stateChange', check);
+                            resolve();
+                        }
+                    };
+                    connection.on('stateChange', check);
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), DISCONNECT_CHECK_MS)),
+            ]);
+        } catch {
+            // Reconnect fehlgeschlagen
+            if (queue.connection && queue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
                 destroyQueue(interaction.guild.id);
             }
-        }, DISCONNECT_CHECK_MS);
+        }
     });
 
     // Warten bis Connection ready
@@ -498,13 +529,25 @@ async function joinChannel(guildId, channelId) {
         }
     });
 
-    connection.on(VoiceConnectionStatus.Disconnected, () => {
-        setTimeout(() => {
-            if (!queue.connection) return;
-            if (queue.connection.state.status === VoiceConnectionStatus.Disconnected) {
+    connection.on(VoiceConnectionStatus.Disconnected, async () => {
+        try {
+            await Promise.race([
+                new Promise(resolve => {
+                    const check = (_, newState) => {
+                        if (newState.status === VoiceConnectionStatus.Ready || newState.status === VoiceConnectionStatus.Signalling) {
+                            connection.removeListener('stateChange', check);
+                            resolve();
+                        }
+                    };
+                    connection.on('stateChange', check);
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), DISCONNECT_CHECK_MS)),
+            ]);
+        } catch {
+            if (queue.connection && queue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
                 destroyQueue(guildId);
             }
-        }, DISCONNECT_CHECK_MS);
+        }
     });
 
     if (connection.state.status !== VoiceConnectionStatus.Ready) {
@@ -788,6 +831,22 @@ client.on('voiceStateUpdate', (oldState, newState) => {
         queue._autoPaused = false;
         autoDelete(queue.channel?.send('▶️ Fortgesetzt — willkommen zurück!'), DELETE_SHORT_MS);
     }
+});
+
+// ── Unhandled Errors abfangen (verhindert Crashes) ──────────────
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled rejection:', err?.message || err);
+});
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err?.message || err);
+});
+
+// ── Discord Reconnect & Error Handling ──────────────────────────
+client.on('error', (err) => {
+    console.error('Discord client error:', err.message);
+});
+client.on('warn', (msg) => {
+    console.warn('Discord warning:', msg);
 });
 
 // ── Bot starten ───────────────────────────────────────────────────
