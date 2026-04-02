@@ -106,10 +106,91 @@ spawn(ytdlpPath, ['-U']).on('close', (code) => {
     if (code === 0) console.log('yt-dlp: Update geprüft');
 });
 
+// ── Piped API (schnelle Suche) ───────────────────────────────────
+const PIPED_INSTANCES = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.adminforge.de',
+    'https://pipedapi.in.projectsegfau.lt',
+];
+let pipedInstance = PIPED_INSTANCES[0];
+
+async function pipedFetch(endpoint) {
+    const https = require('https');
+    const http = require('http');
+    return new Promise((resolve, reject) => {
+        const url = `${pipedInstance}${endpoint}`;
+        const client = url.startsWith('https') ? https : http;
+        const req = client.get(url, { timeout: 5000 }, (res) => {
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => {
+                try { resolve(JSON.parse(data)); }
+                catch { reject(new Error('Piped API: Ungültige Antwort')); }
+            });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Piped API: Timeout')); });
+    });
+}
+
+async function pipedSearch(query, limit = 5) {
+    const data = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=music_songs`);
+    const items = (data.items || []).filter(i => i.url && i.type === 'stream').slice(0, limit);
+    if (items.length === 0) {
+        // Fallback: ohne Filter suchen
+        const data2 = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=videos`);
+        const items2 = (data2.items || []).filter(i => i.url && i.type === 'stream').slice(0, limit);
+        if (items2.length === 0) throw new Error('Keine Ergebnisse');
+        return items2;
+    }
+    return items;
+}
+
+function pipedToTrack(item) {
+    return {
+        title: item.title || 'Unbekannter Titel',
+        url: `https://www.youtube.com${item.url}`,
+        duration: formatDuration(item.duration),
+        thumbnail: item.thumbnail || null,
+    };
+}
+
+// ── Suche: Piped API mit yt-dlp Fallback ─────────────────────────
 async function searchTrack(query) {
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
-    const searchQuery = isUrl ? query : `ytsearch1:${query}`;
 
+    // URLs direkt über yt-dlp auflösen
+    if (isUrl) return searchTrackYtdlp(query);
+
+    // Piped API für Textsuche
+    try {
+        const items = await pipedSearch(query, 1);
+        return pipedToTrack(items[0]);
+    } catch (err) {
+        console.log('Piped-Suche fehlgeschlagen, Fallback auf yt-dlp:', err.message);
+        return searchTrackYtdlp(`ytsearch1:${query}`);
+    }
+}
+
+async function searchTracks(query, limit = 5) {
+    const isUrl = query.startsWith('http://') || query.startsWith('https://');
+    if (isUrl) {
+        const track = await searchTrack(query);
+        return [track];
+    }
+
+    // Piped API für Textsuche
+    try {
+        const items = await pipedSearch(query, limit);
+        return items.map(pipedToTrack);
+    } catch (err) {
+        console.log('Piped-Suche fehlgeschlagen, Fallback auf yt-dlp:', err.message);
+        return searchTracksYtdlp(query, limit);
+    }
+}
+
+// ── yt-dlp Fallback-Suche ────────────────────────────────────────
+function searchTrackYtdlp(searchQuery) {
     return new Promise((resolve, reject) => {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
@@ -141,13 +222,7 @@ async function searchTrack(query) {
     });
 }
 
-async function searchTracks(query, limit = 5) {
-    const isUrl = query.startsWith('http://') || query.startsWith('https://');
-    if (isUrl) {
-        const track = await searchTrack(query);
-        return [track];
-    }
-
+function searchTracksYtdlp(query, limit = 5) {
     return new Promise((resolve, reject) => {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
