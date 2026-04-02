@@ -1,4 +1,5 @@
 const http = require('http');
+const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { URL } = require('url');
 const fs = require('fs');
@@ -6,12 +7,7 @@ const path = require('path');
 
 function startAPI(ctx, client) {
     const port = process.env.API_PORT || 3001;
-    const apiKey = process.env.API_KEY;
-
-    if (!apiKey) {
-        console.error('FEHLER: API_KEY muss in .env gesetzt sein! Bot-API startet ohne Key nicht.');
-        process.exit(1);
-    }
+    const apiKey = process.env.API_KEY || '';
 
     // ── Rate Limiting ────────────────────────────────────────────
     function createRateLimiter(maxRequests, windowMs) {
@@ -33,18 +29,98 @@ function startAPI(ctx, client) {
         };
     }
 
-    // API: 100 Requests pro Minute, Search: 20 pro Minute
-    const isApiLimited = createRateLimiter(100, 60 * 1000);
-    const isSearchLimited = createRateLimiter(20, 60 * 1000);
+    const isApiLimited = createRateLimiter(100, 60_000);
+    const isSearchLimited = createRateLimiter(20, 60_000);
+    const isAuthLimited = createRateLimiter(5, 15 * 60_000);
 
-    // CORS: Nur erlaubte Origins (kommagetrennt in .env)
+    // ── Access Codes & Sessions ──────────────────────────────────
+    const CODE_EXPIRY_MS = 7 * 24 * 60 * 60_000;   // 7 Tage
+    const SESSION_EXPIRY_MS = 48 * 60 * 60_000;     // 48 Stunden
+    const guildAccessCodes = new Map();  // guildId -> { code, createdAt }
+    const sessions = new Map();          // token -> { guildId, createdAt }
+
+    function generateAccessCode(guildId) {
+        const existing = guildAccessCodes.get(guildId);
+        if (existing && Date.now() - existing.createdAt < CODE_EXPIRY_MS) {
+            return existing.code;
+        }
+        const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+        guildAccessCodes.set(guildId, { code, createdAt: Date.now() });
+        return code;
+    }
+
+    function regenerateAccessCode(guildId) {
+        const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+        guildAccessCodes.set(guildId, { code, createdAt: Date.now() });
+        for (const [token, session] of sessions) {
+            if (session.guildId === guildId) sessions.delete(token);
+        }
+        return code;
+    }
+
+    function validateAccessCode(code) {
+        const now = Date.now();
+        for (const [guildId, entry] of guildAccessCodes) {
+            if (entry.code === code.toUpperCase() && now - entry.createdAt < CODE_EXPIRY_MS) {
+                return guildId;
+            }
+        }
+        return null;
+    }
+
+    function createSession(guildId) {
+        const token = crypto.randomBytes(32).toString('hex');
+        sessions.set(token, { guildId, createdAt: Date.now() });
+        return token;
+    }
+
+    function validateSession(token) {
+        const session = sessions.get(token);
+        if (!session) return null;
+        if (Date.now() - session.createdAt > SESSION_EXPIRY_MS) {
+            sessions.delete(token);
+            return null;
+        }
+        return session;
+    }
+
+    // Cleanup abgelaufener Codes & Sessions
+    setInterval(() => {
+        const now = Date.now();
+        for (const [guildId, entry] of guildAccessCodes) {
+            if (now - entry.createdAt > CODE_EXPIRY_MS) guildAccessCodes.delete(guildId);
+        }
+        for (const [token, session] of sessions) {
+            if (now - session.createdAt > SESSION_EXPIRY_MS) sessions.delete(token);
+        }
+    }, 60_000);
+
+    // ── Auth ─────────────────────────────────────────────────────
+    function authenticateRequest(req) {
+        if (apiKey && req.headers['x-api-key'] === apiKey) {
+            return { type: 'admin', guildId: null };
+        }
+        const authHeader = req.headers['authorization'];
+        if (authHeader?.startsWith('Bearer ')) {
+            const session = validateSession(authHeader.slice(7));
+            if (session) return { type: 'user', guildId: session.guildId };
+        }
+        return null;
+    }
+
+    function authorizeGuild(auth, guildId) {
+        if (!auth) return false;
+        if (auth.type === 'admin') return true;
+        return auth.guildId === guildId;
+    }
+
+    // CORS
     const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
         .split(',').map(o => o.trim()).filter(Boolean);
 
     function getCorsOrigin(req) {
         const origin = req.headers.origin;
         if (!origin) return null;
-        // Tauri Desktop App + konfigurierte Origins
         if (origin === 'tauri://localhost' || origin === 'https://tauri.localhost') return origin;
         if (allowedOrigins.includes(origin)) return origin;
         return null;
@@ -95,6 +171,10 @@ function startAPI(ctx, client) {
         });
     }
 
+    function getClientIp(req) {
+        return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+    }
+
     // ── HTTP Server ──────────────────────────────────────────────
 
     const server = http.createServer(async (req, res) => {
@@ -104,7 +184,6 @@ function startAPI(ctx, client) {
         res.setHeader('X-XSS-Protection', '0');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 
         // CORS
         const corsOrigin = getCorsOrigin(req);
@@ -112,251 +191,220 @@ function startAPI(ctx, client) {
             res.setHeader('Access-Control-Allow-Origin', corsOrigin);
             res.setHeader('Vary', 'Origin');
         }
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
         if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
 
-        // Routing
         const url = new URL(req.url, `http://localhost:${port}`);
         const urlPath = url.pathname;
-        const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
-
-        // Rate Limiting
-        if (urlPath.startsWith('/api/')) {
-            // Strengeres Limit fuer Suche (yt-dlp Last)
-            if (urlPath === '/api/search' && isSearchLimited(clientIp)) {
-                return json(res, { error: 'Zu viele Suchanfragen. Bitte warte kurz.' }, 429);
-            }
-            if (isApiLimited(clientIp)) {
-                return json(res, { error: 'Zu viele Anfragen. Bitte warte kurz.' }, 429);
-            }
-        }
-
-        // Auth: API-Endpunkte brauchen immer einen gueltigen Key
-        // /status und statische Dateien (Web App) sind oeffentlich
-        if (urlPath.startsWith('/api/') && req.headers['x-api-key'] !== apiKey) {
-            return json(res, { error: 'Ungültiger API-Key' }, 401);
-        }
         const method = req.method;
+        const clientIp = getClientIp(req);
 
         try {
-            // GET /status — Browser-Statusseite
+            // ── Oeffentliche Endpunkte ───────────────────────────
+
+            // GET /status
             if (method === 'GET' && urlPath === '/status') {
                 const uptime = process.uptime();
                 const h = Math.floor(uptime / 3600);
                 const m = Math.floor((uptime % 3600) / 60);
                 const s = Math.floor(uptime % 60);
-                const uptimeStr = `${h}h ${m}m ${s}s`;
                 const mem = process.memoryUsage();
-                const memMB = (mem.rss / 1024 / 1024).toFixed(1);
-                const guilds = client.guilds.cache.size;
-                const activeQueues = [...ctx.queues.values()].filter(q => q.current).length;
-
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                return res.end(`<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BeatByte Status</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}
-  .card{background:#16213e;border-radius:16px;padding:40px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)}
-  h1{font-size:24px;margin-bottom:24px;text-align:center}
-  .status{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:24px;font-size:18px}
-  .dot{width:12px;height:12px;border-radius:50%;background:#00e676;animation:pulse 2s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  .stat{background:#0f3460;border-radius:12px;padding:16px;text-align:center}
-  .stat .value{font-size:28px;font-weight:bold;color:#e94560}
-  .stat .label{font-size:12px;color:#999;margin-top:4px}
-  .footer{text-align:center;margin-top:24px;font-size:12px;color:#555}
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>BeatByte</h1>
-  <div class="status"><span class="dot"></span> Online</div>
-  <div class="grid">
-    <div class="stat"><div class="value">${uptimeStr}</div><div class="label">Uptime</div></div>
-    <div class="stat"><div class="value">${memMB} MB</div><div class="label">RAM</div></div>
-    <div class="stat"><div class="value">${guilds}</div><div class="label">Server</div></div>
-    <div class="stat"><div class="value">${activeQueues}</div><div class="label">Aktive Streams</div></div>
-  </div>
-  <div class="footer">Oracle Cloud &bull; Node ${process.version}</div>
-</div>
-</body>
-</html>`);
+                return res.end(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BeatByte Status</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#16213e;border-radius:16px;padding:40px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)}h1{font-size:24px;margin-bottom:24px;text-align:center}.status{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:24px;font-size:18px}.dot{width:12px;height:12px;border-radius:50%;background:#00e676;animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.stat{background:#0f3460;border-radius:12px;padding:16px;text-align:center}.stat .value{font-size:28px;font-weight:bold;color:#e94560}.stat .label{font-size:12px;color:#999;margin-top:4px}.footer{text-align:center;margin-top:24px;font-size:12px;color:#555}</style></head><body><div class="card"><h1>BeatByte</h1><div class="status"><span class="dot"></span> Online</div><div class="grid"><div class="stat"><div class="value">${h}h ${m}m ${s}s</div><div class="label">Uptime</div></div><div class="stat"><div class="value">${(mem.rss/1024/1024).toFixed(1)} MB</div><div class="label">RAM</div></div><div class="stat"><div class="value">${client.guilds.cache.size}</div><div class="label">Server</div></div><div class="stat"><div class="value">${[...ctx.queues.values()].filter(q=>q.current).length}</div><div class="label">Aktive Streams</div></div></div><div class="footer">Oracle Cloud &bull; Node ${process.version}</div></div></body></html>`);
             }
 
-            // GET /api/guilds
-            if (method === 'GET' && urlPath === '/api/guilds') {
-                const guilds = client.guilds.cache.map(g => ({
-                    id: g.id, name: g.name, icon: g.iconURL({ size: 128 }),
-                }));
-                return json(res, guilds);
-            }
-
-            // GET /api/search?q=...
-            if (method === 'GET' && urlPath === '/api/search') {
-                const q = url.searchParams.get('q');
-                if (!q) return json(res, { error: 'Query fehlt' }, 400);
-                const results = await ctx.searchTracks(q);
-                return json(res, results);
-            }
-
-            // GET /api/guild/:id/channels — Voice Channels auflisten
-            const channelsMatch = urlPath.match(/^\/api\/guild\/(\d+)\/channels$/);
-            if (method === 'GET' && channelsMatch) {
-                const guild = client.guilds.cache.get(channelsMatch[1]);
+            // POST /api/auth — Access Code -> Session Token
+            if (method === 'POST' && urlPath === '/api/auth') {
+                if (isAuthLimited(clientIp)) return json(res, { error: 'Zu viele Versuche. Bitte warte 15 Minuten.' }, 429);
+                const { code } = await parseBody(req);
+                if (!code) return json(res, { error: 'Code fehlt' }, 400);
+                const guildId = validateAccessCode(code);
+                if (!guildId) return json(res, { error: 'Ungueltiger oder abgelaufener Code. Nutze /app in Discord.' }, 401);
+                const guild = client.guilds.cache.get(guildId);
                 if (!guild) return json(res, { error: 'Server nicht gefunden' }, 404);
-                const channels = guild.channels.cache
-                    .filter(c => c.isVoiceBased())
-                    .map(c => ({ id: c.id, name: c.name, members: c.members.size }))
-                    .sort((a, b) => b.members - a.members);
-                return json(res, channels);
+                const token = createSession(guildId);
+                return json(res, { token, guild: { id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) } });
             }
 
-            // POST /api/guild/:id/join — Voice Channel beitreten
-            const joinMatch = urlPath.match(/^\/api\/guild\/(\d+)\/join$/);
-            if (method === 'POST' && joinMatch) {
-                const { channelId } = await parseBody(req);
-                if (!channelId) return json(res, { error: 'channelId fehlt' }, 400);
-                await ctx.joinChannel(joinMatch[1], channelId);
-                broadcast('stateUpdate', getGuildState(joinMatch[1]));
+            // POST /api/auth/verify
+            if (method === 'POST' && urlPath === '/api/auth/verify') {
+                const auth = authenticateRequest(req);
+                if (!auth) return json(res, { valid: false }, 401);
+                if (auth.type === 'admin') return json(res, { valid: true, type: 'admin' });
+                const guild = client.guilds.cache.get(auth.guildId);
+                return json(res, { valid: true, guild: guild ? { id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) } : null });
+            }
+
+            // POST /api/auth/logout
+            if (method === 'POST' && urlPath === '/api/auth/logout') {
+                const authHeader = req.headers['authorization'];
+                if (authHeader?.startsWith('Bearer ')) sessions.delete(authHeader.slice(7));
                 return json(res, { ok: true });
             }
 
-            // GET /api/guild/:id/state
-            const stateMatch = urlPath.match(/^\/api\/guild\/(\d+)\/state$/);
-            if (method === 'GET' && stateMatch) {
-                return json(res, getGuildState(stateMatch[1]));
-            }
+            // ── Geschuetzte API-Endpunkte ────────────────────────
+            if (urlPath.startsWith('/api/')) {
+                if (urlPath.includes('/search') && isSearchLimited(clientIp)) return json(res, { error: 'Zu viele Suchanfragen.' }, 429);
+                if (isApiLimited(clientIp)) return json(res, { error: 'Zu viele Anfragen.' }, 429);
 
-            // POST /api/guild/:id/play
-            const playMatch = urlPath.match(/^\/api\/guild\/(\d+)\/play$/);
-            if (method === 'POST' && playMatch) {
-                const { query } = await parseBody(req);
-                if (!query) return json(res, { error: 'Query fehlt' }, 400);
+                const auth = authenticateRequest(req);
+                if (!auth) return json(res, { error: 'Nicht authentifiziert. Nutze /app in Discord fuer einen Zugangs-Code.' }, 401);
 
-                const queue = ctx.queues.get(playMatch[1]);
-                if (!queue || !queue.connection) {
-                    return json(res, { error: 'Bot ist nicht verbunden. Nutze /play in Discord.' }, 400);
+                const guildRouteMatch = urlPath.match(/^\/api\/guild\/(\d+)\//);
+                if (guildRouteMatch && !authorizeGuild(auth, guildRouteMatch[1])) {
+                    return json(res, { error: 'Kein Zugriff auf diesen Server' }, 403);
                 }
 
-                const track = await ctx.searchTrack(query);
-                track.requestedBy = 'Desktop App';
-                queue.tracks.push(track);
-
-                if (!queue.current) ctx.playNext(playMatch[1]);
-
-                broadcast('stateUpdate', getGuildState(playMatch[1]));
-                return json(res, { track, position: queue.tracks.length });
-            }
-
-            // POST /api/guild/:id/skip
-            const skipMatch = urlPath.match(/^\/api\/guild\/(\d+)\/skip$/);
-            if (method === 'POST' && skipMatch) {
-                const queue = ctx.queues.get(skipMatch[1]);
-                if (!queue?.current) return json(res, { error: 'Nichts wird abgespielt' }, 400);
-
-                for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
-                queue.processes.clear();
-                queue.player.stop();
-                return json(res, { ok: true });
-            }
-
-            // POST /api/guild/:id/pause
-            const pauseMatch = urlPath.match(/^\/api\/guild\/(\d+)\/pause$/);
-            if (method === 'POST' && pauseMatch) {
-                const queue = ctx.queues.get(pauseMatch[1]);
-                if (!queue?.current) return json(res, { error: 'Nichts wird abgespielt' }, 400);
-
-                if (queue.player.state.status === ctx.AudioPlayerStatus.Paused) {
-                    queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
-                    queue.player.unpause();
-                } else {
-                    queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
-                    queue.player.pause();
+                // GET /api/guilds
+                if (method === 'GET' && urlPath === '/api/guilds') {
+                    if (auth.type === 'admin') {
+                        return json(res, client.guilds.cache.map(g => ({ id: g.id, name: g.name, icon: g.iconURL({ size: 128 }) })));
+                    }
+                    const guild = client.guilds.cache.get(auth.guildId);
+                    return json(res, guild ? [{ id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) }] : []);
                 }
 
-                broadcast('stateUpdate', getGuildState(pauseMatch[1]));
-                return json(res, { paused: queue.player.state.status === ctx.AudioPlayerStatus.Paused });
-            }
-
-            // POST /api/guild/:id/stop
-            const stopMatch = urlPath.match(/^\/api\/guild\/(\d+)\/stop$/);
-            if (method === 'POST' && stopMatch) {
-                const queue = ctx.queues.get(stopMatch[1]);
-                if (!queue?.connection) return json(res, { error: 'Bot ist nicht verbunden' }, 400);
-
-                for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
-                queue.processes.clear();
-                queue.tracks = [];
-                queue.current = null;
-                queue.stopped = true;
-                if (queue.player) queue.player.stop(true);
-                ctx.scheduleLeave(stopMatch[1]);
-
-                broadcast('stateUpdate', getGuildState(stopMatch[1]));
-                return json(res, { ok: true });
-            }
-
-            // DELETE /api/guild/:id/queue/:index
-            const removeMatch = urlPath.match(/^\/api\/guild\/(\d+)\/queue\/(\d+)$/);
-            if (method === 'DELETE' && removeMatch) {
-                const queue = ctx.queues.get(removeMatch[1]);
-                if (!queue) return json(res, { error: 'Keine Queue' }, 400);
-
-                const index = parseInt(removeMatch[2]);
-                if (index < 0 || index >= queue.tracks.length) {
-                    return json(res, { error: 'Ungültiger Index' }, 400);
+                // GET /api/search?q=...
+                if (method === 'GET' && urlPath === '/api/search') {
+                    const q = url.searchParams.get('q');
+                    if (!q) return json(res, { error: 'Query fehlt' }, 400);
+                    return json(res, await ctx.searchTracks(q));
                 }
 
-                const removed = queue.tracks.splice(index, 1)[0];
-                broadcast('stateUpdate', getGuildState(removeMatch[1]));
-                return json(res, { removed });
-            }
-
-            // POST /api/guild/:id/shuffle
-            const shuffleMatch = urlPath.match(/^\/api\/guild\/(\d+)\/shuffle$/);
-            if (method === 'POST' && shuffleMatch) {
-                const queue = ctx.queues.get(shuffleMatch[1]);
-                if (!queue || queue.tracks.length < 2) return json(res, { error: 'Nicht genug Songs' }, 400);
-                for (let i = queue.tracks.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
+                // GET /api/guild/:id/channels
+                const channelsMatch = urlPath.match(/^\/api\/guild\/(\d+)\/channels$/);
+                if (method === 'GET' && channelsMatch) {
+                    const guild = client.guilds.cache.get(channelsMatch[1]);
+                    if (!guild) return json(res, { error: 'Server nicht gefunden' }, 404);
+                    return json(res, guild.channels.cache.filter(c => c.isVoiceBased()).map(c => ({ id: c.id, name: c.name, members: c.members.size })).sort((a, b) => b.members - a.members));
                 }
-                broadcast('stateUpdate', getGuildState(shuffleMatch[1]));
-                return json(res, { ok: true });
+
+                // POST /api/guild/:id/join
+                const joinMatch = urlPath.match(/^\/api\/guild\/(\d+)\/join$/);
+                if (method === 'POST' && joinMatch) {
+                    const { channelId } = await parseBody(req);
+                    if (!channelId) return json(res, { error: 'channelId fehlt' }, 400);
+                    await ctx.joinChannel(joinMatch[1], channelId);
+                    broadcast('stateUpdate', getGuildState(joinMatch[1]));
+                    return json(res, { ok: true });
+                }
+
+                // GET /api/guild/:id/state
+                const stateMatch = urlPath.match(/^\/api\/guild\/(\d+)\/state$/);
+                if (method === 'GET' && stateMatch) return json(res, getGuildState(stateMatch[1]));
+
+                // POST /api/guild/:id/play
+                const playMatch = urlPath.match(/^\/api\/guild\/(\d+)\/play$/);
+                if (method === 'POST' && playMatch) {
+                    const { query } = await parseBody(req);
+                    if (!query) return json(res, { error: 'Query fehlt' }, 400);
+                    const queue = ctx.queues.get(playMatch[1]);
+                    if (!queue || !queue.connection) return json(res, { error: 'Bot ist nicht verbunden. Nutze /play in Discord.' }, 400);
+                    const track = await ctx.searchTrack(query);
+                    track.requestedBy = 'Web App';
+                    queue.tracks.push(track);
+                    if (!queue.current) ctx.playNext(playMatch[1]);
+                    broadcast('stateUpdate', getGuildState(playMatch[1]));
+                    return json(res, { track, position: queue.tracks.length });
+                }
+
+                // POST /api/guild/:id/skip
+                const skipMatch = urlPath.match(/^\/api\/guild\/(\d+)\/skip$/);
+                if (method === 'POST' && skipMatch) {
+                    const queue = ctx.queues.get(skipMatch[1]);
+                    if (!queue?.current) return json(res, { error: 'Nichts wird abgespielt' }, 400);
+                    for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
+                    queue.processes.clear();
+                    queue.player.stop();
+                    return json(res, { ok: true });
+                }
+
+                // POST /api/guild/:id/pause
+                const pauseMatch = urlPath.match(/^\/api\/guild\/(\d+)\/pause$/);
+                if (method === 'POST' && pauseMatch) {
+                    const queue = ctx.queues.get(pauseMatch[1]);
+                    if (!queue?.current) return json(res, { error: 'Nichts wird abgespielt' }, 400);
+                    if (queue.player.state.status === ctx.AudioPlayerStatus.Paused) {
+                        queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
+                        queue.player.unpause();
+                    } else {
+                        queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
+                        queue.player.pause();
+                    }
+                    broadcast('stateUpdate', getGuildState(pauseMatch[1]));
+                    return json(res, { paused: queue.player.state.status === ctx.AudioPlayerStatus.Paused });
+                }
+
+                // POST /api/guild/:id/stop
+                const stopMatch = urlPath.match(/^\/api\/guild\/(\d+)\/stop$/);
+                if (method === 'POST' && stopMatch) {
+                    const queue = ctx.queues.get(stopMatch[1]);
+                    if (!queue?.connection) return json(res, { error: 'Bot ist nicht verbunden' }, 400);
+                    for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
+                    queue.processes.clear();
+                    queue.tracks = [];
+                    queue.current = null;
+                    queue.stopped = true;
+                    if (queue.player) queue.player.stop(true);
+                    ctx.scheduleLeave(stopMatch[1]);
+                    broadcast('stateUpdate', getGuildState(stopMatch[1]));
+                    return json(res, { ok: true });
+                }
+
+                // DELETE /api/guild/:id/queue/:index
+                const removeMatch = urlPath.match(/^\/api\/guild\/(\d+)\/queue\/(\d+)$/);
+                if (method === 'DELETE' && removeMatch) {
+                    const queue = ctx.queues.get(removeMatch[1]);
+                    if (!queue) return json(res, { error: 'Keine Queue' }, 400);
+                    const index = parseInt(removeMatch[2]);
+                    if (index < 0 || index >= queue.tracks.length) return json(res, { error: 'Ungueltiger Index' }, 400);
+                    const removed = queue.tracks.splice(index, 1)[0];
+                    broadcast('stateUpdate', getGuildState(removeMatch[1]));
+                    return json(res, { removed });
+                }
+
+                // POST /api/guild/:id/shuffle
+                const shuffleMatch = urlPath.match(/^\/api\/guild\/(\d+)\/shuffle$/);
+                if (method === 'POST' && shuffleMatch) {
+                    const queue = ctx.queues.get(shuffleMatch[1]);
+                    if (!queue || queue.tracks.length < 2) return json(res, { error: 'Nicht genug Songs' }, 400);
+                    for (let i = queue.tracks.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
+                    }
+                    broadcast('stateUpdate', getGuildState(shuffleMatch[1]));
+                    return json(res, { ok: true });
+                }
+
+                // POST /api/guild/:id/loop
+                const loopMatch = urlPath.match(/^\/api\/guild\/(\d+)\/loop$/);
+                if (method === 'POST' && loopMatch) {
+                    const queue = ctx.queues.get(loopMatch[1]);
+                    if (!queue) return json(res, { error: 'Keine Queue' }, 400);
+                    const modes = ['off', 'song', 'queue'];
+                    queue.loopMode = modes[(modes.indexOf(queue.loopMode) + 1) % modes.length];
+                    broadcast('stateUpdate', getGuildState(loopMatch[1]));
+                    return json(res, { loopMode: queue.loopMode });
+                }
+
+                // POST /api/guild/:id/volume
+                const volumeMatch = urlPath.match(/^\/api\/guild\/(\d+)\/volume$/);
+                if (method === 'POST' && volumeMatch) {
+                    const { volume } = await parseBody(req);
+                    const queue = ctx.queues.get(volumeMatch[1]);
+                    if (!queue) return json(res, { error: 'Keine Queue' }, 400);
+                    const vol = Math.max(0, Math.min(200, parseInt(volume) || 100));
+                    queue.volume = vol / 100;
+                    if (queue._resource?.volume) queue._resource.volume.setVolume(queue.volume);
+                    broadcast('stateUpdate', getGuildState(volumeMatch[1]));
+                    return json(res, { volume: vol });
+                }
+
+                return json(res, { error: 'Not found' }, 404);
             }
 
-            // POST /api/guild/:id/loop
-            const loopMatch = urlPath.match(/^\/api\/guild\/(\d+)\/loop$/);
-            if (method === 'POST' && loopMatch) {
-                const queue = ctx.queues.get(loopMatch[1]);
-                if (!queue) return json(res, { error: 'Keine Queue' }, 400);
-                const modes = ['off', 'song', 'queue'];
-                const idx = (modes.indexOf(queue.loopMode) + 1) % modes.length;
-                queue.loopMode = modes[idx];
-                broadcast('stateUpdate', getGuildState(loopMatch[1]));
-                return json(res, { loopMode: queue.loopMode });
-            }
-
-            // POST /api/guild/:id/volume
-            const volumeMatch = urlPath.match(/^\/api\/guild\/(\d+)\/volume$/);
-            if (method === 'POST' && volumeMatch) {
-                const { volume } = await parseBody(req);
-                const queue = ctx.queues.get(volumeMatch[1]);
-                if (!queue) return json(res, { error: 'Keine Queue' }, 400);
-                const vol = Math.max(0, Math.min(200, parseInt(volume) || 100));
-                queue.volume = vol / 100;
-                if (queue._resource?.volume) queue._resource.volume.setVolume(queue.volume);
-                broadcast('stateUpdate', getGuildState(volumeMatch[1]));
-                return json(res, { volume: vol });
-            }
-
-            // ── Web App (statische Dateien aus app/dist) ──────────────
+            // ── Web App (statische Dateien aus app/dist) ──────────
             const distDir = path.join(__dirname, '..', 'app', 'dist');
             if (fs.existsSync(distDir)) {
                 const mimeTypes = {
@@ -370,29 +418,69 @@ function startAPI(ctx, client) {
                 }
                 if (fs.existsSync(filePath)) {
                     const ext = path.extname(filePath);
-                    const contentType = mimeTypes[ext] || 'application/octet-stream';
                     const content = fs.readFileSync(filePath);
-                    res.writeHead(200, { 'Content-Type': contentType });
+                    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
                     return res.end(content);
                 }
             }
 
-            // 404
             json(res, { error: 'Not found' }, 404);
-
         } catch (err) {
             json(res, { error: err.message }, 500);
         }
     });
 
-    // ── WebSocket ────────────────────────────────────────────────
+    // ── WebSocket (mit Auth) ─────────────────────────────────────
 
     const wss = new WebSocketServer({ server });
+
+    wss.on('connection', (ws, req) => {
+        const wsUrl = new URL(req.url, `http://localhost:${port}`);
+        const token = wsUrl.searchParams.get('token');
+        const key = wsUrl.searchParams.get('key');
+
+        if (key && apiKey && key === apiKey) {
+            ws.guildId = null;
+            ws.authenticated = true;
+        } else if (token) {
+            const session = validateSession(token);
+            if (session) {
+                ws.guildId = session.guildId;
+                ws.authenticated = true;
+            }
+        }
+
+        if (!ws.authenticated) {
+            ws._authTimeout = setTimeout(() => {
+                if (!ws.authenticated) ws.close(4001, 'Nicht authentifiziert');
+            }, 5000);
+
+            ws.on('message', (msg) => {
+                try {
+                    const data = JSON.parse(msg);
+                    if (data.type === 'auth' && data.token) {
+                        const session = validateSession(data.token);
+                        if (session) {
+                            ws.guildId = session.guildId;
+                            ws.authenticated = true;
+                            clearTimeout(ws._authTimeout);
+                            ws.send(JSON.stringify({ event: 'authenticated', data: { guildId: session.guildId } }));
+                        } else {
+                            ws.close(4001, 'Ungueltiger Token');
+                        }
+                    }
+                } catch {}
+            });
+        }
+    });
 
     function broadcast(event, data) {
         const msg = JSON.stringify({ event, data });
         for (const ws of wss.clients) {
-            if (ws.readyState === 1) ws.send(msg);
+            if (ws.readyState !== 1 || !ws.authenticated) continue;
+            if (ws.guildId === null || ws.guildId === data?.guildId) {
+                ws.send(msg);
+            }
         }
     }
 
@@ -402,7 +490,7 @@ function startAPI(ctx, client) {
         console.log(`🌐 API Server läuft auf Port ${port}`);
     });
 
-    return { broadcast, getGuildState };
+    return { broadcast, getGuildState, generateAccessCode, regenerateAccessCode };
 }
 
 module.exports = { startAPI };

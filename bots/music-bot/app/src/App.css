@@ -132,6 +132,21 @@ body {
   color: var(--text-muted);
 }
 
+.code-input {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace !important;
+  font-size: 18px !important;
+  letter-spacing: 4px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.setup-subtitle code {
+  background: rgba(255,255,255,0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
 .btn-connect {
   width: 100%;
   margin-top: 28px;
@@ -272,6 +287,19 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.guild-active {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 0 8px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  color: var(--text-base);
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .sidebar-bottom {

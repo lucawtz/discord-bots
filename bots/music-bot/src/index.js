@@ -856,11 +856,13 @@ const ctx = {
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
 };
 
-// ── API Broadcast (wird nach API-Start gesetzt) ──────────────
+// ── API Broadcast & Access Codes (wird nach API-Start gesetzt) ──
 let _apiBroadcast = () => {};
 let _apiGetGuildState = () => ({});
+let _generateAccessCode = () => 'N/A';
 ctx.broadcast = (event, data) => _apiBroadcast(event, data);
 ctx.getGuildState = (guildId) => _apiGetGuildState(guildId);
+ctx.generateAccessCode = (guildId) => _generateAccessCode(guildId);
 
 // ── Button Handler ────────────────────────────────────────────────
 async function handleButton(interaction) {
@@ -1015,6 +1017,7 @@ client.once('ready', () => {
     const api = startAPI(ctx, client);
     _apiBroadcast = api.broadcast;
     _apiGetGuildState = api.getGuildState;
+    _generateAccessCode = api.generateAccessCode;
 });
 
 client.login(process.env.DISCORD_TOKEN);
