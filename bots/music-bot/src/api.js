@@ -3,7 +3,7 @@ const { WebSocketServer } = require('ws');
 const { URL } = require('url');
 
 function startAPI(ctx, client) {
-    const port = process.env.API_PORT || 3000;
+    const port = process.env.API_PORT || 3001;
     const apiKey = process.env.API_KEY;
 
     // ── Hilfsfunktionen ──────────────────────────────────────────
