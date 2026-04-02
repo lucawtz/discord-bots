@@ -8,22 +8,54 @@ function startAPI(ctx, client) {
     const port = process.env.API_PORT || 3001;
     const apiKey = process.env.API_KEY;
 
+    if (!apiKey) {
+        console.error('FEHLER: API_KEY muss in .env gesetzt sein! Bot-API startet ohne Key nicht.');
+        process.exit(1);
+    }
+
+    // CORS: Nur erlaubte Origins (kommagetrennt in .env)
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+        .split(',').map(o => o.trim()).filter(Boolean);
+
+    function getCorsOrigin(req) {
+        const origin = req.headers.origin;
+        if (!origin) return null;
+        // Tauri Desktop App + konfigurierte Origins
+        if (origin === 'tauri://localhost' || origin === 'https://tauri.localhost') return origin;
+        if (allowedOrigins.includes(origin)) return origin;
+        return null;
+    }
+
     // ── Hilfsfunktionen ──────────────────────────────────────────
 
     function getGuildState(guildId) {
         const queue = ctx.queues.get(guildId);
-        if (!queue) return { guildId, current: null, tracks: [], paused: false, connected: false };
+        if (!queue) return { guildId, current: null, tracks: [], paused: false, connected: false, loopMode: 'off', volume: 100, elapsed: 0 };
+
+        let elapsed = 0;
+        if (queue.current && queue._playbackStart) {
+            const isPaused = queue.player?.state?.status === ctx.AudioPlayerStatus.Paused;
+            if (!isPaused) {
+                elapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
+            } else {
+                elapsed = queue._pausedElapsed || 0;
+            }
+        }
+
         return {
             guildId,
             current: queue.current,
             tracks: queue.tracks.map(t => ({ ...t })),
             paused: queue.player?.state?.status === ctx.AudioPlayerStatus.Paused,
             connected: !!queue.connection,
+            loopMode: queue.loopMode || 'off',
+            volume: Math.round((queue.volume || 1) * 100),
+            elapsed,
         };
     }
 
     function json(res, data, status = 200) {
-        res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
     }
 
@@ -43,7 +75,11 @@ function startAPI(ctx, client) {
 
     const server = http.createServer(async (req, res) => {
         // CORS
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        const corsOrigin = getCorsOrigin(req);
+        if (corsOrigin) {
+            res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+            res.setHeader('Vary', 'Origin');
+        }
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
         if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
@@ -52,8 +88,9 @@ function startAPI(ctx, client) {
         const url = new URL(req.url, `http://localhost:${port}`);
         const urlPath = url.pathname;
 
-        // Auth (nur für API-Endpunkte, nicht für die Web-App)
-        if (apiKey && (urlPath.startsWith('/api/') || urlPath === '/status') && req.headers['x-api-key'] !== apiKey) {
+        // Auth: API-Endpunkte brauchen immer einen gueltigen Key
+        // /status und statische Dateien (Web App) sind oeffentlich
+        if (urlPath.startsWith('/api/') && req.headers['x-api-key'] !== apiKey) {
             return json(res, { error: 'Ungültiger API-Key' }, 401);
         }
         const method = req.method;
@@ -192,8 +229,10 @@ function startAPI(ctx, client) {
                 if (!queue?.current) return json(res, { error: 'Nichts wird abgespielt' }, 400);
 
                 if (queue.player.state.status === ctx.AudioPlayerStatus.Paused) {
+                    queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
                     queue.player.unpause();
                 } else {
+                    queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
                     queue.player.pause();
                 }
 
@@ -233,6 +272,44 @@ function startAPI(ctx, client) {
                 const removed = queue.tracks.splice(index, 1)[0];
                 broadcast('stateUpdate', getGuildState(removeMatch[1]));
                 return json(res, { removed });
+            }
+
+            // POST /api/guild/:id/shuffle
+            const shuffleMatch = urlPath.match(/^\/api\/guild\/(\d+)\/shuffle$/);
+            if (method === 'POST' && shuffleMatch) {
+                const queue = ctx.queues.get(shuffleMatch[1]);
+                if (!queue || queue.tracks.length < 2) return json(res, { error: 'Nicht genug Songs' }, 400);
+                for (let i = queue.tracks.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
+                }
+                broadcast('stateUpdate', getGuildState(shuffleMatch[1]));
+                return json(res, { ok: true });
+            }
+
+            // POST /api/guild/:id/loop
+            const loopMatch = urlPath.match(/^\/api\/guild\/(\d+)\/loop$/);
+            if (method === 'POST' && loopMatch) {
+                const queue = ctx.queues.get(loopMatch[1]);
+                if (!queue) return json(res, { error: 'Keine Queue' }, 400);
+                const modes = ['off', 'song', 'queue'];
+                const idx = (modes.indexOf(queue.loopMode) + 1) % modes.length;
+                queue.loopMode = modes[idx];
+                broadcast('stateUpdate', getGuildState(loopMatch[1]));
+                return json(res, { loopMode: queue.loopMode });
+            }
+
+            // POST /api/guild/:id/volume
+            const volumeMatch = urlPath.match(/^\/api\/guild\/(\d+)\/volume$/);
+            if (method === 'POST' && volumeMatch) {
+                const { volume } = await parseBody(req);
+                const queue = ctx.queues.get(volumeMatch[1]);
+                if (!queue) return json(res, { error: 'Keine Queue' }, 400);
+                const vol = Math.max(0, Math.min(200, parseInt(volume) || 100));
+                queue.volume = vol / 100;
+                if (queue._resource?.volume) queue._resource.volume.setVolume(queue.volume);
+                broadcast('stateUpdate', getGuildState(volumeMatch[1]));
+                return json(res, { volume: vol });
             }
 
             // ── Web App (statische Dateien aus app/dist) ──────────────
