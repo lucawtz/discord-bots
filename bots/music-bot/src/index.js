@@ -114,7 +114,7 @@ async function searchTrack(query) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, searchQuery,
+            ...cookieArgs, '--js-runtimes', 'node', searchQuery,
         ]);
 
         let stdout = '';
@@ -152,7 +152,7 @@ async function searchTracks(query, limit = 5) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, `ytsearch${limit}:${query}`,
+            ...cookieArgs, '--js-runtimes', 'node', `ytsearch${limit}:${query}`,
         ]);
 
         let stdout = '';
@@ -183,7 +183,7 @@ async function searchPlaylist(url) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, url,
+            ...cookieArgs, '--js-runtimes', 'node', url,
         ]);
 
         let stdout = '';
@@ -230,7 +230,7 @@ function createStream(url, queue, onError) {
         '-f', 'bestaudio/bestaudio*/best',
         '-o', '-', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
-        ...cookieArgs, url,
+        ...cookieArgs, '--js-runtimes', 'node', url,
     ]);
 
     const ffmpeg = spawn(ffmpegPath, [
