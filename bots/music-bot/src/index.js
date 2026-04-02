@@ -227,7 +227,7 @@ function formatDuration(seconds) {
 // ── Audio-Stream (yt-dlp → FFmpeg → OggOpus) ────────────────────
 function createStream(url, queue, onError) {
     const ytdlp = spawn(ytdlpPath, [
-        '-f', 'bestaudio',
+        '-f', 'bestaudio/bestaudio*/best',
         '-o', '-', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
         ...cookieArgs, url,
