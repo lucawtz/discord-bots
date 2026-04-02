@@ -140,11 +140,37 @@ body {
   text-transform: uppercase;
 }
 
-.setup-subtitle code {
+.setup-hint {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.setup-hint code {
   background: rgba(255,255,255,0.1);
   padding: 2px 8px;
   border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+
+.setup-advanced {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.setup-advanced summary {
   font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: 12px;
+  user-select: none;
+}
+
+.setup-advanced summary:hover {
+  color: var(--text-subdued);
 }
 
 .btn-connect {

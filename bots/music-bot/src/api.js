@@ -220,7 +220,7 @@ function startAPI(ctx, client) {
                 const { code } = await parseBody(req);
                 if (!code) return json(res, { error: 'Code fehlt' }, 400);
                 const guildId = validateAccessCode(code);
-                if (!guildId) return json(res, { error: 'Ungueltiger oder abgelaufener Code. Nutze /app in Discord.' }, 401);
+                if (!guildId) return json(res, { error: 'Ungültiger oder abgelaufener Code. Nutze /app in Discord.' }, 401);
                 const guild = client.guilds.cache.get(guildId);
                 if (!guild) return json(res, { error: 'Server nicht gefunden' }, 404);
                 const token = createSession(guildId);
@@ -249,7 +249,7 @@ function startAPI(ctx, client) {
                 if (isApiLimited(clientIp)) return json(res, { error: 'Zu viele Anfragen.' }, 429);
 
                 const auth = authenticateRequest(req);
-                if (!auth) return json(res, { error: 'Nicht authentifiziert. Nutze /app in Discord fuer einen Zugangs-Code.' }, 401);
+                if (!auth) return json(res, { error: 'Nicht authentifiziert. Nutze /app in Discord für einen Zugangs-Code.' }, 401);
 
                 const guildRouteMatch = urlPath.match(/^\/api\/guild\/(\d+)\//);
                 if (guildRouteMatch && !authorizeGuild(auth, guildRouteMatch[1])) {
@@ -358,7 +358,7 @@ function startAPI(ctx, client) {
                     const queue = ctx.queues.get(removeMatch[1]);
                     if (!queue) return json(res, { error: 'Keine Queue' }, 400);
                     const index = parseInt(removeMatch[2]);
-                    if (index < 0 || index >= queue.tracks.length) return json(res, { error: 'Ungueltiger Index' }, 400);
+                    if (index < 0 || index >= queue.tracks.length) return json(res, { error: 'Ungültiger Index' }, 400);
                     const removed = queue.tracks.splice(index, 1)[0];
                     broadcast('stateUpdate', getGuildState(removeMatch[1]));
                     return json(res, { removed });
@@ -466,7 +466,7 @@ function startAPI(ctx, client) {
                             clearTimeout(ws._authTimeout);
                             ws.send(JSON.stringify({ event: 'authenticated', data: { guildId: session.guildId } }));
                         } else {
-                            ws.close(4001, 'Ungueltiger Token');
+                            ws.close(4001, 'Ungültiger Token');
                         }
                     }
                 } catch {}

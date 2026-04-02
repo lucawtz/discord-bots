@@ -3,7 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('app')
-        .setDescription('Zeigt den Zugangs-Code fuer den BeatByte Music Player'),
+        .setDescription('Öffne den BeatByte Music Player'),
 
     async execute(interaction, ctx) {
         const apiPort = process.env.API_PORT || 3001;
@@ -13,33 +13,31 @@ module.exports = {
         const code = ctx.generateAccessCode(interaction.guild.id);
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: 'BeatByte Music Player' })
+            .setAuthor({ name: 'BeatByte' })
             .setDescription([
-                `Dein Zugangs-Code:`,
-                `### \`${code}\``,
+                `### Dein Zugangs-Code`,
+                `# \`${code}\``,
                 ``,
-                `**So geht's:**`,
-                `1. Oeffne den [Music Player](${webUrl})`,
-                `2. Gib den Code oben ein`,
-                `3. Fertig!`,
+                `Öffne den Music Player und gib diesen Code ein, um dich zu verbinden.`,
                 ``,
-                `Code ist 7 Tage gueltig.`,
+                `Der Code ist **7 Tage** gültig.`,
             ].join('\n'))
-            .setColor(0x1db954);
+            .setColor(0x1db954)
+            .setFooter({ text: 'Nur für dich sichtbar' });
 
         const row = new ActionRowBuilder();
         row.addComponents(
             new ButtonBuilder()
-                .setLabel('Im Browser oeffnen')
+                .setLabel('Player öffnen')
                 .setStyle(ButtonStyle.Link)
                 .setURL(webUrl)
-                .setEmoji('🌐'),
+                .setEmoji('🎵'),
         );
 
         if (downloadUrl) {
             row.addComponents(
                 new ButtonBuilder()
-                    .setLabel('Desktop-App herunterladen')
+                    .setLabel('Desktop App')
                     .setStyle(ButtonStyle.Link)
                     .setURL(downloadUrl)
                     .setEmoji('💻'),

@@ -237,23 +237,27 @@ function App() {
             </div>
           </div>
           <h1>BeatByte</h1>
-          <p className="setup-subtitle">Nutze <code>/app</code> in Discord um einen Zugangs-Code zu erhalten</p>
+          <p className="setup-subtitle">Steuere deine Musik direkt im Browser</p>
           <div className="setup-form">
-            <label>Server URL</label>
-            <input value={botUrl} onChange={e => setBotUrl(e.target.value)} placeholder="http://localhost:3001" onKeyDown={e => e.key === 'Enter' && connect()} />
             <label>Zugangs-Code</label>
             <input
               value={accessCode}
               onChange={e => setAccessCode(e.target.value.toUpperCase())}
-              placeholder="Z.B. A1B2C3D4"
+              placeholder="Code eingeben"
               maxLength={8}
               className="code-input"
               onKeyDown={e => e.key === 'Enter' && connect()}
               autoFocus
             />
+            <p className="setup-hint">Tippe <code>/app</code> in Discord, um deinen Code zu erhalten.</p>
             <button className="btn-connect" onClick={connect} disabled={connecting || !accessCode.trim()}>
               {connecting ? 'Verbinde...' : 'Verbinden'}
             </button>
+            <details className="setup-advanced">
+              <summary>Erweitert</summary>
+              <label>Server URL</label>
+              <input value={botUrl} onChange={e => setBotUrl(e.target.value)} placeholder="http://localhost:3001" />
+            </details>
           </div>
           {error && <p className="error-msg">{error}</p>}
         </div>
@@ -327,7 +331,7 @@ function App() {
           <section className="results-section">
             <div className="results-header">
               <h2 className="section-title">Suchergebnisse</h2>
-              <button className="btn-close-results" onClick={() => setSearchResults([])}>Schliessen</button>
+              <button className="btn-close-results" onClick={() => setSearchResults([])}>Schließen</button>
             </div>
             <div className="results-list">
               {searchResults.map((track, i) => (
@@ -425,7 +429,7 @@ function App() {
                   : <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                 }
               </button>
-              <button className="ctrl-btn" onClick={() => apiAction('skip')} title="Ueberspringen">
+              <button className="ctrl-btn" onClick={() => apiAction('skip')} title="Überspringen">
                 <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
               </button>
               <button className={`ctrl-btn ${state.loopMode !== 'off' ? 'ctrl-active' : ''}`} onClick={() => apiAction('loop')} title={`Loop: ${loopIcons[state.loopMode]}`}>
