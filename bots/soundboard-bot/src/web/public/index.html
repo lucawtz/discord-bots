@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EarTastic - Soundboard Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>EarTastic</h1>
+          <span>Soundboard</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="sounds">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+          <span>Sounds</span>
+        </button>
+        <button class="nav-item" data-tab="upload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>Upload</span>
+        </button>
+        <button class="nav-item" data-tab="freesound">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <span>Freesound</span>
+        </button>
+        <button class="nav-item" data-tab="manage">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span>Verwalten</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-indicator">
+          <span class="status-dot"></span>
+          <span>Bot Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-wrapper">
+      <!-- Mobile Header -->
+      <header class="mobile-header">
+        <button class="mobile-menu-btn" id="mobile-menu-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <div class="mobile-brand">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+          <span>EarTastic</span>
+        </div>
+      </header>
+
+      <div id="toast" class="toast hidden"></div>
+
+      <main>
+        <!-- Tab: Sounds -->
+        <section id="tab-sounds" class="tab-content active">
+          <div class="page-header">
+            <div>
+              <h2>Sounds</h2>
+              <p class="page-subtitle">Alle verfügbaren Sounds auf einen Blick</p>
+            </div>
+            <span id="sound-count" class="counter-badge"></span>
+          </div>
+          <div class="toolbar">
+            <div class="search-wrapper">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" id="search-sounds" placeholder="Sound suchen..." />
+            </div>
+            <select id="filter-category">
+              <option value="">Alle Kategorien</option>
+            </select>
+          </div>
+          <div id="sounds-grid" class="sound-grid"></div>
+          <div id="sounds-empty" class="empty-state hidden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+              <path d="M9 18V5l12-2v13"/>
+              <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+            </svg>
+            <h3>Keine Sounds vorhanden</h3>
+            <p>Lade deinen ersten Sound hoch, um loszulegen!</p>
+          </div>
+        </section>
+
+        <!-- Tab: Upload -->
+        <section id="tab-upload" class="tab-content">
+          <div class="page-header">
+            <div>
+              <h2>Upload</h2>
+              <p class="page-subtitle">Neuen Sound hochladen</p>
+            </div>
+          </div>
+          <div class="upload-container">
+            <form id="upload-form" class="upload-form">
+              <div class="form-group">
+                <label for="upload-file">Sound-Datei</label>
+                <div class="file-drop" id="file-drop">
+                  <input type="file" id="upload-file" accept=".mp3,.wav,.ogg,.webm" required />
+                  <div class="file-drop-content">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p>Datei hierher ziehen oder <strong>klicken</strong></p>
+                    <span class="file-info">MP3, WAV, OGG, WebM &mdash; max. 5 MB, max. 10 Sekunden</span>
+                  </div>
+                </div>
+                <p id="file-name" class="file-selected hidden"></p>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="upload-name">Name</label>
+                  <input type="text" id="upload-name" maxlength="32" placeholder="z.B. Airhorn" required />
+                </div>
+                <div class="form-group">
+                  <label for="upload-category">Kategorie</label>
+                  <select id="upload-category" class="form-select"></select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="toggle-label">
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="upload-predefined" />
+                    <span class="toggle-slider"></span>
+                  </div>
+                  <div class="toggle-text">
+                    <span>Vorgegeben</span>
+                    <span class="toggle-hint">Für alle Nutzer sichtbar</span>
+                  </div>
+                </label>
+              </div>
+              <button type="submit" class="btn btn-primary btn-upload" id="upload-btn">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span class="btn-text">Hochladen</span>
+                <span class="btn-loading hidden">
+                  <span class="spinner"></span>
+                  Wird hochgeladen...
+                </span>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- Tab: Freesound -->
+        <section id="tab-freesound" class="tab-content">
+          <div class="page-header">
+            <div>
+              <h2>Freesound</h2>
+              <p class="page-subtitle">Tausende kostenlose Sounds von Freesound.org durchsuchen</p>
+            </div>
+          </div>
+          <div class="toolbar">
+            <div class="search-wrapper">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" id="freesound-search" placeholder="z.B. airhorn, bell, applause..." />
+            </div>
+            <button class="btn btn-primary btn-search" id="freesound-search-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              Suchen
+            </button>
+          </div>
+          <div id="freesound-grid" class="sound-grid"></div>
+          <div id="freesound-empty" class="empty-state hidden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <h3>Keine Ergebnisse</h3>
+            <p>Versuche einen anderen Suchbegriff.</p>
+          </div>
+          <div id="freesound-pagination" class="pagination hidden">
+            <button class="btn btn-secondary btn-page" id="freesound-prev" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Zurück
+            </button>
+            <span id="freesound-page-info" class="page-info"></span>
+            <button class="btn btn-secondary btn-page" id="freesound-next">
+              Weiter
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- Tab: Verwalten -->
+        <section id="tab-manage" class="tab-content">
+          <div class="page-header">
+            <div>
+              <h2>Verwalten</h2>
+              <p class="page-subtitle">Sounds bearbeiten und löschen</p>
+            </div>
+            <span id="manage-sound-count" class="counter-badge"></span>
+          </div>
+          <div class="toolbar">
+            <select id="manage-filter-category">
+              <option value="">Alle Kategorien</option>
+            </select>
+          </div>
+          <div id="manage-grid" class="sound-grid"></div>
+          <div id="manage-empty" class="empty-state hidden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <h3>Keine Sounds vorhanden</h3>
+            <p>Lade zuerst Sounds hoch, um sie hier zu verwalten.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Overlay für Mobile-Sidebar -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <!-- Bearbeiten-Dialog -->
+  <div id="edit-modal" class="modal hidden">
+    <div class="modal-content modal-content-wide">
+      <div class="modal-icon modal-icon-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </div>
+      <h3>Sound bearbeiten</h3>
+      <audio id="edit-audio" controls></audio>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="edit-name">Name</label>
+          <input type="text" id="edit-name" maxlength="32" placeholder="Sound-Name" />
+        </div>
+        <div class="form-group">
+          <label for="edit-category">Kategorie</label>
+          <select id="edit-category" class="form-select"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="toggle-label">
+          <div class="toggle-switch">
+            <input type="checkbox" id="edit-predefined" />
+            <span class="toggle-slider"></span>
+          </div>
+          <div class="toggle-text">
+            <span>Vorgegeben</span>
+            <span class="toggle-hint">Für alle Nutzer sichtbar</span>
+          </div>
+        </label>
+      </div>
+      <div class="modal-actions modal-actions-split">
+        <button class="btn btn-danger btn-sm" id="edit-delete">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          Löschen
+        </button>
+        <div class="modal-actions-right">
+          <button class="btn btn-secondary" id="edit-cancel">Abbrechen</button>
+          <button class="btn btn-primary" id="edit-save">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Speichern
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Löschen-Dialog -->
+  <div id="delete-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-icon modal-icon-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          <line x1="10" y1="11" x2="10" y2="17"/>
+          <line x1="14" y1="11" x2="14" y2="17"/>
+        </svg>
+      </div>
+      <h3>Sound löschen?</h3>
+      <p>Möchtest du <strong id="delete-sound-name"></strong> wirklich unwiderruflich löschen?</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="delete-cancel">Abbrechen</button>
+        <button class="btn btn-danger" id="delete-confirm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          Löschen
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Freesound Hinzufügen-Dialog -->
+  <div id="add-freesound-modal" class="modal hidden">
+    <div class="modal-content modal-content-wide">
+      <div class="modal-icon modal-icon-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="16"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <h3>Als Standardsound hinzufügen</h3>
+      <div class="fs-preview-info">
+        <span class="fs-info-item" id="fs-add-duration"></span>
+        <span class="fs-info-item" id="fs-add-author"></span>
+      </div>
+      <audio id="fs-add-audio" controls></audio>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="fs-add-name">Name</label>
+          <input type="text" id="fs-add-name" maxlength="32" placeholder="Sound-Name" />
+        </div>
+        <div class="form-group">
+          <label for="fs-add-category">Kategorie</label>
+          <select id="fs-add-category" class="form-select"></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="fs-add-cancel">Abbrechen</button>
+        <button class="btn btn-primary" id="fs-add-confirm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Hinzufügen
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "discord-soundboard-bot",
+  "version": "1.0.0",
+  "description": "Ein Discord Soundboard Bot mit interaktivem Panel, Buttons und Sound-Upload",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^1.0.0-dev.1772884937-84b85f4c9",
+    "@noble/ciphers": "^2.1.1",
+    "discord.js": "^14.16.0",
+    "dotenv": "^16.4.0",
+    "express": "^5.2.1",
+    "ffmpeg-static": "^5.2.0",
+    "libsodium-wrappers": "^0.7.15",
+    "multer": "^2.1.1",
+    "opusscript": "^0.1.1",
+    "sql.js": "^1.11.0"
+  }
+}

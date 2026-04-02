@@ -1,0 +1,29 @@
+{
+  "port": 3000,
+  "bots": [
+    {
+      "id": "beatbyte",
+      "name": "BeatByte",
+      "description": "Discord Music Bot",
+      "service": "discord-bot",
+      "icon": "music",
+      "color": "#e94560"
+    },
+    {
+      "id": "monitoring",
+      "name": "Monitoring Bot",
+      "description": "Server Monitoring",
+      "service": "monitoring-bot",
+      "icon": "activity",
+      "color": "#00e676"
+    },
+    {
+      "id": "soundboard",
+      "name": "Soundboard Bot",
+      "description": "Discord Soundboard",
+      "service": "soundboard-bot",
+      "icon": "volume-2",
+      "color": "#448aff"
+    }
+  ]
+}

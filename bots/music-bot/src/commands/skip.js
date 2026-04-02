@@ -1,0 +1,72 @@
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('skip')
+        .setDescription('Überspringt den aktuellen Song'),
+
+    async execute(interaction, ctx) {
+        const queue = ctx.getQueue(interaction.guildId);
+
+        if (!queue.current || !queue.player) {
+            return interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
+        }
+
+        // DJ-Rolle oder Song-Requester → sofort skippen
+        const isDJ = interaction.member.roles.cache.some(r => r.name.toLowerCase() === 'dj');
+        const isRequester = queue.current.requestedBy === interaction.user.toString();
+
+        if (!isDJ && !isRequester) {
+            // Vote-Skip
+            const voiceChannel = interaction.member.voice.channel;
+            if (!voiceChannel) return interaction.reply({ content: '❌ Du musst im Voice Channel sein!', ephemeral: true });
+
+            queue.skipVotes.add(interaction.user.id);
+            const members = voiceChannel.members.filter(m => !m.user.bot).size;
+            const needed = Math.ceil(members / 2);
+
+            if (queue.skipVotes.size < needed) {
+                return interaction.reply({
+                    content: `🗳️ Skip-Vote: **${queue.skipVotes.size}/${needed}** — noch ${needed - queue.skipVotes.size} Vote${needed - queue.skipVotes.size !== 1 ? 's' : ''} nötig.`,
+                    ephemeral: false,
+                });
+            }
+        }
+
+        const skipped = queue.current;
+        const upcoming = queue.tracks.slice(0, 5);
+
+        // Skip ausführen
+        for (const proc of queue.processes) {
+            if (!proc.killed) proc.kill();
+        }
+        queue.processes.clear();
+        queue.player.stop();
+
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: 'Song übersprungen' })
+            .setDescription(`~~[${skipped.title}](${skipped.url})~~ — \`${skipped.duration}\``)
+            .setColor(0xFEE75C);
+
+        if (upcoming.length > 0) {
+            const nextSong = upcoming[0];
+            embed.addFields({
+                name: '▶️ Spielt als Nächstes',
+                value: `[${nextSong.title}](${nextSong.url}) — \`${nextSong.duration}\``,
+            });
+
+            if (upcoming.length > 1) {
+                embed.addFields({
+                    name: `📋 Warteschlange (${queue.tracks.length})`,
+                    value: upcoming.slice(1).map((t, i) =>
+                        `\`${i + 2}.\` [${t.title}](${t.url}) — \`${t.duration}\``
+                    ).join('\n') + (queue.tracks.length > 5 ? `\n*...und ${queue.tracks.length - 5} weitere*` : ''),
+                });
+            }
+        } else {
+            embed.setFooter({ text: 'Keine weiteren Songs in der Warteschlange' });
+        }
+
+        ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }), ctx.DELETE_SHORT_MS);
+    },
+};

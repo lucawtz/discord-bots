@@ -1,0 +1,21 @@
+{
+  "name": "discord-music-bot",
+  "version": "1.0.0",
+  "description": "Discord Music Bot mit discord.js, yt-dlp und FFmpeg",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.19.2",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "libsodium-wrappers": "^0.7.15",
+    "opusscript": "^0.0.8",
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.18.0",
+    "youtube-dl-exec": "^3.1.4"
+  }
+}

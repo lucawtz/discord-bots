@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bot Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f1a;color:#e0e0e0;min-height:100vh}
+.header{background:#16213e;padding:20px 32px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1a1a3e}
+.header h1{font-size:22px;font-weight:600}
+.system-info{display:flex;gap:20px;font-size:13px;color:#888}
+.system-info span{color:#e94560;font-weight:600}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:20px;margin-bottom:24px}
+.card{background:#16213e;border-radius:12px;overflow:hidden;border:1px solid #1a1a3e;transition:border-color .2s}
+.card:hover{border-color:#333}
+.card-header{padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
+.card-header .left{display:flex;align-items:center;gap:12px}
+.bot-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.bot-name{font-size:16px;font-weight:600}
+.bot-desc{font-size:12px;color:#888;margin-top:2px}
+.status-badge{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.status-online{background:rgba(0,230,118,.15);color:#00e676}
+.status-offline{background:rgba(255,82,82,.15);color:#ff5252}
+.card-stats{padding:0 20px 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.stat{text-align:center;background:#0f0f1a;border-radius:8px;padding:10px}
+.stat .val{font-size:18px;font-weight:700}
+.stat .lbl{font-size:10px;color:#666;margin-top:2px;text-transform:uppercase}
+.card-actions{padding:0 20px 16px;display:flex;gap:8px}
+.btn{padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:opacity .2s;color:#fff}
+.btn:hover{opacity:.8}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-start{background:#00e676}
+.btn-stop{background:#ff5252}
+.btn-restart{background:#448aff}
+.btn-logs{background:#333}
+.logs-panel{display:none;background:#0a0a14;border-top:1px solid #1a1a3e;padding:16px 20px;max-height:300px;overflow-y:auto}
+.logs-panel pre{font-family:'JetBrains Mono','Fira Code',monospace;font-size:11px;line-height:1.6;color:#aaa;white-space:pre-wrap;word-break:break-all}
+.logs-panel .close-logs{float:right;background:none;border:none;color:#666;cursor:pointer;font-size:18px;padding:0 4px}
+.logs-panel .close-logs:hover{color:#fff}
+.footer{text-align:center;padding:20px;font-size:12px;color:#444}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.dot-on{background:#00e676;animation:pulse 2s infinite}
+.dot-off{background:#ff5252}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Bot Dashboard</h1>
+  <div class="system-info" id="sysinfo">Lade...</div>
+</div>
+<div class="container">
+  <div class="grid" id="bots"></div>
+</div>
+<div class="footer">Oracle Cloud VM &bull; Auto-Refresh 5s</div>
+
+<script>
+async function fetchBots(){
+  try{
+    var r=await fetch('/api/bots');
+    var d=await r.json();
+    renderBots(d.bots);
+    renderSystem(d.system);
+  }catch(e){console.error(e)}
+}
+
+function renderSystem(s){
+  document.getElementById('sysinfo').innerHTML=
+    'VM Uptime: <span>'+s.uptime+'</span> &bull; RAM: <span>'+s.usedMB+'/'+s.totalMB+' MB</span> &bull; Load: <span>'+s.load+'</span>';
+}
+
+function renderBots(bots){
+  var grid=document.getElementById('bots');
+  var openLogs=[];
+  document.querySelectorAll('.logs-panel').forEach(function(p){
+    if(p.style.display==='block'){
+      openLogs.push(p.id.replace('logs-',''));
+    }
+  });
+
+  grid.innerHTML=bots.map(function(b){
+    return '<div class="card" id="card-'+b.id+'">'
+      +'<div class="card-header">'
+      +'<div class="left">'
+      +'<div class="bot-icon" style="background:'+b.color+'22;color:'+b.color+'">'+getIcon(b.icon)+'</div>'
+      +'<div><div class="bot-name">'+b.name+'</div><div class="bot-desc">'+b.description+'</div></div>'
+      +'</div>'
+      +'<div class="status-badge '+(b.running?'status-online':'status-offline')+'">'
+      +'<span class="dot '+(b.running?'dot-on':'dot-off')+'"></span>'+(b.running?'Online':'Offline')
+      +'</div>'
+      +'</div>'
+      +'<div class="card-stats">'
+      +'<div class="stat"><div class="val">'+(b.uptime||'-')+'</div><div class="lbl">Uptime</div></div>'
+      +'<div class="stat"><div class="val">'+(b.running?b.memMB+' MB':'-')+'</div><div class="lbl">RAM</div></div>'
+      +'<div class="stat"><div class="val">'+(b.running?'PID '+b.pid:'-')+'</div><div class="lbl">Prozess</div></div>'
+      +'</div>'
+      +'<div class="card-actions">'
+      +'<button class="btn btn-start" onclick="control(\''+b.id+'\',\'start\')" '+(b.running?'disabled':'')+'>Start</button>'
+      +'<button class="btn btn-stop" onclick="control(\''+b.id+'\',\'stop\')" '+(!b.running?'disabled':'')+'>Stop</button>'
+      +'<button class="btn btn-restart" onclick="control(\''+b.id+'\',\'restart\')" '+(!b.running?'disabled':'')+'>Restart</button>'
+      +'<button class="btn btn-logs" onclick="toggleLogs(\''+b.id+'\')">Logs</button>'
+      +'</div>'
+      +'<div class="logs-panel" id="logs-'+b.id+'" style="display:'+(openLogs.indexOf(b.id)>=0?'block':'none')+'">'
+      +'<button class="close-logs" onclick="toggleLogs(\''+b.id+'\')">&times;</button>'
+      +'<pre>Lade Logs...</pre>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+
+  openLogs.forEach(function(id){ loadLogs(id); });
+}
+
+function getIcon(icon){
+  var icons={music:'&#9835;',activity:'&#9737;','volume-2':'&#9834;'};
+  return icons[icon]||'&#9679;';
+}
+
+async function control(id,action){
+  try{
+    var r=await fetch('/api/bots/'+id+'/'+action,{method:'POST'});
+    var d=await r.json();
+    if(d.error)alert(d.error);
+    fetchBots();
+  }catch(e){alert('Fehler: '+e.message)}
+}
+
+async function loadLogs(id){
+  var panel=document.getElementById('logs-'+id);
+  if(!panel)return;
+  try{
+    var r=await fetch('/api/bots/'+id+'/logs?lines=80');
+    var d=await r.json();
+    panel.querySelector('pre').textContent=d.logs;
+    panel.scrollTop=panel.scrollHeight;
+  }catch(e){panel.querySelector('pre').textContent='Fehler: '+e.message}
+}
+
+async function toggleLogs(id){
+  var panel=document.getElementById('logs-'+id);
+  if(panel.style.display==='block'){panel.style.display='none';return;}
+  panel.style.display='block';
+  loadLogs(id);
+}
+
+fetchBots();
+setInterval(fetchBots,5000);
+</script>
+</body>
+</html>
