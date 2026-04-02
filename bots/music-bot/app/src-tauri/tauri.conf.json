@@ -1,9 +1,9 @@
 {
-  "productName": "Discord Music Bot",
+  "productName": "BeatByte",
   "version": "0.1.0",
-  "identifier": "com.discord-music-bot.app",
+  "identifier": "com.beatbyte.desktop",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "",
     "frontendDist": "../dist"

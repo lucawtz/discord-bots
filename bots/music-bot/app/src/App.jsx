@@ -36,7 +36,6 @@ function App() {
     } catch {}
   }, [botUrl, getHeaders]);
 
-  // Verbinden
   const connect = async () => {
     setError('');
     try {
@@ -73,7 +72,6 @@ function App() {
     setState({ current: null, tracks: [], paused: false, connected: false });
   };
 
-  // State alle 2s pollen (Fallback)
   useEffect(() => {
     if (!connected || !selectedGuild) return;
     fetchState(selectedGuild.id);
@@ -81,7 +79,6 @@ function App() {
     return () => clearInterval(interval);
   }, [connected, selectedGuild, fetchState]);
 
-  // Voice Channels laden wenn Bot nicht verbunden
   useEffect(() => {
     if (!connected || !selectedGuild || state.connected) { setChannels([]); return; }
     const fetchChannels = async () => {
@@ -93,26 +90,20 @@ function App() {
     fetchChannels();
   }, [connected, selectedGuild, state.connected, botUrl, getHeaders]);
 
-  // Bot einem Channel joinen lassen
   const joinChannel = async (channelId) => {
     if (!selectedGuild) return;
     setJoiningChannel(channelId);
     try {
       const res = await fetch(`${botUrl}/api/guild/${selectedGuild.id}/join`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ channelId }),
+        method: 'POST', headers: getHeaders(), body: JSON.stringify({ channelId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       fetchState(selectedGuild.id);
-    } catch (err) {
-      setError(err.message);
-    }
+    } catch (err) { setError(err.message); }
     setJoiningChannel(null);
   };
 
-  // Songs suchen (zeigt Ergebnisse)
   const search = async () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
@@ -123,38 +114,29 @@ function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSearchResults(data);
-    } catch (err) {
-      setError(err.message);
-    }
+    } catch (err) { setError(err.message); }
     setSearching(false);
   };
 
-  // Song aus Suchergebnissen zur Queue hinzufügen
   const addToQueue = async (track) => {
     if (!selectedGuild) return;
     setAdding(track.url);
     try {
       const res = await fetch(`${botUrl}/api/guild/${selectedGuild.id}/play`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ query: track.url }),
+        method: 'POST', headers: getHeaders(), body: JSON.stringify({ query: track.url }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       fetchState(selectedGuild.id);
-    } catch (err) {
-      setError(err.message);
-    }
+    } catch (err) { setError(err.message); }
     setAdding(null);
   };
 
-  // API-Aktionen
   const apiAction = async (action) => {
     if (!selectedGuild) return;
     try {
       const res = await fetch(`${botUrl}/api/guild/${selectedGuild.id}/${action}`, {
-        method: 'POST',
-        headers: getHeaders(),
+        method: 'POST', headers: getHeaders(),
       });
       if (res.ok) fetchState(selectedGuild.id);
     } catch {}
@@ -164,8 +146,7 @@ function App() {
     if (!selectedGuild) return;
     try {
       await fetch(`${botUrl}/api/guild/${selectedGuild.id}/queue/${index}`, {
-        method: 'DELETE',
-        headers: getHeaders(),
+        method: 'DELETE', headers: getHeaders(),
       });
       fetchState(selectedGuild.id);
     } catch {}
@@ -176,15 +157,19 @@ function App() {
     return (
       <div className="setup">
         <div className="setup-card">
-          <div className="setup-icon">&#9835;</div>
-          <h1>Discord Music Bot</h1>
-          <p className="setup-subtitle">Verbinde dich mit deinem Bot</p>
+          <div className="setup-logo">
+            <div className="setup-logo-icon">
+              <svg viewBox="0 0 24 24" width="32" height="32"><path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            </div>
+          </div>
+          <h1>BeatByte</h1>
+          <p className="setup-subtitle">Mit deinem Music Bot verbinden</p>
           <div className="setup-form">
-            <label>Bot URL</label>
+            <label>Server URL</label>
             <input
               value={botUrl}
               onChange={e => setBotUrl(e.target.value)}
-              placeholder="http://localhost:3000"
+              placeholder="http://localhost:3001"
               onKeyDown={e => e.key === 'Enter' && connect()}
             />
             <label>API Key <span className="optional">(optional)</span></label>
@@ -209,8 +194,10 @@ function App() {
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="brand-icon">&#9835;</span>
-          <span>Music Bot</span>
+          <div className="brand-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </div>
+          <span>BeatByte</span>
         </div>
         <div className="sidebar-label">Server</div>
         <nav className="guild-list">
@@ -251,16 +238,24 @@ function App() {
                   placeholder="Song suchen..."
                   disabled={searching}
                 />
-                <button
-                  className="btn-search"
-                  onClick={search}
-                  disabled={searching || !searchQuery.trim()}
-                >
+                <button className="btn-search" onClick={search} disabled={searching || !searchQuery.trim()}>
                   {searching ? 'Suche...' : 'Suchen'}
                 </button>
               </div>
             </header>
 
+            {/* Voice Channel Status */}
+            {state.connected && (
+              <div className="voice-status">
+                <div className="voice-status-dot" />
+                <svg viewBox="0 0 24 24" width="16" height="16">
+                  <path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1a7 7 0 0 1 14 0v1h-4v8h4c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/>
+                </svg>
+                <span>Verbunden</span>
+              </div>
+            )}
+
+            {/* Voice Channel beitreten */}
             {!state.connected && channels.length > 0 && (
               <section className="channel-section">
                 <h2 className="section-title">Voice Channel beitreten</h2>
@@ -315,7 +310,7 @@ function App() {
                         title="Zur Warteschlange hinzufügen"
                       >
                         {adding === track.url ? (
-                          <span className="adding-spinner">...</span>
+                          <span className="adding-spinner" />
                         ) : (
                           <svg viewBox="0 0 24 24" width="20" height="20">
                             <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
@@ -328,13 +323,62 @@ function App() {
               </section>
             )}
 
+            {/* Now Playing */}
+            {state.current && (
+              <section className="now-playing-section">
+                <h2 className="section-title">Spielt jetzt</h2>
+                <div className="now-playing-card">
+                  <div className="np-visualizer">
+                    {!state.paused && (
+                      <>
+                        <span className="np-bar" /><span className="np-bar" /><span className="np-bar" /><span className="np-bar" />
+                      </>
+                    )}
+                  </div>
+                  {state.current.thumbnail && (
+                    <img src={state.current.thumbnail} alt="" className="np-cover" />
+                  )}
+                  <div className="np-info">
+                    <span className="np-title">{state.current.title}</span>
+                    <span className="np-meta">
+                      {state.current.duration}
+                      {state.current.requestedBy && ` — ${state.current.requestedBy}`}
+                    </span>
+                  </div>
+                  <div className="np-controls">
+                    <button className="np-btn" onClick={() => apiAction('pause')} title={state.paused ? 'Fortsetzen' : 'Pausieren'}>
+                      {state.paused ? (
+                        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                      )}
+                    </button>
+                    <button className="np-btn" onClick={() => apiAction('skip')} title="Überspringen">
+                      <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                    </button>
+                    <button className="np-btn np-btn-stop" onClick={() => apiAction('stop')} title="Stoppen">
+                      <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {/* Warteschlange */}
             <section className="queue-section">
-              <h2 className="section-title">Warteschlange</h2>
+              <div className="queue-header">
+                <h2 className="section-title">
+                  Warteschlange
+                  {state.tracks.length > 0 && <span className="queue-count">{state.tracks.length}</span>}
+                </h2>
+              </div>
               {state.tracks.length === 0 ? (
                 <div className="empty-state">
+                  <svg viewBox="0 0 24 24" width="48" height="48" className="empty-icon">
+                    <path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" opacity="0.3"/>
+                  </svg>
                   <p>Keine Songs in der Warteschlange</p>
-                  <p className="empty-hint">Suche oben nach einem Song, um loszulegen</p>
+                  <p className="empty-hint">Suche oben nach einem Song</p>
                 </div>
               ) : (
                 <div className="queue-list">
@@ -364,9 +408,13 @@ function App() {
           </>
         ) : (
           <div className="no-selection">
-            <div className="no-selection-icon">&#9835;</div>
+            <div className="no-selection-icon">
+              <svg viewBox="0 0 24 24" width="64" height="64">
+                <path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" opacity="0.3"/>
+              </svg>
+            </div>
             <h2>Wähle einen Server</h2>
-            <p>Wähle einen Server aus der Seitenleiste, um loszulegen</p>
+            <p>Wähle einen Server aus der Seitenleiste</p>
           </div>
         )}
       </main>
@@ -385,11 +433,7 @@ function App() {
               </div>
             </div>
             <div className="player-controls">
-              <button
-                className="ctrl-btn ctrl-main"
-                onClick={() => apiAction('pause')}
-                title={state.paused ? 'Fortsetzen' : 'Pausieren'}
-              >
+              <button className="ctrl-btn ctrl-main" onClick={() => apiAction('pause')} title={state.paused ? 'Fortsetzen' : 'Pausieren'}>
                 {state.paused ? (
                   <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
                 ) : (
