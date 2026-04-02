@@ -6,6 +6,7 @@ set -e
 
 REPO_DIR="$HOME/discord-bots"
 OLD_REPO_DIR="$HOME/Discord-Music-Bot"
+USER_NAME="ubuntu"
 
 echo "=== Discord Bots Deploy ==="
 

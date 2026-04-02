@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=opc
-WorkingDirectory=/home/opc/discord-bots/bots/soundboard-bot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/discord-bots/bots/soundboard-bot
 ExecStart=/usr/bin/node src/index.js
 Restart=always
 RestartSec=10

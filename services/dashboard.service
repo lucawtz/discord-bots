@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=opc
-WorkingDirectory=/home/opc/discord-bots/dashboard
+User=ubuntu
+WorkingDirectory=/home/ubuntu/discord-bots/dashboard
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=10
