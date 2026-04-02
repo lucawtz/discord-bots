@@ -1,5 +1,7 @@
 {
   "port": 3000,
+  "username": "admin",
+  "password": "BeatByte2026!",
   "bots": [
     {
       "id": "beatbyte",

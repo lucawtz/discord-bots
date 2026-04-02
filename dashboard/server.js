@@ -1,10 +1,44 @@
 const http = require('http');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
 const PORT = config.port || 3000;
+
+// ── Auth ────────────────────────────────────────────────────────
+
+const sessions = new Map();
+const SESSION_MAX_AGE = 24 * 60 * 60 * 1000; // 24h
+
+function createSession() {
+    const token = crypto.randomBytes(32).toString('hex');
+    sessions.set(token, Date.now());
+    return token;
+}
+
+function isValidSession(req) {
+    const cookie = req.headers.cookie || '';
+    const match = cookie.match(/session=([a-f0-9]+)/);
+    if (!match) return false;
+    const created = sessions.get(match[1]);
+    if (!created) return false;
+    if (Date.now() - created > SESSION_MAX_AGE) {
+        sessions.delete(match[1]);
+        return false;
+    }
+    return true;
+}
+
+function parseBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => resolve(body));
+        req.on('error', reject);
+    });
+}
 
 // ── Hilfsfunktionen ─────────────────────────────────────────────
 
@@ -78,6 +112,11 @@ function json(res, data, status = 200) {
     res.end(JSON.stringify(data));
 }
 
+// ── Login Page ──────────────────────────────────────────────────
+
+const loginHTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
+const dashboardHTML = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+
 // ── HTTP Server ─────────────────────────────────────────────────
 
 const server = http.createServer(async (req, res) => {
@@ -86,6 +125,50 @@ const server = http.createServer(async (req, res) => {
     const method = req.method;
 
     try {
+        // Login page
+        if (method === 'GET' && p === '/login') {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            return res.end(loginHTML);
+        }
+
+        // Login POST
+        if (method === 'POST' && p === '/login') {
+            const body = await parseBody(req);
+            const params = new URLSearchParams(body);
+            const user = params.get('username');
+            const pass = params.get('password');
+
+            if (user === config.username && pass === config.password) {
+                const token = createSession();
+                res.writeHead(302, {
+                    'Set-Cookie': `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
+                    'Location': '/'
+                });
+                return res.end();
+            }
+
+            res.writeHead(302, { 'Location': '/login?error=1' });
+            return res.end();
+        }
+
+        // Logout
+        if (method === 'GET' && p === '/logout') {
+            const cookie = req.headers.cookie || '';
+            const match = cookie.match(/session=([a-f0-9]+)/);
+            if (match) sessions.delete(match[1]);
+            res.writeHead(302, {
+                'Set-Cookie': 'session=; Path=/; HttpOnly; Max-Age=0',
+                'Location': '/login'
+            });
+            return res.end();
+        }
+
+        // Alles andere braucht Auth
+        if (!isValidSession(req)) {
+            res.writeHead(302, { 'Location': '/login' });
+            return res.end();
+        }
+
         // Dashboard HTML
         if (method === 'GET' && (p === '/' || p === '/dashboard')) {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -126,7 +209,5 @@ const server = http.createServer(async (req, res) => {
         json(res, { error: err.message }, 500);
     }
 });
-
-const dashboardHTML = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
 server.listen(PORT, () => console.log(`Dashboard laeuft auf Port ${PORT}`));

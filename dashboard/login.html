@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login - Bot Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f1a;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.login-card{background:#16213e;border-radius:16px;padding:40px;width:360px;box-shadow:0 8px 32px rgba(0,0,0,.3);border:1px solid #1a1a3e}
+h1{text-align:center;font-size:22px;margin-bottom:8px}
+.subtitle{text-align:center;color:#888;font-size:13px;margin-bottom:28px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.field input{width:100%;padding:12px 14px;background:#0f0f1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;outline:none;transition:border-color .2s}
+.field input:focus{border-color:#e94560}
+.btn{width:100%;padding:12px;background:#e94560;border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;transition:opacity .2s}
+.btn:hover{opacity:.85}
+.error{background:rgba(255,82,82,.15);color:#ff5252;padding:10px;border-radius:8px;font-size:13px;text-align:center;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="login-card">
+  <h1>Bot Dashboard</h1>
+  <div class="subtitle">Bitte anmelden</div>
+  <div class="error" id="error" style="display:none">Falscher Benutzername oder Passwort</div>
+  <form method="POST" action="/login">
+    <div class="field">
+      <label>Benutzername</label>
+      <input type="text" name="username" required autofocus>
+    </div>
+    <div class="field">
+      <label>Passwort</label>
+      <input type="password" name="password" required>
+    </div>
+    <button type="submit" class="btn">Anmelden</button>
+  </form>
+</div>
+<script>
+if(location.search.includes('error=1'))document.getElementById('error').style.display='block';
+</script>
+</body>
+</html>

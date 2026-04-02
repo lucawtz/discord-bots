@@ -8,6 +8,9 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f1a;color:#e0e0e0;min-height:100vh}
 .header{background:#16213e;padding:20px 32px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1a1a3e}
 .header h1{font-size:22px;font-weight:600}
+.header-right{display:flex;align-items:center;gap:20px}
+.logout-btn{background:#333;border:none;color:#888;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;text-decoration:none;transition:color .2s}
+.logout-btn:hover{color:#ff5252}
 .system-info{display:flex;gap:20px;font-size:13px;color:#888}
 .system-info span{color:#e94560;font-weight:600}
 .container{max-width:1200px;margin:0 auto;padding:24px}
@@ -48,7 +51,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <body>
 <div class="header">
   <h1>Bot Dashboard</h1>
-  <div class="system-info" id="sysinfo">Lade...</div>
+  <div class="header-right">
+    <div class="system-info" id="sysinfo">Lade...</div>
+    <a href="/logout" class="logout-btn">Logout</a>
+  </div>
 </div>
 <div class="container">
   <div class="grid" id="bots"></div>
