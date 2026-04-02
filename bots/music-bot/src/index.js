@@ -106,6 +106,154 @@ spawn(ytdlpPath, ['-U']).on('close', (code) => {
     if (code === 0) console.log('yt-dlp: Update geprüft');
 });
 
+// ── Spotify API (Client Credentials) ────────────────────────────
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+let spotifyToken = null;
+let spotifyTokenExpires = 0;
+
+async function getSpotifyToken() {
+    if (spotifyToken && Date.now() < spotifyTokenExpires) return spotifyToken;
+    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+        throw new Error('Spotify ist nicht konfiguriert (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET fehlen)');
+    }
+    const https = require('https');
+    const auth = Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64');
+    return new Promise((resolve, reject) => {
+        const body = 'grant_type=client_credentials';
+        const req = https.request('https://accounts.spotify.com/api/token', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(body),
+            },
+        }, (res) => {
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.access_token) {
+                        spotifyToken = json.access_token;
+                        spotifyTokenExpires = Date.now() + (json.expires_in - 60) * 1000;
+                        resolve(spotifyToken);
+                    } else {
+                        reject(new Error('Spotify Token-Fehler'));
+                    }
+                } catch { reject(new Error('Spotify API: Ungültige Antwort')); }
+            });
+        });
+        req.on('error', reject);
+        req.end(body);
+    });
+}
+
+function spotifyFetch(endpoint) {
+    const https = require('https');
+    return getSpotifyToken().then(token => new Promise((resolve, reject) => {
+        const req = https.get(`https://api.spotify.com/v1${endpoint}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            timeout: 8000,
+        }, (res) => {
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (res.statusCode >= 400) return reject(new Error(json.error?.message || `Spotify ${res.statusCode}`));
+                    resolve(json);
+                } catch { reject(new Error('Spotify API: Ungültige Antwort')); }
+            });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Spotify API: Timeout')); });
+    }));
+}
+
+function isSpotifyUrl(url) {
+    return url.includes('open.spotify.com/');
+}
+
+function parseSpotifyUrl(url) {
+    // Unterstützt: open.spotify.com/track/ID, /album/ID, /playlist/ID (mit optionalen Query-Params)
+    const match = url.match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/);
+    if (!match) return null;
+    return { type: match[1], id: match[2] };
+}
+
+function spotifyTrackToSearch(track) {
+    const artists = track.artists?.map(a => a.name).join(', ') || '';
+    return {
+        searchQuery: `${track.name} ${artists}`,
+        title: artists ? `${artists} – ${track.name}` : track.name,
+        duration: formatDuration(Math.floor((track.duration_ms || 0) / 1000)),
+    };
+}
+
+async function searchSpotifyTrack(url) {
+    const parsed = parseSpotifyUrl(url);
+    if (!parsed || parsed.type !== 'track') throw new Error('Ungültige Spotify-Track-URL');
+    const data = await spotifyFetch(`/tracks/${parsed.id}`);
+    const info = spotifyTrackToSearch(data);
+    // Auf YouTube suchen
+    const ytTrack = await searchTrack(info.searchQuery);
+    ytTrack.title = info.title; // Spotify-Titel verwenden (genauer)
+    return ytTrack;
+}
+
+async function searchSpotifyPlaylist(url) {
+    const parsed = parseSpotifyUrl(url);
+    if (!parsed) throw new Error('Ungültige Spotify-URL');
+
+    let title = 'Spotify Playlist';
+    let allTracks = [];
+
+    if (parsed.type === 'playlist') {
+        const data = await spotifyFetch(`/playlists/${parsed.id}?fields=name,tracks.items(track(name,artists,duration_ms)),tracks.next,tracks.total`);
+        title = data.name || title;
+        allTracks = (data.tracks?.items || []).filter(i => i.track).map(i => i.track);
+
+        // Weitere Seiten laden (Spotify paginiert bei 100)
+        let next = data.tracks?.next;
+        while (next) {
+            const endpoint = next.replace('https://api.spotify.com/v1', '');
+            const page = await spotifyFetch(endpoint);
+            allTracks.push(...(page.items || []).filter(i => i.track).map(i => i.track));
+            next = page.next;
+        }
+    } else if (parsed.type === 'album') {
+        const data = await spotifyFetch(`/albums/${parsed.id}`);
+        title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
+        allTracks = data.tracks?.items || [];
+        // Album-Tracks haben keine Thumbnail, aber das ist ok — YouTube hat welche
+    }
+
+    if (allTracks.length === 0) throw new Error('Leere Spotify-Playlist/Album');
+
+    // Alle Spotify-Tracks parallel auf YouTube suchen (max 5 gleichzeitig)
+    const tracks = [];
+    const batchSize = 5;
+    for (let i = 0; i < allTracks.length; i += batchSize) {
+        const batch = allTracks.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+            batch.map(async (t) => {
+                const info = spotifyTrackToSearch(t);
+                const ytTrack = await searchTrack(info.searchQuery);
+                ytTrack.title = info.title;
+                return ytTrack;
+            })
+        );
+        for (const r of results) {
+            if (r.status === 'fulfilled') tracks.push(r.value);
+        }
+    }
+
+    if (tracks.length === 0) throw new Error('Konnte keine Songs von Spotify auf YouTube finden');
+    console.log(`Spotify: ${tracks.length}/${allTracks.length} Songs gefunden für "${title}"`);
+    return { title, tracks };
+}
+
 // ── Piped API (schnelle Suche mit Instance-Rotation) ────────────
 const PIPED_INSTANCES = [
     'https://pipedapi.kavin.rocks',
@@ -175,6 +323,11 @@ function pipedToTrack(item) {
 // ── Suche: Piped API mit yt-dlp Fallback ─────────────────────────
 async function searchTrack(query) {
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
+
+    // Spotify-Track-URL erkennen
+    if (isUrl && isSpotifyUrl(query)) {
+        return searchSpotifyTrack(query);
+    }
 
     // URLs direkt über yt-dlp auflösen
     if (isUrl) return searchTrackYtdlp(query);
@@ -271,6 +424,9 @@ function searchTracksYtdlp(query, limit = 5) {
 }
 
 async function searchPlaylist(url) {
+    // Spotify-Playlists/Alben über Spotify API + YouTube-Suche
+    if (isSpotifyUrl(url)) return searchSpotifyPlaylist(url);
+
     return new Promise((resolve, reject) => {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
@@ -306,6 +462,10 @@ async function searchPlaylist(url) {
 }
 
 function isPlaylistUrl(url) {
+    if (isSpotifyUrl(url)) {
+        const parsed = parseSpotifyUrl(url);
+        return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
+    }
     return url.includes('list=') || url.includes('/playlist') || url.includes('/album');
 }
 
