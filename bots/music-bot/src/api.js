@@ -478,6 +478,14 @@ function startAPI(ctx, client) {
         console.log(`🌐 API Server läuft auf Port ${port}`);
     });
 
+    // Graceful Shutdown für --watch Restarts
+    function shutdown() {
+        wss.close();
+        server.close();
+    }
+    process.once('SIGTERM', shutdown);
+    process.once('SIGINT', shutdown);
+
     return { broadcast, getGuildState, generateAccessCode, regenerateAccessCode };
 }
 
