@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { requirePlaying } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -8,9 +9,7 @@ module.exports = {
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);
 
-        if (!queue.current) {
-            return interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
-        }
+        if (!requirePlaying(interaction, queue)) return;
 
         const track = queue.current;
 

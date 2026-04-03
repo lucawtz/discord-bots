@@ -18,25 +18,7 @@ if (!DASHBOARD_USER || !DASHBOARD_PASSWORD_HASH) {
 
 // ── Rate Limiting ──────────────────────────────────────────────
 
-function createRateLimiter(maxRequests, windowMs) {
-    const hits = new Map();
-    // Cleanup alle 60s
-    setInterval(() => {
-        const now = Date.now();
-        for (const [ip, timestamps] of hits) {
-            const valid = timestamps.filter(t => now - t < windowMs);
-            if (valid.length === 0) hits.delete(ip);
-            else hits.set(ip, valid);
-        }
-    }, 60000);
-    return (ip) => {
-        const now = Date.now();
-        const timestamps = (hits.get(ip) || []).filter(t => now - t < windowMs);
-        timestamps.push(now);
-        hits.set(ip, timestamps);
-        return timestamps.length > maxRequests;
-    };
-}
+const { createRateLimiter } = require('../libs/rateLimiter');
 
 // Login: 5 Versuche pro 15 Minuten
 const isLoginLimited = createRateLimiter(5, 15 * 60 * 1000);
@@ -78,7 +60,17 @@ function parseBody(req) {
 
 // ── Hilfsfunktionen ─────────────────────────────────────────────
 
+const allowedServices = config.bots.map(b => b.service);
+const VALID_SERVICE_NAME = /^[\w-]+$/;
+
+function validateServiceName(service) {
+    if (!VALID_SERVICE_NAME.test(service) || !allowedServices.includes(service)) {
+        throw new Error('Ungueltiger Servicename');
+    }
+}
+
 function getBotStatus(service) {
+    validateServiceName(service);
     try {
         const raw = execSync(`systemctl show ${service} --property=ActiveState,SubState,MainPID,ExecMainStartTimestamp,MemoryCurrent 2>/dev/null`, { encoding: 'utf8', timeout: 5000 });
         const props = {};
@@ -112,6 +104,8 @@ function getBotStatus(service) {
 }
 
 function getBotLogs(service, lines = 50) {
+    validateServiceName(service);
+    lines = Math.max(1, Math.min(500, parseInt(lines) || 50));
     try {
         return execSync(`journalctl -u ${service} --no-pager -n ${lines} --output=short-iso 2>/dev/null`, { encoding: 'utf8', timeout: 5000 });
     } catch {
@@ -120,6 +114,7 @@ function getBotLogs(service, lines = 50) {
 }
 
 function controlBot(service, action) {
+    validateServiceName(service);
     const allowed = ['start', 'stop', 'restart'];
     if (!allowed.includes(action)) throw new Error('Invalid action');
     execSync(`sudo systemctl ${action} ${service}`, { timeout: 15000 });
@@ -264,7 +259,8 @@ const server = http.createServer(async (req, res) => {
 
         json(res, { error: 'Not found' }, 404);
     } catch (err) {
-        json(res, { error: err.message }, 500);
+        console.error('Dashboard-Fehler:', err);
+        json(res, { error: 'Interner Serverfehler' }, 500);
     }
 });
 

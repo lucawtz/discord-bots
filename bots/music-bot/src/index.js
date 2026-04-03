@@ -86,7 +86,11 @@ try {
     execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
     ffmpegPath = 'ffmpeg';
 } catch {
-    try { ffmpegPath = require('@ffmpeg-installer/ffmpeg').path; }
+    try {
+        ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+        // FFmpeg-Ordner zum PATH hinzufuegen, damit @discordjs/voice es findet
+        process.env.PATH = path.dirname(ffmpegPath) + path.delimiter + process.env.PATH;
+    }
     catch { ffmpegPath = 'ffmpeg'; }
 }
 console.log(`ffmpeg: ${ffmpegPath}`);

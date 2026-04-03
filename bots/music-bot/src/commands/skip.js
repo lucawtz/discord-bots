@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { requirePlaying, killQueueProcesses } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -8,9 +9,7 @@ module.exports = {
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);
 
-        if (!queue.current || !queue.player) {
-            return interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
-        }
+        if (!requirePlaying(interaction, queue)) return;
 
         // DJ-Rolle oder Song-Requester → sofort skippen
         const isDJ = interaction.member.roles.cache.some(r => r.name.toLowerCase() === 'dj');
@@ -37,10 +36,7 @@ module.exports = {
         const upcoming = queue.tracks.slice(0, 5);
 
         // Skip ausführen
-        for (const proc of queue.processes) {
-            if (!proc.killed) proc.kill();
-        }
-        queue.processes.clear();
+        killQueueProcesses(queue);
         queue.player.stop();
 
         const embed = new EmbedBuilder()

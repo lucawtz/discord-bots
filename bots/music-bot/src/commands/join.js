@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { requireVoiceChannel } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -6,9 +7,7 @@ module.exports = {
         .setDescription('Bot tritt deinem Voice Channel bei'),
 
     async execute(interaction, ctx) {
-        if (!interaction.member.voice.channel) {
-            return interaction.reply({ content: '❌ Du musst in einem Voice Channel sein!', ephemeral: true });
-        }
+        if (!requireVoiceChannel(interaction)) return;
 
         await ctx.ensureConnection(interaction, ctx);
 

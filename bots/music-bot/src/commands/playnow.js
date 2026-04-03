@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { requireVoiceChannel, killQueueProcesses } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -12,9 +13,7 @@ module.exports = {
     async execute(interaction, ctx) {
         await interaction.deferReply();
 
-        if (!interaction.member.voice.channel) {
-            return interaction.editReply({ content: '❌ Du musst in einem Voice Channel sein!' });
-        }
+        if (!requireVoiceChannel(interaction, true)) return;
 
         const query = interaction.options.getString('query');
         const queue = ctx.getQueue(interaction.guild.id);
@@ -29,10 +28,7 @@ module.exports = {
             queue.tracks = [track];
 
             // Laufende Prozesse beenden
-            for (const proc of queue.processes) {
-                if (!proc.killed) proc.kill();
-            }
-            queue.processes.clear();
+            killQueueProcesses(queue);
             queue.current = null;
 
             // Sofort abspielen

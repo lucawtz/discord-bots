@@ -7,6 +7,7 @@ const {
   entersState,
   NoSubscriberBehavior,
 } = require('@discordjs/voice');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -113,7 +114,7 @@ async function playSound(channel, soundId, volume = 100) {
   // Sound-Daten in temp-Datei schreiben (ffmpeg braucht einen Dateipfad)
   const sound = db.getSound(soundId);
   const ext = sound ? path.extname(sound.filename) : '.mp3';
-  const tmpFile = path.join(os.tmpdir(), `eartastic_${soundId}_${Date.now()}${ext}`);
+  const tmpFile = path.join(os.tmpdir(), `eartastic_${soundId}_${crypto.randomBytes(8).toString('hex')}${ext}`);
   fs.writeFileSync(tmpFile, audioData);
 
   const guildData = await connectToChannel(channel);

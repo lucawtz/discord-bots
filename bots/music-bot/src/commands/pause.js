@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { AudioPlayerStatus } = require('@discordjs/voice');
+const { requirePlaying } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -9,9 +10,7 @@ module.exports = {
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);
 
-        if (!queue.current || !queue.player) {
-            return interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
-        }
+        if (!requirePlaying(interaction, queue)) return;
 
         if (queue.player.state.status === AudioPlayerStatus.Paused) {
             queue.player.unpause();

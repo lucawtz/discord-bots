@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { createRateLimiter } = require('../../../../libs/rateLimiter');
 const https = require('https');
 const db = require('../database');
 const { getDuration, MAX_DURATION } = require('../utils/audio');
@@ -54,24 +55,54 @@ function httpsGet(url) {
   });
 }
 
-// URL als Buffer herunterladen
-function downloadToBuffer(url) {
+// URL als Buffer herunterladen (mit Redirect-Limit und Groessenlimit)
+const MAX_DOWNLOAD_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_REDIRECTS = 3;
+
+function downloadToBuffer(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
+    if (redirectCount > MAX_REDIRECTS) {
+      return reject(new Error('Zu viele Redirects'));
+    }
     https.get(url, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        return downloadToBuffer(res.headers.location).then(resolve, reject);
+        res.resume();
+        return downloadToBuffer(res.headers.location, redirectCount + 1).then(resolve, reject);
       }
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error(`HTTP ${res.statusCode}`));
       }
       const chunks = [];
-      res.on('data', (chunk) => chunks.push(chunk));
+      let totalSize = 0;
+      res.on('data', (chunk) => {
+        totalSize += chunk.length;
+        if (totalSize > MAX_DOWNLOAD_SIZE) {
+          res.destroy();
+          return reject(new Error('Download zu gross (max. 10 MB)'));
+        }
+        chunks.push(chunk);
+      });
       res.on('end', () => resolve(Buffer.concat(chunks)));
       res.on('error', reject);
     }).on('error', reject);
   });
 }
+
+// Erlaubte Domains fuer Freesound-Downloads
+const ALLOWED_DOWNLOAD_HOSTS = ['freesound.org', 'cdn.freesound.org'];
+
+function isAllowedDownloadUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+    return parsed.protocol === 'https:' && ALLOWED_DOWNLOAD_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h));
+  } catch {
+    return false;
+  }
+}
+
+// Sound-Name Validierung (XSS-Praevention)
+const VALID_SOUND_NAME = /^[\w\säöüÄÖÜß.,!?()\-]+$/;
 
 function startWebServer(port) {
   const apiKey = process.env.API_KEY;
@@ -114,25 +145,13 @@ function startWebServer(port) {
   app.use(express.static(path.join(__dirname, 'public')));
 
   // ── Rate Limiting ──────────────────────────────────────────────
-  const hits = new Map();
-  setInterval(() => {
-    const now = Date.now();
-    for (const [ip, timestamps] of hits) {
-      const valid = timestamps.filter(t => now - t < 60000);
-      if (valid.length === 0) hits.delete(ip);
-      else hits.set(ip, valid);
-    }
-  }, 60000);
+  const isApiLimited = createRateLimiter(60, 60_000);
+  const isUploadLimited = createRateLimiter(10, 60_000);
 
   app.use('/api', (req, res, next) => {
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
-    const now = Date.now();
-    const timestamps = (hits.get(clientIp) || []).filter(t => now - t < 60000);
-    timestamps.push(now);
-    hits.set(clientIp, timestamps);
-    // Upload: 10/min, andere API: 60/min
-    const limit = (req.path === '/upload' && req.method === 'POST') ? 10 : 60;
-    if (timestamps.length > limit) {
+    const limiter = (req.path === '/upload' && req.method === 'POST') ? isUploadLimited : isApiLimited;
+    if (limiter(clientIp)) {
       return res.status(429).json({ error: 'Zu viele Anfragen. Bitte warte kurz.' });
     }
     next();
@@ -202,8 +221,8 @@ function startWebServer(port) {
 
     const { name, category, predefined } = req.body;
 
-    if (!name || name.length > 32) {
-      return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen)' });
+    if (!name || name.length > 32 || !VALID_SOUND_NAME.test(name)) {
+      return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen, nur Buchstaben, Zahlen und Grundzeichen)' });
     }
     if (!CATEGORIES.includes(category)) {
       return res.status(400).json({ error: 'Ungueltige Kategorie' });
@@ -235,9 +254,9 @@ function startWebServer(port) {
     const { name, category = 'Allgemein', predefined } = req.body;
     const cleanup = () => { try { fs.unlinkSync(req.file.path); } catch {} };
 
-    if (!name || name.length > 32) {
+    if (!name || name.length > 32 || !VALID_SOUND_NAME.test(name)) {
       cleanup();
-      return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen)' });
+      return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen, nur Buchstaben, Zahlen und Grundzeichen)' });
     }
     if (!CATEGORIES.includes(category)) {
       cleanup();
@@ -320,14 +339,17 @@ function startWebServer(port) {
 
     const { freesoundId, name, category = 'Allgemein', previewUrl } = req.body;
 
-    if (!name || name.length > 32) {
-      return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen)' });
+    if (!name || name.length > 32 || !VALID_SOUND_NAME.test(name)) {
+      return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen, nur Buchstaben, Zahlen und Grundzeichen)' });
     }
     if (!CATEGORIES.includes(category)) {
       return res.status(400).json({ error: 'Ungueltige Kategorie' });
     }
     if (!previewUrl) {
       return res.status(400).json({ error: 'Keine Preview-URL' });
+    }
+    if (!isAllowedDownloadUrl(previewUrl)) {
+      return res.status(400).json({ error: 'Ungueltige Download-URL (nur freesound.org erlaubt)' });
     }
     if (db.getSoundByName(name)) {
       return res.status(409).json({ error: `Sound "${name}" existiert bereits` });
@@ -375,13 +397,14 @@ function startWebServer(port) {
       return res.status(400).json({ error: err.message });
     }
     if (err) {
-      return res.status(400).json({ error: err.message });
+      console.error('Server-Fehler:', err);
+      return res.status(400).json({ error: 'Ungueltige Anfrage' });
     }
     next();
   });
 
-  const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`Web-Dashboard laeuft auf http://localhost:${port}`);
+  const server = app.listen(port, '127.0.0.1', () => {
+    console.log(`Web-Dashboard laeuft auf http://127.0.0.1:${port}`);
   });
 
   return server;

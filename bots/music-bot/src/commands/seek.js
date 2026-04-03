@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { createAudioResource, StreamType } = require('@discordjs/voice');
-const { spawn } = require('child_process');
+const { requirePlaying, killQueueProcesses } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -14,9 +14,7 @@ module.exports = {
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);
 
-        if (!queue.current || !queue.player) {
-            return interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
-        }
+        if (!requirePlaying(interaction, queue)) return;
 
         const input = interaction.options.getString('zeit');
         const seconds = parseTime(input);
@@ -26,10 +24,7 @@ module.exports = {
         }
 
         // Alte Prozesse beenden
-        for (const proc of queue.processes) {
-            if (!proc.killed) proc.kill();
-        }
-        queue.processes.clear();
+        killQueueProcesses(queue);
 
         // Neuen Stream ab Seek-Position starten
         const stream = ctx.createStream(queue.current.url, queue, (err) => {

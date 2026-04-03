@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { killQueueProcesses } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,10 +14,7 @@ module.exports = {
         }
 
         // Prozesse & Queue leeren, aber Connection behalten
-        for (const proc of queue.processes) {
-            if (!proc.killed) proc.kill();
-        }
-        queue.processes.clear();
+        killQueueProcesses(queue);
         queue.tracks = [];
         queue.current = null;
         queue._failedTrack = null;

@@ -5,30 +5,13 @@ const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
 
+const { createRateLimiter } = require('../../../libs/rateLimiter');
+
 function startAPI(ctx, client) {
     const port = process.env.API_PORT || 3001;
     const apiKey = process.env.API_KEY || '';
 
     // ── Rate Limiting ────────────────────────────────────────────
-    function createRateLimiter(maxRequests, windowMs) {
-        const hits = new Map();
-        setInterval(() => {
-            const now = Date.now();
-            for (const [ip, timestamps] of hits) {
-                const valid = timestamps.filter(t => now - t < windowMs);
-                if (valid.length === 0) hits.delete(ip);
-                else hits.set(ip, valid);
-            }
-        }, 60000);
-        return (ip) => {
-            const now = Date.now();
-            const timestamps = (hits.get(ip) || []).filter(t => now - t < windowMs);
-            timestamps.push(now);
-            hits.set(ip, timestamps);
-            return timestamps.length > maxRequests;
-        };
-    }
-
     const isApiLimited = createRateLimiter(100, 60_000);
     const isSearchLimited = createRateLimiter(20, 60_000);
     const isAuthLimited = createRateLimiter(5, 15 * 60_000);
@@ -413,6 +396,10 @@ function startAPI(ctx, client) {
                     '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
                 };
                 let filePath = path.join(distDir, urlPath === '/' ? 'index.html' : urlPath);
+                const resolvedDist = path.resolve(distDir);
+                if (!path.resolve(filePath).startsWith(resolvedDist + path.sep) && path.resolve(filePath) !== resolvedDist) {
+                    return json(res, { error: 'Not found' }, 404);
+                }
                 if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
                     filePath = path.join(distDir, 'index.html');
                 }
@@ -426,7 +413,8 @@ function startAPI(ctx, client) {
 
             json(res, { error: 'Not found' }, 404);
         } catch (err) {
-            json(res, { error: err.message }, 500);
+            console.error('API-Fehler:', err);
+            json(res, { error: 'Interner Serverfehler' }, 500);
         }
     });
 
@@ -469,7 +457,7 @@ function startAPI(ctx, client) {
                             ws.close(4001, 'Ungültiger Token');
                         }
                     }
-                } catch {}
+                } catch { /* Ungültiges JSON von WebSocket-Client, ignoriert */ }
             });
         }
     });
