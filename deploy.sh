@@ -22,6 +22,10 @@ else
 fi
 
 # ── 2. Dependencies installieren ─────────────────────────────
+echo ">> Root: npm install..."
+cd "$REPO_DIR"
+npm install --production
+
 echo ">> Music Bot: npm install..."
 cd "$REPO_DIR/bots/music-bot"
 npm install --production
