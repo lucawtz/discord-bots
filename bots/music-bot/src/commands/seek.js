@@ -29,7 +29,7 @@ module.exports = {
         // Neuen Stream ab Seek-Position starten
         const stream = ctx.createStream(queue.current.url, queue, (err) => {
             ctx.autoDelete(queue.channel?.send(`❌ Seek fehlgeschlagen: ${err.message}`), ctx.DELETE_ERROR_MS);
-        });
+        }, seconds);
 
         const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
         resource.volume.setVolume(queue.volume);
@@ -40,7 +40,7 @@ module.exports = {
         queue._seekOffset = seconds;
 
         const formatted = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
-        ctx.autoDelete(interaction.reply({ content: `⏩ Springe zu **${formatted}**`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `Seeking to **${formatted}**.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };
 

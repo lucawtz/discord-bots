@@ -30,9 +30,9 @@ module.exports = {
         }
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: 'Warteschlange' })
+            .setAuthor({ name: 'Warteschlange', iconURL: interaction.client.user.displayAvatarURL() })
             .setDescription(description)
-            .setColor(0x5865F2)
+            .setColor(0x6E41CC)
             .setFooter({ text: `${tracks.length} Song${tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
 
         ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }));

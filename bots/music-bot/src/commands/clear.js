@@ -16,6 +16,6 @@ module.exports = {
         queue.tracks = [];
         queue._failedTrack = null;
 
-        ctx.autoDelete(interaction.reply({ content: `🗑️ **${count} Song${count !== 1 ? 's' : ''}** aus der Warteschlange entfernt.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `Cleared **${count} song${count !== 1 ? 's' : ''}** from the queue.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

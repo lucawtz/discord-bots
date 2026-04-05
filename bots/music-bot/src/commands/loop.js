@@ -26,7 +26,7 @@ module.exports = {
             queue.loopMode = modes[idx];
         }
 
-        const labels = { off: '➡️ Loop aus', song: '🔂 Song wird wiederholt', queue: '🔁 Queue wird wiederholt' };
+        const labels = { off: 'Loop disabled.', song: 'Looping current song.', queue: 'Looping queue.' };
         ctx.autoDelete(interaction.reply({ content: labels[queue.loopMode], fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

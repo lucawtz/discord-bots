@@ -13,17 +13,17 @@ module.exports = {
         const code = ctx.generateAccessCode(interaction.guild.id);
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: 'BeatByte' })
+            .setAuthor({ name: 'BeatByte', iconURL: interaction.client.user.displayAvatarURL() })
             .setDescription([
                 `### Dein Zugangs-Code`,
                 `# \`${code}\``,
                 ``,
-                `Öffne den Music Player und gib diesen Code ein, um dich zu verbinden.`,
+                `Oeffne den Music Player und gib diesen Code ein, um dich zu verbinden.`,
                 ``,
-                `Der Code ist **7 Tage** gültig.`,
+                `Der Code ist **7 Tage** gueltig.`,
             ].join('\n'))
-            .setColor(0x1db954)
-            .setFooter({ text: 'Nur für dich sichtbar' });
+            .setColor(0x6E41CC)
+            .setFooter({ text: 'Nur fuer dich sichtbar' });
 
         const row = new ActionRowBuilder();
         row.addComponents(

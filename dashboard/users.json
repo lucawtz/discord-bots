@@ -1,0 +1,11 @@
+[
+  {
+    "id": "u_admin",
+    "name": "Admin",
+    "email": "admin@serverhub.local",
+    "passwordHash": "$2b$12$Qjz2W6jvqXNSwOoYOAJLtu/kDIuoYKQ2Oe5/RClMI1eQ9JyUY56U.",
+    "role": "admin",
+    "status": "active",
+    "createdAt": "2026-04-05T00:00:00.000Z"
+  }
+]

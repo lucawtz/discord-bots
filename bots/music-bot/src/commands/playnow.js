@@ -35,14 +35,14 @@ module.exports = {
             ctx.playNext(interaction.guild.id);
 
             const embed = new EmbedBuilder()
-                .setAuthor({ name: 'Warteschlange übersprungen — Spielt jetzt' })
+                .setAuthor({ name: 'Warteschlange uebersprungen — Spielt jetzt', iconURL: interaction.client.user.displayAvatarURL() })
                 .setDescription(`[${track.title}](${track.url})`)
                 .setThumbnail(track.thumbnail)
                 .addFields(
                     { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
                     { name: 'Angefragt von', value: track.requestedBy, inline: true },
                 )
-                .setColor(0xED4245);
+                .setColor(0x6E41CC);
 
             ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
         } catch (error) {

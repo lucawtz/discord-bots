@@ -14,10 +14,10 @@ module.exports = {
 
         if (queue.player.state.status === AudioPlayerStatus.Paused) {
             queue.player.unpause();
-            ctx.autoDelete(interaction.reply({ content: '▶️ Fortgesetzt.', fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.autoDelete(interaction.reply({ content: 'Resumed.', fetchReply: true }), ctx.DELETE_SHORT_MS);
         } else {
             queue.player.pause();
-            ctx.autoDelete(interaction.reply({ content: '⏸️ Pausiert.', fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.autoDelete(interaction.reply({ content: 'Paused.', fetchReply: true }), ctx.DELETE_SHORT_MS);
         }
     },
 };

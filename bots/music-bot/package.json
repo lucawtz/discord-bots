@@ -16,6 +16,7 @@
     "dotenv": "^16.4.7",
     "libsodium-wrappers": "^0.7.15",
     "opusscript": "^0.0.8",
+    "sql.js": "^1.14.1",
     "tweetnacl": "^1.0.3",
     "ws": "^8.18.0",
     "youtube-dl-exec": "^3.1.4"

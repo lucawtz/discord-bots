@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType } = require('@discordjs/voice');
 const { spawn, execFileSync } = require('child_process'); // execFileSync für yt-dlp detection
 
@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 const { startAPI } = require('./api');
+const db = require('./database');
 
 // ── Konstanten ────────────────────────────────────────────────────
 const DELETE_SHORT_MS = 30_000;     // 30 Sekunden (skip, pause, stop, join)
@@ -40,8 +41,17 @@ function getQueue(guildId) {
             leaveTimer: null,
             loopMode: 'off',      // off, song, queue
             volume: 1.0,
+            filter: 'off',        // off, bassboost, nightcore, slowed
             skipVotes: new Set(),
+            autoDj: false,
+            _djHistory: new Set(),
+            _djConsecutive: 0,
         });
+        // Load Auto-DJ setting from DB
+        try {
+            const settings = db.getGuildSettings(guildId);
+            queues.get(guildId).autoDj = !!settings.auto_dj;
+        } catch {}
     }
     return queues.get(guildId);
 }
@@ -67,6 +77,7 @@ function destroyQueue(guildId) {
         queue.connection.destroy();
     }
     queues.delete(guildId);
+    updateActivity(guildId);
 }
 
 // ── yt-dlp ────────────────────────────────────────────────────────
@@ -188,10 +199,13 @@ function parseSpotifyUrl(url) {
 
 function spotifyTrackToSearch(track) {
     const artists = track.artists?.map(a => a.name).join(', ') || '';
+    const albumArt = track.album?.images?.[1]?.url || track.album?.images?.[0]?.url || null;
     return {
         searchQuery: `${track.name} ${artists}`,
         title: artists ? `${artists} – ${track.name}` : track.name,
         duration: formatDuration(Math.floor((track.duration_ms || 0) / 1000)),
+        artist: artists || null,
+        albumArt,
     };
 }
 
@@ -203,6 +217,8 @@ async function searchSpotifyTrack(url) {
     // Auf YouTube suchen
     const ytTrack = await searchTrack(info.searchQuery);
     ytTrack.title = info.title; // Spotify-Titel verwenden (genauer)
+    if (info.artist) ytTrack.artist = info.artist;
+    if (info.albumArt) ytTrack.albumArt = info.albumArt;
     return ytTrack;
 }
 
@@ -245,6 +261,8 @@ async function searchSpotifyPlaylist(url) {
                 const info = spotifyTrackToSearch(t);
                 const ytTrack = await searchTrack(info.searchQuery);
                 ytTrack.title = info.title;
+                if (info.artist) ytTrack.artist = info.artist;
+                if (info.albumArt) ytTrack.albumArt = info.albumArt;
                 return ytTrack;
             })
         );
@@ -255,6 +273,126 @@ async function searchSpotifyPlaylist(url) {
 
     if (tracks.length === 0) throw new Error('Konnte keine Songs von Spotify auf YouTube finden');
     console.log(`Spotify: ${tracks.length}/${allTracks.length} Songs gefunden für "${title}"`);
+    return { title, tracks };
+}
+
+// ── Apple Music (öffentliche API, keine Auth nötig) ─────────────
+function isAppleMusicUrl(url) {
+    return url.includes('music.apple.com/');
+}
+
+function parseAppleMusicUrl(url) {
+    // Unterstützt: music.apple.com/{storefront}/album/{name}/{id}?i={trackId}
+    //              music.apple.com/{storefront}/album/{name}/{id}
+    //              music.apple.com/{storefront}/playlist/{name}/{id}
+    const trackMatch = url.match(/music\.apple\.com\/([a-z]{2})\/album\/[^/]+\/(\d+)\?i=(\d+)/);
+    if (trackMatch) return { type: 'track', storefront: trackMatch[1], albumId: trackMatch[2], trackId: trackMatch[3] };
+
+    const albumMatch = url.match(/music\.apple\.com\/([a-z]{2})\/album\/[^/]+\/(\d+)/);
+    if (albumMatch) return { type: 'album', storefront: albumMatch[1], id: albumMatch[2] };
+
+    const playlistMatch = url.match(/music\.apple\.com\/([a-z]{2})\/playlist\/[^/]+\/(pl\.[a-zA-Z0-9]+)/);
+    if (playlistMatch) return { type: 'playlist', storefront: playlistMatch[1], id: playlistMatch[2] };
+
+    return null;
+}
+
+function appleMusicFetch(endpoint) {
+    const https = require('https');
+    return new Promise((resolve, reject) => {
+        const req = https.get(`https://api.music.apple.com/v1${endpoint}`, {
+            headers: {
+                'Origin': 'https://music.apple.com',
+            },
+            timeout: 8000,
+        }, (res) => {
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (res.statusCode >= 400) return reject(new Error(json.errors?.[0]?.title || `Apple Music ${res.statusCode}`));
+                    resolve(json);
+                } catch { reject(new Error('Apple Music API: Ungültige Antwort')); }
+            });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Apple Music API: Timeout')); });
+    });
+}
+
+function appleMusicTrackToSearch(track) {
+    const attrs = track.attributes || {};
+    const artists = attrs.artistName || '';
+    const albumArt = attrs.artwork?.url?.replace('{w}', '300').replace('{h}', '300') || null;
+    return {
+        searchQuery: `${attrs.name} ${artists}`,
+        title: artists ? `${artists} – ${attrs.name}` : attrs.name,
+        duration: formatDuration(Math.floor((attrs.durationInMillis || 0) / 1000)),
+        artist: artists || null,
+        albumArt,
+    };
+}
+
+async function searchAppleMusicTrack(url) {
+    const parsed = parseAppleMusicUrl(url);
+    if (!parsed || parsed.type !== 'track') throw new Error('Ungültige Apple Music Track-URL');
+    const data = await appleMusicFetch(`/catalog/${parsed.storefront}/songs/${parsed.trackId}`);
+    const track = data.data?.[0];
+    if (!track) throw new Error('Apple Music Track nicht gefunden');
+    const info = appleMusicTrackToSearch(track);
+    const ytTrack = await searchTrack(info.searchQuery);
+    ytTrack.title = info.title;
+    if (info.artist) ytTrack.artist = info.artist;
+    if (info.albumArt) ytTrack.albumArt = info.albumArt;
+    return ytTrack;
+}
+
+async function searchAppleMusicPlaylist(url) {
+    const parsed = parseAppleMusicUrl(url);
+    if (!parsed) throw new Error('Ungültige Apple Music URL');
+
+    let title = 'Apple Music Playlist';
+    let allTracks = [];
+
+    if (parsed.type === 'album') {
+        const data = await appleMusicFetch(`/catalog/${parsed.storefront}/albums/${parsed.id}`);
+        const album = data.data?.[0];
+        if (!album) throw new Error('Apple Music Album nicht gefunden');
+        const attrs = album.attributes || {};
+        title = `${attrs.artistName || ''} – ${attrs.name || 'Album'}`.trim();
+        allTracks = album.relationships?.tracks?.data || [];
+    } else if (parsed.type === 'playlist') {
+        const data = await appleMusicFetch(`/catalog/${parsed.storefront}/playlists/${parsed.id}`);
+        const playlist = data.data?.[0];
+        if (!playlist) throw new Error('Apple Music Playlist nicht gefunden');
+        title = playlist.attributes?.name || title;
+        allTracks = playlist.relationships?.tracks?.data || [];
+    }
+
+    if (allTracks.length === 0) throw new Error('Leere Apple Music Playlist/Album');
+
+    const tracks = [];
+    const batchSize = 5;
+    for (let i = 0; i < allTracks.length; i += batchSize) {
+        const batch = allTracks.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+            batch.map(async (t) => {
+                const info = appleMusicTrackToSearch(t);
+                const ytTrack = await searchTrack(info.searchQuery);
+                ytTrack.title = info.title;
+                if (info.artist) ytTrack.artist = info.artist;
+                if (info.albumArt) ytTrack.albumArt = info.albumArt;
+                return ytTrack;
+            })
+        );
+        for (const r of results) {
+            if (r.status === 'fulfilled') tracks.push(r.value);
+        }
+    }
+
+    if (tracks.length === 0) throw new Error('Konnte keine Songs von Apple Music auf YouTube finden');
+    console.log(`Apple Music: ${tracks.length}/${allTracks.length} Songs gefunden für "${title}"`);
     return { title, tracks };
 }
 
@@ -333,6 +471,11 @@ async function searchTrack(query) {
         return searchSpotifyTrack(query);
     }
 
+    // Apple Music Track-URL erkennen
+    if (isUrl && isAppleMusicUrl(query)) {
+        return searchAppleMusicTrack(query);
+    }
+
     // URLs direkt über yt-dlp auflösen
     if (isUrl) return searchTrackYtdlp(query);
 
@@ -387,6 +530,9 @@ function searchTrackYtdlp(searchQuery) {
                     url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
                     duration: formatDuration(info.duration),
                     thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
+                    artist: info.artist || info.creator || info.channel || info.uploader || null,
+                    album: info.album || null,
+                    albumArt: info.thumbnail || info.thumbnails?.find(t => t.width >= 300)?.url || null,
                 });
             } catch {
                 reject(new Error('Konnte Song-Info nicht parsen'));
@@ -418,6 +564,9 @@ function searchTracksYtdlp(query, limit = 5) {
                     url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
                     duration: formatDuration(info.duration),
                     thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
+                    artist: info.artist || info.creator || info.channel || info.uploader || null,
+                    album: info.album || null,
+                    albumArt: info.thumbnail || info.thumbnails?.find(t => t.width >= 300)?.url || null,
                 })));
             } catch {
                 reject(new Error('Konnte Suchergebnisse nicht parsen'));
@@ -430,6 +579,9 @@ function searchTracksYtdlp(query, limit = 5) {
 async function searchPlaylist(url) {
     // Spotify-Playlists/Alben über Spotify API + YouTube-Suche
     if (isSpotifyUrl(url)) return searchSpotifyPlaylist(url);
+
+    // Apple Music Playlists/Alben
+    if (isAppleMusicUrl(url)) return searchAppleMusicPlaylist(url);
 
     return new Promise((resolve, reject) => {
         const proc = spawn(ytdlpPath, [
@@ -470,6 +622,10 @@ function isPlaylistUrl(url) {
         const parsed = parseSpotifyUrl(url);
         return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
     }
+    if (isAppleMusicUrl(url)) {
+        const parsed = parseAppleMusicUrl(url);
+        return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
+    }
     return url.includes('list=') || url.includes('/playlist') || url.includes('/album');
 }
 
@@ -480,8 +636,51 @@ function formatDuration(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+function parseDuration(str) {
+    if (!str) return 0;
+    const parts = str.split(':').map(Number);
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+}
+
+function getElapsed(queue) {
+    if (!queue.current || !queue._playbackStart) return 0;
+    const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
+    if (isPaused) return queue._pausedElapsed || 0;
+    return Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
+}
+
+function createProgressBar(elapsed, total, length = 12) {
+    const progress = total > 0 ? Math.min(elapsed / total, 1) : 0;
+    const pos = Math.round(progress * length);
+    const bar = '▬'.repeat(Math.max(pos - 1, 0)) + '🔘' + '▬'.repeat(length - pos);
+    return `${formatDuration(elapsed)} ${bar} ${formatDuration(total)}`;
+}
+
+function updateActivity(guildId) {
+    const queue = queues.get(guildId);
+    if (queue?.current) {
+        client.user.setActivity(queue.current.title, { type: ActivityType.Listening });
+    } else {
+        const activeQueues = [...queues.values()].filter(q => q.current);
+        if (activeQueues.length === 0) {
+            client.user.setActivity('/play', { type: ActivityType.Listening });
+        }
+    }
+}
+
+// ── Audio-Filter für FFmpeg ──────────────────────────────────────
+const AUDIO_FILTERS = {
+    off: [],
+    bassboost: ['-af', 'bass=g=8,acompressor=threshold=-20dB:ratio=4'],
+    nightcore: ['-af', 'aresample=48000,asetrate=48000*1.25'],
+    slowed: ['-af', 'aresample=48000,asetrate=48000*0.85'],
+};
+
 // ── Audio-Stream (yt-dlp → FFmpeg → OggOpus) ────────────────────
-function createStream(url, queue, onError) {
+function createStream(url, queue, onError, seekSeconds = 0) {
     const ytdlp = spawn(ytdlpPath, [
         '-f', 'bestaudio/bestaudio*/best',
         '-o', '-', '--no-check-certificates', '--no-warnings',
@@ -489,10 +688,14 @@ function createStream(url, queue, onError) {
         ...cookieArgs, '--js-runtimes', 'node', url,
     ]);
 
+    const filterArgs = AUDIO_FILTERS[queue.filter] || [];
+
     const ffmpeg = spawn(ffmpegPath, [
+        ...(seekSeconds > 0 ? ['-ss', String(seekSeconds)] : []),
         '-i', 'pipe:0',
         '-analyzeduration', '0',
         '-loglevel', 'error',
+        ...filterArgs,
         '-f', 'ogg',
         '-acodec', 'libopus',
         '-ar', '48000',
@@ -529,11 +732,9 @@ function createStream(url, queue, onError) {
     return ffmpeg.stdout;
 }
 
-// ── Voice-Verbindung herstellen ───────────────────────────────────
-async function ensureConnection(interaction, ctx) {
-    const queue = ctx.getQueue(interaction.guild.id);
-    const channel = interaction.member.voice.channel;
-    if (!channel) throw new Error('Du bist in keinem Voice Channel!');
+// ── Voice-Verbindung aufbauen (gemeinsame Logik) ─────────────────
+async function setupVoiceConnection(guildId, voiceChannel, guild, textChannel) {
+    const queue = getQueue(guildId);
 
     // Bestehende Timer abbrechen
     clearTimeout(queue.leaveTimer);
@@ -546,9 +747,9 @@ async function ensureConnection(interaction, ctx) {
     }
 
     const connection = joinVoiceChannel({
-        channelId: channel.id,
-        guildId: interaction.guild.id,
-        adapterCreator: interaction.guild.voiceAdapterCreator,
+        channelId: voiceChannel.id,
+        guildId: guild.id,
+        adapterCreator: guild.voiceAdapterCreator,
         selfDeaf: true,
     });
 
@@ -557,31 +758,28 @@ async function ensureConnection(interaction, ctx) {
 
     queue.connection = connection;
     queue.player = player;
-    queue.channel = interaction.channel;
+    if (textChannel) queue.channel = textChannel;
 
-    // Player Events (einmalig pro Connection)
+    // Player Events
     player.on(AudioPlayerStatus.Idle, () => {
-        // Kurzer Delay damit der yt-dlp 'close' Event vor playNext feuert
-        setTimeout(() => playNext(interaction.guild.id), 200);
+        setTimeout(() => playNext(guildId), 200);
     });
 
     player.on('error', (error) => {
         console.error('Player error:', error.message);
         autoDelete(queue.channel?.send(`❌ Wiedergabefehler: ${error.message}`), DELETE_ERROR_MS);
-        playNext(interaction.guild.id);
+        playNext(guildId);
     });
 
-    // State-Änderungen an Desktop App senden
     player.on('stateChange', (oldState, newState) => {
         if (oldState.status !== newState.status) {
-            ctx.broadcast('stateUpdate', ctx.getGuildState(interaction.guild.id));
+            ctx.broadcast('stateUpdate', ctx.getGuildState(guildId));
         }
     });
 
     // Disconnect-Handling mit Reconnect-Versuch
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
         try {
-            // Versuche Reconnect (bis zu 5s warten)
             await Promise.race([
                 new Promise(resolve => {
                     const check = (_, newState) => {
@@ -595,9 +793,8 @@ async function ensureConnection(interaction, ctx) {
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), DISCONNECT_CHECK_MS)),
             ]);
         } catch {
-            // Reconnect fehlgeschlagen
             if (queue.connection && queue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
-                destroyQueue(interaction.guild.id);
+                destroyQueue(guildId);
             }
         }
     });
@@ -624,6 +821,13 @@ async function ensureConnection(interaction, ctx) {
     return queue;
 }
 
+// ── Voice-Verbindung herstellen (via Slash-Command) ──────────────
+async function ensureConnection(interaction, ctx) {
+    const channel = interaction.member.voice.channel;
+    if (!channel) throw new Error('Du bist in keinem Voice Channel!');
+    return setupVoiceConnection(interaction.guild.id, channel, interaction.guild, interaction.channel);
+}
+
 // ── Leave-Timer starten ───────────────────────────────────────────
 function scheduleLeave(guildId) {
     const queue = queues.get(guildId);
@@ -648,7 +852,7 @@ function scheduleLeave(guildId) {
     }, LEAVE_TIMEOUT_MS);
 }
 
-// ── Voice-Channel beitreten (für Desktop App) ───────────────────
+// ── Voice-Channel beitreten (für Web App) ────────────────────────
 async function joinChannel(guildId, channelId) {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) throw new Error('Server nicht gefunden');
@@ -656,86 +860,62 @@ async function joinChannel(guildId, channelId) {
     const channel = guild.channels.cache.get(channelId);
     if (!channel || !channel.isVoiceBased()) throw new Error('Voice Channel nicht gefunden');
 
-    const queue = getQueue(guildId);
-    clearTimeout(queue.leaveTimer);
-    queue.leaveTimer = null;
-    queue.stopped = false;
+    return setupVoiceConnection(guildId, channel, guild);
+}
 
-    if (queue.connection && queue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
-        return queue;
-    }
-
-    const connection = joinVoiceChannel({
-        channelId: channel.id,
-        guildId: guild.id,
-        adapterCreator: guild.voiceAdapterCreator,
-        selfDeaf: true,
-    });
-
-    const player = createAudioPlayer();
-    connection.subscribe(player);
-
-    queue.connection = connection;
-    queue.player = player;
-
-    player.on(AudioPlayerStatus.Idle, () => {
-        setTimeout(() => playNext(guildId), 200);
-    });
-
-    player.on('error', (error) => {
-        console.error('Player error:', error.message);
-        playNext(guildId);
-    });
-
-    player.on('stateChange', (oldState, newState) => {
-        if (oldState.status !== newState.status) {
-            ctx.broadcast('stateUpdate', ctx.getGuildState(guildId));
-        }
-    });
-
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
-        try {
-            await Promise.race([
-                new Promise(resolve => {
-                    const check = (_, newState) => {
-                        if (newState.status === VoiceConnectionStatus.Ready || newState.status === VoiceConnectionStatus.Signalling) {
-                            connection.removeListener('stateChange', check);
-                            resolve();
-                        }
-                    };
-                    connection.on('stateChange', check);
-                }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), DISCONNECT_CHECK_MS)),
-            ]);
-        } catch {
-            if (queue.connection && queue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
-                destroyQueue(guildId);
-            }
-        }
-    });
-
-    if (connection.state.status !== VoiceConnectionStatus.Ready) {
-        await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                connection.removeAllListeners('stateChange');
-                reject(new Error('Voice-Verbindung fehlgeschlagen'));
-            }, CONNECT_TIMEOUT_MS);
-
-            const onStateChange = (_, newState) => {
-                if (newState.status === VoiceConnectionStatus.Ready) {
-                    clearTimeout(timeout);
-                    connection.removeListener('stateChange', onStateChange);
-                    resolve();
-                }
-            };
-            connection.on('stateChange', onStateChange);
-        });
-    }
-
-    return queue;
+// ── Player-Buttons erstellen ─────────────────────────────────────
+function createPlayerButtons(loopMode) {
+    const loopEmoji = loopMode === 'song' ? '🔂' : loopMode === 'queue' ? '🔁' : '➡️';
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_pause').setEmoji('⏯️').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_loop').setEmoji(loopEmoji).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger),
+    );
 }
 
 // ── Wiedergabe ────────────────────────────────────────────────────
+// ── Auto-DJ: Aehnlichen Track finden ─────────────────────────────
+async function findAutoDjTrack(lastTrack, queue) {
+    // Titel bereinigen
+    const cleanTitle = lastTrack.title
+        .replace(/\(Official.*?\)/gi, '')
+        .replace(/\[Official.*?\]/gi, '')
+        .replace(/\(Lyrics?\)/gi, '')
+        .replace(/\[Lyrics?\]/gi, '')
+        .replace(/\(Audio\)/gi, '')
+        .replace(/\[Audio\]/gi, '')
+        .replace(/official\s*(music\s*)?video/gi, '')
+        .replace(/\(feat\..*?\)/gi, '')
+        .replace(/\[feat\..*?\]/gi, '')
+        .trim();
+
+    // Artist extrahieren (Text vor " - " oder " – ")
+    const artistMatch = cleanTitle.match(/^(.+?)\s*[-–]\s*/);
+    const searchQuery = artistMatch
+        ? `${artistMatch[1]} mix`
+        : `${cleanTitle} similar songs`;
+
+    const results = await searchTracks(searchQuery, 5);
+
+    // Bereits gespielte URLs filtern
+    const candidates = results.filter(t => !queue._djHistory.has(t.url));
+
+    // Aus Top 3 zufaellig waehlen
+    const pool = candidates.length > 0 ? candidates.slice(0, 3) : results.slice(0, 3);
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+
+    // History aktualisieren (max 50 Eintraege)
+    if (lastTrack.url) queue._djHistory.add(lastTrack.url);
+    if (queue._djHistory.size > 50) {
+        const first = queue._djHistory.values().next().value;
+        queue._djHistory.delete(first);
+    }
+
+    return picked || null;
+}
+
 async function playNext(guildId) {
     const queue = queues.get(guildId);
     if (!queue || queue.playLock) return;
@@ -749,24 +929,41 @@ async function playNext(guildId) {
         queue.processes.clear();
 
         // Fehlgeschlagenen Track erneut versuchen (1x Retry)
+        const isRetry = !!queue._failedTrack;
         if (queue._failedTrack) {
-            const retry = queue._failedTrack;
+            queue.tracks.unshift(queue._failedTrack);
             queue._failedTrack = null;
-            queue.tracks.unshift(retry);
         }
 
-        // Loop: Song wiederholen
-        if (queue.loopMode === 'song' && queue.current && !queue._failedTrack) {
+        // Loop nur wenn kein Retry (sonst doppelte Tracks)
+        if (!isRetry && queue.loopMode === 'song' && queue.current) {
             queue.tracks.unshift({ ...queue.current, _retried: false });
         }
-        // Loop: Queue wiederholen (current ans Ende)
-        if (queue.loopMode === 'queue' && queue.current && !queue._failedTrack) {
+        if (!isRetry && queue.loopMode === 'queue' && queue.current) {
             queue.tracks.push({ ...queue.current, _retried: false });
+        }
+
+        // Auto-DJ: Queue leer → aehnlichen Track suchen
+        if (queue.tracks.length === 0 && queue.autoDj && !queue.stopped && queue.loopMode === 'off') {
+            const lastTrack = queue.current;
+            if (lastTrack && queue._djConsecutive < 50) {
+                try {
+                    const djTrack = await findAutoDjTrack(lastTrack, queue);
+                    if (djTrack) {
+                        djTrack.requestedBy = '\uD83E\uDD16 Auto-DJ';
+                        queue.tracks.push(djTrack);
+                        queue._djConsecutive++;
+                    }
+                } catch (err) {
+                    console.error('Auto-DJ Fehler:', err.message);
+                }
+            }
         }
 
         if (queue.tracks.length === 0) {
             queue.current = null;
             queue.stopped = false;
+            updateActivity(guildId);
             scheduleLeave(guildId);
             return;
         }
@@ -796,28 +993,25 @@ async function playNext(guildId) {
         resource.volume.setVolume(queue.volume);
         queue._resource = resource;
         queue.player.play(resource);
+        updateActivity(guildId);
 
         // "Now Playing"-Nachricht mit Buttons senden
         if (queue.channel) {
-            const loopLabel = queue.loopMode === 'song' ? '🔂' : queue.loopMode === 'queue' ? '🔁' : '➡️';
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('music_pause').setEmoji('⏯️').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId('music_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId('music_loop').setEmoji(loopLabel).setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId('music_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger),
-            );
+            const row = createPlayerButtons(queue.loopMode);
             const npEmbed = new EmbedBuilder()
-                .setAuthor({ name: 'Spielt jetzt' })
+                .setAuthor({ name: 'Spielt jetzt', iconURL: client.user.displayAvatarURL() })
                 .setDescription(`[${track.title}](${track.url})`)
-                .setThumbnail(track.thumbnail)
+                .setThumbnail(track.albumArt || track.thumbnail)
                 .addFields(
                     { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
                     { name: 'Angefragt von', value: track.requestedBy || '—', inline: true },
                 )
-                .setColor(0x5865F2);
+                .setColor(0x6E41CC);
+            if (track.artist) {
+                npEmbed.spliceFields(1, 0, { name: 'Artist', value: track.artist, inline: true });
+            }
             if (queue.loopMode !== 'off') {
-                npEmbed.setFooter({ text: queue.loopMode === 'song' ? '🔂 Song-Loop' : '🔁 Queue-Loop' });
+                npEmbed.setFooter({ text: queue.loopMode === 'song' ? 'Song Loop' : 'Queue Loop' });
             }
             queue.channel.send({ embeds: [npEmbed], components: [row] })
                 .then(msg => { queue._nowPlayingMsg = msg; })
@@ -853,11 +1047,12 @@ for (const file of commandFiles) {
 
 // ── Context-Objekt für Commands ───────────────────────────────────
 const ctx = {
-    queues, getQueue, destroyQueue, searchTrack, searchTracks, searchPlaylist, isPlaylistUrl,
+    db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchPlaylist, isPlaylistUrl,
     playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons,
 };
 
 // ── API Broadcast & Access Codes (wird nach API-Start gesetzt) ──
@@ -883,11 +1078,13 @@ async function handleButton(interaction) {
     switch (interaction.customId) {
         case 'music_pause':
             if (queue.player.state.status === AudioPlayerStatus.Paused) {
+                queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
                 queue.player.unpause();
-                await interaction.reply({ content: '▶️ Fortgesetzt.', ephemeral: true });
+                await interaction.reply({ content: 'Resumed.', ephemeral: true });
             } else {
+                queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
                 queue.player.pause();
-                await interaction.reply({ content: '⏸️ Pausiert.', ephemeral: true });
+                await interaction.reply({ content: 'Paused.', ephemeral: true });
             }
             break;
 
@@ -895,7 +1092,7 @@ async function handleButton(interaction) {
             for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
             queue.processes.clear();
             queue.player.stop();
-            await interaction.reply({ content: `⏭️ **${queue.current.title}** übersprungen.`, ephemeral: true });
+            await interaction.reply({ content: `Skipped **${queue.current.title}**.`, ephemeral: true });
             break;
 
         case 'music_stop':
@@ -908,7 +1105,7 @@ async function handleButton(interaction) {
             if (queue._nowPlayingMsg) { queue._nowPlayingMsg.delete().catch(() => {}); queue._nowPlayingMsg = null; }
             if (queue.player) queue.player.stop(true);
             scheduleLeave(interaction.guildId);
-            await interaction.reply({ content: '⏹️ Wiedergabe gestoppt.', ephemeral: true });
+            await interaction.reply({ content: 'Stopped.', ephemeral: true });
             break;
 
         case 'music_shuffle':
@@ -919,28 +1116,21 @@ async function handleButton(interaction) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
             }
-            await interaction.reply({ content: `🔀 ${queue.tracks.length} Songs gemischt!`, ephemeral: true });
+            await interaction.reply({ content: `Shuffled **${queue.tracks.length} songs**.`, ephemeral: true });
             break;
 
         case 'music_loop': {
             const modes = ['off', 'song', 'queue'];
-            const labels = { off: '➡️ Loop aus', song: '🔂 Song-Loop', queue: '🔁 Queue-Loop' };
+            const labels = { off: 'Loop disabled.', song: 'Looping current song.', queue: 'Looping queue.' };
             const idx = (modes.indexOf(queue.loopMode) + 1) % modes.length;
             queue.loopMode = modes[idx];
             await interaction.reply({ content: labels[queue.loopMode], ephemeral: true });
             // Button auf Now Playing aktualisieren
             if (queue._nowPlayingMsg) {
-                const loopEmoji = queue.loopMode === 'song' ? '🔂' : queue.loopMode === 'queue' ? '🔁' : '➡️';
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('music_pause').setEmoji('⏯️').setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_loop').setEmoji(loopEmoji).setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder().setCustomId('music_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger),
-                );
+                const row = createPlayerButtons(queue.loopMode);
                 const embed = EmbedBuilder.from(queue._nowPlayingMsg.embeds[0]);
                 if (queue.loopMode !== 'off') {
-                    embed.setFooter({ text: queue.loopMode === 'song' ? '🔂 Song-Loop' : '🔁 Queue-Loop' });
+                    embed.setFooter({ text: queue.loopMode === 'song' ? 'Song Loop' : 'Queue Loop' });
                 } else {
                     embed.setFooter(null);
                 }
@@ -955,6 +1145,14 @@ async function handleButton(interaction) {
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton()) {
         try { await handleButton(interaction); } catch (e) { console.error('Button error:', e.message); }
+        return;
+    }
+
+    if (interaction.isAutocomplete()) {
+        const command = client.commands.get(interaction.commandName);
+        if (command?.autocomplete) {
+            try { await command.autocomplete(interaction, ctx); } catch (e) { console.error('Autocomplete error:', e.message); }
+        }
         return;
     }
 
@@ -1018,10 +1216,17 @@ client.on('warn', (msg) => {
 // ── Bot starten ───────────────────────────────────────────────────
 client.once('ready', () => {
     console.log(`✅ Bot ist online als ${client.user.tag}`);
+    client.user.setActivity('/play', { type: ActivityType.Listening });
     const api = startAPI(ctx, client);
     _apiBroadcast = api.broadcast;
     _apiGetGuildState = api.getGuildState;
     _generateAccessCode = api.generateAccessCode;
 });
 
-client.login(process.env.DISCORD_TOKEN);
+db.init().then(() => {
+    console.log('📦 Datenbank initialisiert');
+    client.login(process.env.DISCORD_TOKEN);
+}).catch(err => {
+    console.error('❌ Datenbank-Fehler:', err.message);
+    process.exit(1);
+});

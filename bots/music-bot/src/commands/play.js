@@ -17,6 +17,7 @@ module.exports = {
 
         const query = interaction.options.getString('query');
         const queue = ctx.getQueue(interaction.guild.id);
+        queue._djConsecutive = 0; // Reset Auto-DJ counter on manual play
         const wasPlaying = !!queue.current;
 
         try {
@@ -34,13 +35,13 @@ module.exports = {
                 }
 
                 const embed = new EmbedBuilder()
-                    .setAuthor({ name: 'Playlist hinzugefügt' })
+                    .setAuthor({ name: 'Playlist hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
                     .setDescription(`**${playlist.title}**`)
                     .addFields(
                         { name: 'Songs', value: `\`${tracks.length}\``, inline: true },
                         { name: 'Angefragt von', value: interaction.user.toString(), inline: true },
                     )
-                    .setColor(0x57F287)
+                    .setColor(0x6E41CC)
                     .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
 
                 ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
@@ -62,21 +63,21 @@ module.exports = {
                 .setDescription(`[${track.title}](${track.url})`);
 
             if (wasPlaying) {
-                embed.setAuthor({ name: 'Zur Warteschlange hinzugefügt' })
+                embed.setAuthor({ name: 'Zur Warteschlange hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
                     .addFields(
                         { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
                         { name: 'Position', value: `\`#${queue.tracks.length}\``, inline: true },
                         { name: 'Angefragt von', value: track.requestedBy, inline: true },
                     )
-                    .setColor(0x57F287)
+                    .setColor(0x6E41CC)
                     .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
             } else {
-                embed.setAuthor({ name: 'Spielt jetzt' })
+                embed.setAuthor({ name: 'Spielt jetzt', iconURL: interaction.client.user.displayAvatarURL() })
                     .addFields(
                         { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
                         { name: 'Angefragt von', value: track.requestedBy, inline: true },
                     )
-                    .setColor(0x5865F2);
+                    .setColor(0x6E41CC);
             }
 
             ctx.autoDelete(interaction.editReply({ embeds: [embed] }));

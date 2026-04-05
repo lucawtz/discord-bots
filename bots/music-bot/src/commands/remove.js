@@ -20,6 +20,6 @@ module.exports = {
 
         const [removed] = queue.tracks.splice(pos - 1, 1);
 
-        ctx.autoDelete(interaction.reply({ content: `🗑️ **${removed.title}** (Position ${pos}) entfernt.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `Removed **${removed.title}** from position ${pos}.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

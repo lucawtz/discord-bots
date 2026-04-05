@@ -23,7 +23,6 @@ module.exports = {
             queue._resource.volume.setVolume(queue.volume);
         }
 
-        const icon = percent === 0 ? '🔇' : percent < 50 ? '🔉' : '🔊';
-        ctx.autoDelete(interaction.reply({ content: `${icon} Lautstärke: **${percent}%**`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `Volume set to **${percent}%**.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

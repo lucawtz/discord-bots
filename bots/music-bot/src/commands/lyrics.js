@@ -23,15 +23,15 @@ module.exports = {
             const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query + ' lyrics')}`;
 
             const embed = new EmbedBuilder()
-                .setAuthor({ name: '🎤 Lyrics' })
+                .setAuthor({ name: 'Lyrics', iconURL: interaction.client.user.displayAvatarURL() })
                 .setDescription(
                     `**${query}**\n\n` +
-                    `Lyrics können aus rechtlichen Gründen nicht direkt angezeigt werden.\n\n` +
-                    `🔗 [Google Suche](${searchUrl})\n` +
-                    `🔗 [Genius](https://genius.com/search?q=${encodeURIComponent(query)})\n` +
-                    `🔗 [AZLyrics](https://search.azlyrics.com/search.php?q=${encodeURIComponent(query)})`
+                    `Lyrics koennen aus rechtlichen Gruenden nicht direkt angezeigt werden.\n\n` +
+                    `[Google Suche](${searchUrl})\n` +
+                    `[Genius](https://genius.com/search?q=${encodeURIComponent(query)})\n` +
+                    `[AZLyrics](https://search.azlyrics.com/search.php?q=${encodeURIComponent(query)})`
                 )
-                .setColor(0xFBBC05);
+                .setColor(0x6E41CC);
 
             ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
         } catch (error) {

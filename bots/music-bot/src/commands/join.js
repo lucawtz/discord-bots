@@ -11,6 +11,6 @@ module.exports = {
 
         await ctx.ensureConnection(interaction, ctx);
 
-        ctx.autoDelete(interaction.reply({ content: `🔊 Bin in **${interaction.member.voice.channel.name}**!`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `Joined **${interaction.member.voice.channel.name}**.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

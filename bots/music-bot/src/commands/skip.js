@@ -40,9 +40,9 @@ module.exports = {
         queue.player.stop();
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: 'Song übersprungen' })
+            .setAuthor({ name: 'Song uebersprungen', iconURL: interaction.client.user.displayAvatarURL() })
             .setDescription(`~~[${skipped.title}](${skipped.url})~~ — \`${skipped.duration}\``)
-            .setColor(0xFEE75C);
+            .setColor(0x6E41CC);
 
         if (upcoming.length > 0) {
             const nextSong = upcoming[0];

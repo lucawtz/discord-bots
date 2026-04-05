@@ -1,4 +1,15 @@
 {
+  "servers": [
+    {
+      "id": "oracle-prod-01",
+      "name": "oracle-prod-01",
+      "host": "130.61.88.80",
+      "user": "ubuntu",
+      "os": "Ubuntu 22.04",
+      "tags": ["Production", "Docker"],
+      "isLocal": true
+    }
+  ],
   "bots": [
     {
       "id": "beatbyte",
@@ -6,7 +17,10 @@
       "description": "Discord Music Bot",
       "service": "discord-bot",
       "icon": "music",
-      "color": "#e94560"
+      "color": "#e94560",
+      "server": "oracle-prod-01",
+      "method": "Systemd",
+      "port": 3001
     },
     {
       "id": "monitoring",
@@ -14,7 +28,10 @@
       "description": "Server Monitoring",
       "service": "monitoring-bot",
       "icon": "activity",
-      "color": "#00e676"
+      "color": "#22c55e",
+      "server": "oracle-prod-01",
+      "method": "Systemd",
+      "port": null
     },
     {
       "id": "soundboard",
@@ -22,7 +39,18 @@
       "description": "Discord Soundboard",
       "service": "soundboard-bot",
       "icon": "volume-2",
-      "color": "#448aff"
+      "color": "#3b82f6",
+      "server": "oracle-prod-01",
+      "method": "Systemd",
+      "port": 3002
     }
-  ]
+  ],
+  "alerts": {
+    "rules": [
+      { "id": "cpu-high", "name": "CPU High", "metric": "cpu", "operator": "gt", "threshold": 80, "duration": 300, "severity": "warning", "enabled": true },
+      { "id": "ram-critical", "name": "RAM Critical", "metric": "ram", "operator": "gt", "threshold": 90, "duration": 120, "severity": "critical", "enabled": true },
+      { "id": "disk-low", "name": "Disk Space Low", "metric": "disk", "operator": "gt", "threshold": 80, "duration": 0, "severity": "warning", "enabled": true },
+      { "id": "bot-crash", "name": "Bot Crashed", "metric": "bot_status", "operator": "eq", "threshold": "crashed", "duration": 0, "severity": "critical", "enabled": true }
+    ]
+  }
 }

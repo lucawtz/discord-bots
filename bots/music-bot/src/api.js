@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { URL } = require('url');
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 
 const { createRateLimiter } = require('../../../libs/rateLimiter');
@@ -27,13 +28,13 @@ function startAPI(ctx, client) {
         if (existing && Date.now() - existing.createdAt < CODE_EXPIRY_MS) {
             return existing.code;
         }
-        const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const code = crypto.randomBytes(6).toString('hex').toUpperCase();
         guildAccessCodes.set(guildId, { code, createdAt: Date.now() });
         return code;
     }
 
     function regenerateAccessCode(guildId) {
-        const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const code = crypto.randomBytes(6).toString('hex').toUpperCase();
         guildAccessCodes.set(guildId, { code, createdAt: Date.now() });
         for (const [token, session] of sessions) {
             if (session.guildId === guildId) sessions.delete(token);
@@ -134,6 +135,7 @@ function startAPI(ctx, client) {
             loopMode: queue.loopMode || 'off',
             volume: Math.round((queue.volume || 1) * 100),
             elapsed,
+            autoDj: !!queue.autoDj,
         };
     }
 
@@ -142,10 +144,15 @@ function startAPI(ctx, client) {
         res.end(JSON.stringify(data));
     }
 
-    function parseBody(req) {
+    function parseBody(req, maxBytes = 100 * 1024) {
         return new Promise((resolve, reject) => {
             let body = '';
-            req.on('data', chunk => body += chunk);
+            let size = 0;
+            req.on('data', chunk => {
+                size += chunk.length;
+                if (size > maxBytes) { req.destroy(); return reject(new Error('Body too large')); }
+                body += chunk;
+            });
             req.on('end', () => {
                 try { resolve(body ? JSON.parse(body) : {}); }
                 catch { reject(new Error('Invalid JSON')); }
@@ -384,32 +391,141 @@ function startAPI(ctx, client) {
                     return json(res, { volume: vol });
                 }
 
+                // ── Playlist Endpoints ────────────────────────────────
+
+                // GET /api/guild/:id/playlists
+                const playlistsListMatch = urlPath.match(/^\/api\/guild\/(\d+)\/playlists$/);
+                if (method === 'GET' && playlistsListMatch) {
+                    const guildId = playlistsListMatch[1];
+                    const playlists = ctx.db.getPlaylists(guildId, null);
+                    return json(res, playlists);
+                }
+
+                // POST /api/guild/:id/playlists (save current queue)
+                if (method === 'POST' && playlistsListMatch) {
+                    const guildId = playlistsListMatch[1];
+                    const { name } = await parseBody(req);
+                    if (!name || name.length > 50) return json(res, { error: 'Name ungueltig (1-50 Zeichen)' }, 400);
+
+                    const queue = ctx.queues.get(guildId);
+                    const tracks = [];
+                    if (queue?.current) tracks.push(queue.current);
+                    if (queue?.tracks) tracks.push(...queue.tracks);
+                    if (tracks.length === 0) return json(res, { error: 'Keine Songs zum Speichern' }, 400);
+                    if (tracks.length > 200) return json(res, { error: 'Max. 200 Songs pro Playlist' }, 400);
+
+                    const existing = ctx.db.getPlaylistByName(guildId, 'dashboard', name);
+                    if (existing) return json(res, { error: 'Playlist-Name existiert bereits' }, 409);
+
+                    try {
+                        const id = ctx.db.createPlaylist(guildId, 'dashboard', name, tracks);
+                        return json(res, { id, name }, 201);
+                    } catch (err) {
+                        return json(res, { error: 'Fehler beim Speichern' }, 500);
+                    }
+                }
+
+                // GET /api/guild/:id/playlists/:pid
+                const playlistDetailMatch = urlPath.match(/^\/api\/guild\/(\d+)\/playlists\/(\d+)$/);
+                if (method === 'GET' && playlistDetailMatch) {
+                    const playlist = ctx.db.getPlaylist(parseInt(playlistDetailMatch[2]));
+                    if (!playlist || playlist.guild_id !== playlistDetailMatch[1]) return json(res, { error: 'Nicht gefunden' }, 404);
+                    return json(res, playlist);
+                }
+
+                // DELETE /api/guild/:id/playlists/:pid
+                if (method === 'DELETE' && playlistDetailMatch) {
+                    const deleted = ctx.db.deletePlaylist(parseInt(playlistDetailMatch[2]), null);
+                    if (!deleted) return json(res, { error: 'Nicht gefunden' }, 404);
+                    return json(res, { ok: true });
+                }
+
+                // POST /api/guild/:id/playlists/:pid/load
+                const playlistLoadMatch = urlPath.match(/^\/api\/guild\/(\d+)\/playlists\/(\d+)\/load$/);
+                if (method === 'POST' && playlistLoadMatch) {
+                    const guildId = playlistLoadMatch[1];
+                    const playlist = ctx.db.getPlaylist(parseInt(playlistLoadMatch[2]));
+                    if (!playlist || playlist.guild_id !== guildId) return json(res, { error: 'Nicht gefunden' }, 404);
+                    if (playlist.tracks.length === 0) return json(res, { error: 'Playlist ist leer' }, 400);
+
+                    const queue = ctx.getQueue(guildId);
+                    const tracks = playlist.tracks.map(t => ({
+                        title: t.title,
+                        url: t.url,
+                        duration: t.duration || '?:??',
+                        thumbnail: t.thumbnail || null,
+                        artist: t.artist || null,
+                        requestedBy: 'Dashboard',
+                    }));
+                    queue.tracks.push(...tracks);
+
+                    if (queue.connection && !queue.current) {
+                        ctx.playNext(guildId);
+                    }
+
+                    broadcast('stateUpdate', getGuildState(guildId));
+                    return json(res, { ok: true, loaded: tracks.length });
+                }
+
+                // ── Auto-DJ Toggle ─────────────────────────────────────
+
+                // POST /api/guild/:id/autodj
+                const autoDjMatch = urlPath.match(/^\/api\/guild\/(\d+)\/autodj$/);
+                if (method === 'POST' && autoDjMatch) {
+                    const guildId = autoDjMatch[1];
+                    const queue = ctx.getQueue(guildId);
+                    queue.autoDj = !queue.autoDj;
+                    ctx.db.setGuildSetting(guildId, 'auto_dj', queue.autoDj ? 1 : 0);
+                    broadcast('stateUpdate', getGuildState(guildId));
+                    return json(res, { enabled: queue.autoDj });
+                }
+
+                // ── Queue Reorder ─────────────────────────────────────
+
+                // POST /api/guild/:id/queue/move
+                const queueMoveMatch = urlPath.match(/^\/api\/guild\/(\d+)\/queue\/move$/);
+                if (method === 'POST' && queueMoveMatch) {
+                    const guildId = queueMoveMatch[1];
+                    const { from, to } = await parseBody(req);
+                    const queue = ctx.queues.get(guildId);
+                    if (!queue) return json(res, { error: 'Keine Queue' }, 400);
+                    if (typeof from !== 'number' || typeof to !== 'number') return json(res, { error: 'from und to muessen Zahlen sein' }, 400);
+                    if (from < 0 || from >= queue.tracks.length || to < 0 || to >= queue.tracks.length) {
+                        return json(res, { error: 'Index ausserhalb der Queue' }, 400);
+                    }
+                    const [moved] = queue.tracks.splice(from, 1);
+                    queue.tracks.splice(to, 0, moved);
+                    broadcast('stateUpdate', getGuildState(guildId));
+                    return json(res, { ok: true });
+                }
+
                 return json(res, { error: 'Not found' }, 404);
             }
 
             // ── Web App (statische Dateien aus app/dist) ──────────
             const distDir = path.join(__dirname, '..', 'app', 'dist');
-            if (fs.existsSync(distDir)) {
-                const mimeTypes = {
-                    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
-                    '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
-                    '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
-                };
-                let filePath = path.join(distDir, urlPath === '/' ? 'index.html' : urlPath);
-                const resolvedDist = path.resolve(distDir);
-                if (!path.resolve(filePath).startsWith(resolvedDist + path.sep) && path.resolve(filePath) !== resolvedDist) {
-                    return json(res, { error: 'Not found' }, 404);
-                }
-                if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-                    filePath = path.join(distDir, 'index.html');
-                }
-                if (fs.existsSync(filePath)) {
-                    const ext = path.extname(filePath);
-                    const content = fs.readFileSync(filePath);
-                    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-                    return res.end(content);
-                }
+            const mimeTypes = {
+                '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+                '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+                '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+            };
+            let filePath = path.join(distDir, urlPath === '/' ? 'index.html' : urlPath);
+            const resolvedDist = path.resolve(distDir);
+            if (!path.resolve(filePath).startsWith(resolvedDist + path.sep) && path.resolve(filePath) !== resolvedDist) {
+                return json(res, { error: 'Not found' }, 404);
             }
+            try {
+                const stat = await fsp.stat(filePath);
+                if (stat.isDirectory()) filePath = path.join(distDir, 'index.html');
+            } catch {
+                filePath = path.join(distDir, 'index.html');
+            }
+            try {
+                const content = await fsp.readFile(filePath);
+                const ext = path.extname(filePath);
+                res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+                return res.end(content);
+            } catch { /* dist nicht vorhanden, weiter zu 404 */ }
 
             json(res, { error: 'Not found' }, 404);
         } catch (err) {

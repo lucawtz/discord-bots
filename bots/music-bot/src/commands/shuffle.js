@@ -17,6 +17,6 @@ module.exports = {
             [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
         }
 
-        ctx.autoDelete(interaction.reply({ content: `🔀 **${queue.tracks.length} Songs** gemischt!`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `Shuffled **${queue.tracks.length} songs**.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };
