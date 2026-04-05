@@ -655,6 +655,64 @@ input, select, textarea { font-family: var(--font); }
 .fill--mid { background: var(--warning); }
 .fill--high { background: var(--danger); }
 
+/* ── Light Mode ────────────────────────────────────────────────── */
+body.light {
+  --bg: #FAFAFA;
+  --surface: #FFFFFF;
+  --surface-el: #F4F4F5;
+  --surface-hover: #E4E4E7;
+  --border: #E4E4E7;
+  --border-active: #D4D4D8;
+  --text: #09090B;
+  --text-sec: #71717A;
+  --text-tri: #A1A1AA;
+  --accent: #2563EB;
+  --accent-hover: #3B82F6;
+  --accent-bg: rgba(37,99,235,0.1);
+  --success: #16A34A;
+  --success-bg: rgba(22,163,74,0.12);
+  --warning: #D97706;
+  --warning-bg: rgba(217,119,6,0.12);
+  --danger: #DC2626;
+  --danger-bg: rgba(220,38,38,0.12);
+  --info: #0891B2;
+  --info-bg: rgba(8,145,178,0.12);
+}
+body.light ::-webkit-scrollbar-thumb { background: #D4D4D8; }
+body.light ::-webkit-scrollbar-thumb:hover { background: #A1A1AA; }
+
+/* ── File Browser ──────────────────────────────────────────────── */
+.file-browser__path {
+  display: flex; align-items: center; gap: 4px; padding: 8px 0;
+  font-family: var(--mono); font-size: 13px; color: var(--text-sec);
+  flex-wrap: wrap;
+}
+.file-browser__path-segment {
+  color: var(--accent); cursor: pointer; padding: 2px 4px; border-radius: 3px;
+}
+.file-browser__path-segment:hover { background: var(--accent-bg); }
+.file-icon { color: var(--text-tri); flex-shrink: 0; }
+.file-icon--dir { color: var(--accent); }
+.file-row { cursor: pointer; }
+.file-row:hover td { background: var(--surface-el); }
+
+/* ── Code Editor ───────────────────────────────────────────────── */
+.code-editor {
+  width: 100%; min-height: 300px; max-height: 600px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px;
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  color: var(--text); resize: vertical;
+  tab-size: 2;
+}
+.code-editor:focus { outline: none; border-color: var(--accent); }
+
+/* ── Env Editor ────────────────────────────────────────────────── */
+.env-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.env-row__key { flex: 1; }
+.env-row__value { flex: 2; }
+.env-row__actions { flex-shrink: 0; }
+
 /* ── Responsive ────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .sidebar { transform: translateX(-100%); }

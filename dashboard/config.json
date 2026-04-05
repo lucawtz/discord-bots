@@ -20,18 +20,8 @@
       "color": "#e94560",
       "server": "oracle-prod-01",
       "method": "Systemd",
-      "port": 3001
-    },
-    {
-      "id": "monitoring",
-      "name": "Monitoring Bot",
-      "description": "Server Monitoring",
-      "service": "monitoring-bot",
-      "icon": "activity",
-      "color": "#22c55e",
-      "server": "oracle-prod-01",
-      "method": "Systemd",
-      "port": null
+      "port": 3001,
+      "recovery": { "enabled": true, "maxRestarts": 5, "restartDelay": 3, "backoff": "exponential", "healthCheckUrl": null }
     },
     {
       "id": "soundboard",
@@ -42,7 +32,8 @@
       "color": "#3b82f6",
       "server": "oracle-prod-01",
       "method": "Systemd",
-      "port": 3002
+      "port": 3002,
+      "recovery": { "enabled": true, "maxRestarts": 5, "restartDelay": 3, "backoff": "exponential", "healthCheckUrl": null }
     }
   ],
   "alerts": {
@@ -52,5 +43,8 @@
       { "id": "disk-low", "name": "Disk Space Low", "metric": "disk", "operator": "gt", "threshold": 80, "duration": 0, "severity": "warning", "enabled": true },
       { "id": "bot-crash", "name": "Bot Crashed", "metric": "bot_status", "operator": "eq", "threshold": "crashed", "duration": 0, "severity": "critical", "enabled": true }
     ]
-  }
+  },
+  "webhook": { "url": "", "enabled": false },
+  "uptime": { "targets": [{ "name": "Cloudflare", "host": "1.1.1.1" }, { "name": "Google", "host": "8.8.8.8" }], "interval": 60 },
+  "backups": { "directory": "/home/ubuntu/backups", "schedule": "daily", "retention": 7 }
 }

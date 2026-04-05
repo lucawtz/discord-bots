@@ -61,6 +61,23 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     <div class="forgot"><a href="#" id="show-forgot">Passwort vergessen?</a></div>
   </div>
 
+  <!-- 2FA View -->
+  <div id="twofa-view" class="hidden">
+    <a href="#" class="back-link" id="back-to-login-2fa">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      Zurueck zum Login
+    </a>
+    <div class="subtitle" style="margin-bottom:12px">Zwei-Faktor-Authentifizierung</div>
+    <p style="font-size:12px;color:#71717A;text-align:center;margin-bottom:24px;line-height:1.6">
+      Gib den 6-stelligen Code aus deiner Authenticator-App ein
+    </p>
+    <div class="msg msg--error hidden" id="twofa-error"></div>
+    <div class="field" style="text-align:center">
+      <input type="text" id="twofa-code" maxlength="6" pattern="[0-9]*" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" style="text-align:center;font-family:'Courier New',monospace;font-size:28px;letter-spacing:12px;padding:14px 20px;width:220px;margin:0 auto;display:block;background:#0A0A0B;border:1px solid #27272A;border-radius:6px;color:#FAFAFA;outline:none;transition:border-color 150ms ease" autofocus>
+    </div>
+    <button class="btn btn--primary" id="twofa-submit" style="margin-top:16px">Verifizieren</button>
+  </div>
+
   <!-- Forgot Password Form -->
   <div id="forgot-view" class="hidden">
     <a href="#" class="back-link" id="back-to-login">
@@ -87,6 +104,64 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 if (location.search.includes('error=1')) {
   document.getElementById('login-error').classList.remove('hidden');
 }
+
+// Show 2FA view if redirected after password check
+if (location.search.includes('2fa=1')) {
+  document.getElementById('login-view').classList.add('hidden');
+  document.getElementById('twofa-view').classList.remove('hidden');
+  setTimeout(() => document.getElementById('twofa-code').focus(), 100);
+}
+
+// 2FA code input: auto-submit on 6 digits, only allow numbers
+document.getElementById('twofa-code').addEventListener('input', (e) => {
+  e.target.value = e.target.value.replace(/[^0-9]/g, '');
+  if (e.target.value.length === 6) {
+    document.getElementById('twofa-submit').click();
+  }
+});
+
+// 2FA submit
+document.getElementById('twofa-submit').addEventListener('click', async () => {
+  const code = document.getElementById('twofa-code').value.trim();
+  const errEl = document.getElementById('twofa-error');
+  const btn = document.getElementById('twofa-submit');
+  if (!code || code.length !== 6) {
+    errEl.textContent = 'Bitte gib einen 6-stelligen Code ein.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Wird geprueft...';
+  try {
+    const res = await fetch('/api/2fa/verify-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      window.location.href = '/';
+    } else {
+      errEl.textContent = data.error || 'Ungueltiger Code. Bitte erneut versuchen.';
+      errEl.classList.remove('hidden');
+      document.getElementById('twofa-code').value = '';
+      document.getElementById('twofa-code').focus();
+      btn.disabled = false;
+      btn.textContent = 'Verifizieren';
+    }
+  } catch {
+    errEl.textContent = 'Netzwerkfehler. Bitte erneut versuchen.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Verifizieren';
+  }
+});
+
+// Back to login from 2FA
+document.getElementById('back-to-login-2fa').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.location.href = '/login';
+});
 
 // Toggle views
 document.getElementById('show-forgot').addEventListener('click', (e) => {

@@ -73,15 +73,14 @@ export default function Home() {
                 position: 'relative',
             }}>
                 <Container maxWidth="md">
-                    <Typography
-                        variant="overline"
+                    <Box
+                        component="img" src="/logo.png" alt="ByteBots"
                         sx={{
-                            color: 'text.disabled', letterSpacing: 4, mb: 3, display: 'block',
+                            width: 80, height: 80, objectFit: 'contain', mb: 3,
+                            filter: 'brightness(1.1)', mixBlendMode: 'screen',
                             animation: `${fadeInUp} 0.5s ease`,
                         }}
-                    >
-                        Discord Bot Platform
-                    </Typography>
+                    />
                     <Typography
                         variant="h1"
                         sx={{

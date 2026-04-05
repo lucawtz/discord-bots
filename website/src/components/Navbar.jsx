@@ -6,9 +6,9 @@ import {
     Collapse, Paper, Popper, Grow, ClickAwayListener,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -45,7 +45,7 @@ export default function Navbar() {
             >
                 <Toolbar sx={{ justifyContent: 'space-between', maxWidth: 1200, mx: 'auto', width: '100%' }}>
                     <Box component={Link} to="/" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, textDecoration: 'none' }}>
-                        <SmartToyIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+                        <Box component="img" src="/logo.png" alt="ByteBots" sx={{ width: 32, height: 32, objectFit: 'contain', filter: 'brightness(1.1)', mixBlendMode: 'screen' }} />
                         <Typography variant="h6" sx={{
                             fontWeight: 700, fontSize: '1.15rem',
                             background: 'linear-gradient(135deg, #08fcfe, #f0a0ee)',

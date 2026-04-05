@@ -88,6 +88,8 @@ async function render() {
       await renderStoragePage(app);
     } else if (route.page === 'settings') {
       await renderSettingsPage(app);
+    } else if (route.page === 'audit') {
+      await renderAuditPage(app);
     } else {
       await renderServersPage(app);
     }
@@ -249,6 +251,10 @@ async function renderServersPage(app) {
         <div class="agg-stat__value">${agg.activeAlerts}</div>
         <div class="agg-stat__label">Active Alerts</div>
       </div>
+      <div class="agg-stat agg-stat--success" id="uptime-stat">
+        <div class="agg-stat__value" id="uptime-avg">--</div>
+        <div class="agg-stat__label">Avg. Uptime</div>
+      </div>
     </div>
 
     <div class="filter-bar">
@@ -284,6 +290,19 @@ async function renderServersPage(app) {
   app.querySelectorAll('.server-card, .server-row').forEach(el => {
     el.addEventListener('click', () => navigate(`/servers/${el.dataset.id}`));
   });
+
+  // Load uptime summary
+  (async () => {
+    try {
+      const uptimeData = await api.get('/uptime');
+      if (uptimeData.checks && uptimeData.checks.length > 0) {
+        const onlineCount = uptimeData.checks.filter(c => c.status === 'up').length;
+        const pct = Math.round((onlineCount / uptimeData.checks.length) * 100);
+        const el = document.getElementById('uptime-avg');
+        if (el) el.textContent = pct + '%';
+      }
+    } catch {}
+  })();
 
   // Auto-refresh
   state.refreshTimer = setInterval(async () => {
@@ -387,6 +406,8 @@ async function renderServerDetail(app, serverId, activeTab) {
       <button class="tab ${activeTab === 'overview' ? 'active' : ''}" data-tab="overview">Overview</button>
       <button class="tab ${activeTab === 'processes' ? 'active' : ''}" data-tab="processes">Processes</button>
       <button class="tab ${activeTab === 'logs' ? 'active' : ''}" data-tab="logs">Logs</button>
+      <button class="tab ${activeTab === 'docker' ? 'active' : ''}" data-tab="docker">Docker</button>
+      <button class="tab ${activeTab === 'cron' ? 'active' : ''}" data-tab="cron">Cron</button>
     </div>
 
     <div id="tab-content"></div>
@@ -404,12 +425,22 @@ async function renderServerDetail(app, serverId, activeTab) {
     await renderServerProcessesTab(tabContent, serverId);
   } else if (activeTab === 'logs') {
     await renderServerLogsTab(tabContent, srv);
+  } else if (activeTab === 'docker') {
+    await renderServerDockerTab(tabContent);
+  } else if (activeTab === 'cron') {
+    await renderServerCronTab(tabContent);
   }
 }
 
 async function renderServerOverviewTab(container, srv, serverId) {
   const sys = srv.system;
   container.innerHTML = `
+    <div style="display:flex;gap:6px;margin-bottom:16px" id="metrics-range">
+      <button class="btn btn--sm btn--primary metrics-range-btn" data-range="10min">10min</button>
+      <button class="btn btn--sm btn--secondary metrics-range-btn" data-range="1h">1h</button>
+      <button class="btn btn--sm btn--secondary metrics-range-btn" data-range="6h">6h</button>
+      <button class="btn btn--sm btn--secondary metrics-range-btn" data-range="24h">24h</button>
+    </div>
     <div class="chart-grid" id="charts-area">
       <div class="chart-card">
         <div class="chart-card__header">
@@ -481,16 +512,54 @@ async function renderServerOverviewTab(container, srv, serverId) {
     });
   });
 
-  // Load metrics and draw charts
-  try {
-    const metricsData = await api.get(`/servers/${serverId}/metrics`);
-    drawCharts(metricsData.metrics);
-  } catch {
-    drawCharts([]);
+  // Metrics range selector
+  let currentRange = '10min';
+  async function loadMetricsForRange(range) {
+    try {
+      let metricsData;
+      if (range === '10min') {
+        metricsData = await api.get(`/servers/${serverId}/metrics`);
+      } else {
+        metricsData = await api.get(`/metrics/history?range=${range}`);
+      }
+      drawCharts(metricsData.metrics || []);
+    } catch {
+      drawCharts([]);
+    }
   }
 
-  // Live refresh
+  container.querySelectorAll('.metrics-range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentRange = btn.dataset.range;
+      container.querySelectorAll('.metrics-range-btn').forEach(b => {
+        b.className = `btn btn--sm ${b.dataset.range === currentRange ? 'btn--primary' : 'btn--secondary'} metrics-range-btn`;
+      });
+      // Stop live refresh if not 10min
+      if (currentRange !== '10min' && state.metricsTimer) {
+        clearInterval(state.metricsTimer);
+        state.metricsTimer = null;
+      }
+      loadMetricsForRange(currentRange);
+      // Restart live refresh if back to 10min
+      if (currentRange === '10min') {
+        state.metricsTimer = setInterval(async () => {
+          try {
+            const md = await api.get(`/servers/${serverId}/metrics`);
+            const freshSrv = await api.get(`/servers/${serverId}`);
+            updateLiveValues(freshSrv.system);
+            drawCharts(md.metrics);
+          } catch {}
+        }, 5000);
+      }
+    });
+  });
+
+  // Load metrics and draw charts
+  loadMetricsForRange('10min');
+
+  // Live refresh (default 10min)
   state.metricsTimer = setInterval(async () => {
+    if (currentRange !== '10min') return;
     try {
       const metricsData = await api.get(`/servers/${serverId}/metrics`);
       const freshSrv = await api.get(`/servers/${serverId}`);
@@ -696,6 +765,98 @@ async function renderServerLogsTab(container, srv) {
   state.refreshTimer = setInterval(loadLogs, 10000);
 }
 
+async function renderServerDockerTab(container) {
+  container.innerHTML = '<div class="skeleton" style="height:300px"></div>';
+  try {
+    const data = await api.get('/docker/containers');
+    const containers = data.containers || [];
+    container.innerHTML = `
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Docker Container</h2>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Name</th><th>Image</th><th>Status</th><th>Ports</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
+        <tbody>${containers.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:var(--text-tri)">Keine Container</td></tr>' :
+          containers.map(c => `<tr>
+            <td><strong>${esc(c.name)}</strong><div style="font-size:10px;color:var(--text-tri);font-family:var(--mono)">${esc(c.id ? c.id.substring(0, 12) : '')}</div></td>
+            <td style="font-family:var(--mono);font-size:12px">${esc(c.image)}</td>
+            <td><span class="status ${c.state === 'running' ? 'status--running' : 'status--stopped'}"><span class="status__dot"></span>${esc(c.status)}</span></td>
+            <td style="font-family:var(--mono);font-size:11px">${esc(Array.isArray(c.ports) ? c.ports.join(', ') : (c.ports || '-'))}</td>
+            <td style="font-size:12px;color:var(--text-tri)">${c.created ? timeAgo(c.created) : '-'}</td>
+            <td>
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                <button class="btn btn--sm btn--ghost docker-action" data-id="${esc(c.id)}" data-action="start" ${c.state === 'running' ? 'disabled' : ''}>Start</button>
+                <button class="btn btn--sm btn--danger docker-action" data-id="${esc(c.id)}" data-action="stop" ${c.state !== 'running' ? 'disabled' : ''}>Stop</button>
+                <button class="btn btn--sm btn--secondary docker-action" data-id="${esc(c.id)}" data-action="restart" ${c.state !== 'running' ? 'disabled' : ''}>Restart</button>
+                <button class="btn btn--sm btn--ghost docker-logs-btn" data-id="${esc(c.id)}" data-name="${esc(c.name)}">Logs</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+      <div id="docker-logs-area" style="margin-top:16px"></div>
+    `;
+
+    container.querySelectorAll('.docker-action').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await api.post(`/docker/containers/${btn.dataset.id}/${btn.dataset.action}`);
+          showToast(`Container ${btn.dataset.action} erfolgreich`, 'success');
+          setTimeout(() => renderServerDockerTab(container), 1500);
+        } catch (err) {
+          showToast('Fehler: ' + err.message, 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.docker-logs-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const area = document.getElementById('docker-logs-area');
+        if (!area) return;
+        area.innerHTML = '<div class="skeleton" style="height:200px"></div>';
+        try {
+          const logData = await api.get(`/docker/containers/${btn.dataset.id}/logs?lines=100`);
+          area.innerHTML = `
+            <div class="logs-panel">
+              <div class="logs-panel__header">
+                <div class="logs-panel__header-left"><strong>${esc(btn.dataset.name)} Logs</strong></div>
+                <button class="btn btn--sm btn--secondary" id="docker-logs-close">Schliessen</button>
+              </div>
+              <div class="logs-panel__body">${esc(logData.logs || 'Keine Logs')}</div>
+            </div>`;
+          document.getElementById('docker-logs-close')?.addEventListener('click', () => { area.innerHTML = ''; });
+        } catch (err) {
+          area.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+        }
+      });
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
+}
+
+async function renderServerCronTab(container) {
+  container.innerHTML = '<div class="skeleton" style="height:200px"></div>';
+  try {
+    const data = await api.get('/cron');
+    const jobs = data.jobs || [];
+    container.innerHTML = `
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Cron Jobs</h2>
+      <div class="table-wrap"><table class="table table--mono">
+        <thead><tr><th>Schedule</th><th>Command</th><th>User</th></tr></thead>
+        <tbody>${jobs.length === 0 ? '<tr><td colspan="3" style="text-align:center;color:var(--text-tri)">Keine Cron Jobs</td></tr>' :
+          jobs.map(j => `<tr>
+            <td style="font-weight:600;white-space:nowrap">${esc(j.schedule)}</td>
+            <td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(j.command)}">${esc(j.command)}</td>
+            <td>${esc(j.user || '-')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
+}
+
 // ── Page: Bots ──────────────────────────────────────────────────
 async function renderBotsPage(app) {
   setBreadcrumb({ label: 'Bots' });
@@ -888,13 +1049,15 @@ async function renderBotDetail(app, botId) {
       </div>
     </div>
 
-    <div class="tabs">
+    <div class="tabs" id="bot-tabs">
       <button class="tab active" data-tab="status">Status</button>
       <button class="tab" data-tab="config">Config</button>
       <button class="tab" data-tab="logs">Logs</button>
+      <button class="tab" data-tab="env">Env Vars</button>
+      <button class="tab" data-tab="recovery">Recovery</button>
     </div>
 
-    <div id="bot-tab-content">
+    <div id="bot-tab-status">
       <div class="agg-stats" style="margin-bottom:24px">
         <div class="agg-stat">
           <div class="agg-stat__value" style="color:var(--text)">${esc(bot.uptime || '-')}</div>
@@ -913,7 +1076,9 @@ async function renderBotDetail(app, botId) {
           <div class="agg-stat__label">Restarts</div>
         </div>
       </div>
+    </div>
 
+    <div id="bot-tab-config" style="display:none">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Configuration</h2>
       <div class="settings-card">
         <div class="settings-card__body">
@@ -935,12 +1100,17 @@ async function renderBotDetail(app, botId) {
           </div>
         </div>
       </div>
+    </div>
 
-      <h2 style="font-size:16px;font-weight:600;margin:24px 0 12px">Recent Logs</h2>
+    <div id="bot-tab-logs" style="display:none">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Recent Logs</h2>
       <div class="logs-panel">
         <div class="logs-panel__body" id="bot-logs-body">Lade Logs...</div>
       </div>
     </div>
+
+    <div id="bot-tab-env" style="display:none"><div class="skeleton" style="height:200px"></div></div>
+    <div id="bot-tab-recovery" style="display:none"><div class="skeleton" style="height:200px"></div></div>
   `;
 
   // Bot control buttons
@@ -959,11 +1129,17 @@ async function renderBotDetail(app, botId) {
   });
 
   // Tabs
-  app.querySelectorAll('.tab').forEach(tab => {
+  const botTabMap = { status: 'bot-tab-status', config: 'bot-tab-config', logs: 'bot-tab-logs', env: 'bot-tab-env', recovery: 'bot-tab-recovery' };
+  let envLoaded = false, recoveryLoaded = false;
+  app.querySelectorAll('#bot-tabs .tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      // Simple tab toggle (scroll to section)
-      app.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      app.querySelectorAll('#bot-tabs .tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
+      Object.values(botTabMap).forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+      const target = document.getElementById(botTabMap[tab.dataset.tab]);
+      if (target) target.style.display = 'block';
+      if (tab.dataset.tab === 'env' && !envLoaded) { envLoaded = true; loadBotEnv(botId); }
+      if (tab.dataset.tab === 'recovery' && !recoveryLoaded) { recoveryLoaded = true; loadBotRecovery(botId); }
     });
   });
 
@@ -976,6 +1152,136 @@ async function renderBotDetail(app, botId) {
       body.scrollTop = body.scrollHeight;
     }
   } catch {}
+}
+
+async function loadBotEnv(botId) {
+  const container = document.getElementById('bot-tab-env');
+  if (!container) return;
+  try {
+    const data = await api.get(`/bots/${botId}/env`);
+    const vars = data.vars || [];
+    renderEnvEditor(container, botId, vars);
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
+}
+
+function renderEnvEditor(container, botId, vars) {
+  container.innerHTML = `
+    <div class="settings-card">
+      <div class="settings-card__header" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Umgebungsvariablen</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn--sm btn--secondary" id="env-add-btn">+ Variable</button>
+          <button class="btn btn--sm btn--primary" id="env-save-btn">Speichern</button>
+        </div>
+      </div>
+      <div class="settings-card__body" id="env-rows">
+        ${vars.length === 0 ? '<div style="color:var(--text-tri);font-size:13px">Keine Variablen definiert</div>' :
+          vars.map((v, i) => `
+            <div class="env-row" data-index="${i}">
+              <input type="text" class="form-input env-row__key" value="${esc(v.key)}" placeholder="KEY">
+              <input type="text" class="form-input env-row__value" value="${esc(v.value)}" placeholder="value">
+              <button class="btn btn--sm btn--danger env-row__actions env-remove-btn">X</button>
+            </div>`).join('')}
+      </div>
+    </div>`;
+
+  document.getElementById('env-add-btn')?.addEventListener('click', () => {
+    const rows = document.getElementById('env-rows');
+    const hint = rows.querySelector('div[style]');
+    if (hint && hint.textContent.includes('Keine Variablen')) hint.remove();
+    const idx = rows.querySelectorAll('.env-row').length;
+    const div = document.createElement('div');
+    div.className = 'env-row';
+    div.dataset.index = idx;
+    div.innerHTML = `
+      <input type="text" class="form-input env-row__key" value="" placeholder="KEY">
+      <input type="text" class="form-input env-row__value" value="" placeholder="value">
+      <button class="btn btn--sm btn--danger env-row__actions env-remove-btn">X</button>`;
+    rows.appendChild(div);
+    div.querySelector('.env-remove-btn').addEventListener('click', () => div.remove());
+  });
+
+  container.querySelectorAll('.env-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('.env-row').remove());
+  });
+
+  document.getElementById('env-save-btn')?.addEventListener('click', async () => {
+    const rows = document.querySelectorAll('#env-rows .env-row');
+    const newVars = [];
+    rows.forEach(row => {
+      const key = row.querySelector('.env-row__key').value.trim();
+      const value = row.querySelector('.env-row__value').value;
+      if (key) newVars.push({ key, value });
+    });
+    try {
+      await api.post(`/bots/${botId}/env`, { vars: newVars });
+      showToast('Env-Variablen gespeichert', 'success');
+    } catch (err) {
+      showToast('Fehler: ' + err.message, 'error');
+    }
+  });
+}
+
+async function loadBotRecovery(botId) {
+  const container = document.getElementById('bot-tab-recovery');
+  if (!container) return;
+  try {
+    const data = await api.get(`/bots/${botId}/recovery`);
+    container.innerHTML = `
+      <div class="settings-card">
+        <div class="settings-card__header">Crash Recovery Einstellungen</div>
+        <div class="settings-card__body">
+          <div style="display:grid;gap:16px;max-width:500px">
+            <div class="settings-row" style="border:none;padding:0">
+              <div><div class="settings-row__label">Auto-Recovery aktiviert</div></div>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="recovery-enabled" ${data.enabled ? 'checked' : ''}> <span style="font-size:13px">${data.enabled ? 'Aktiv' : 'Inaktiv'}</span>
+              </label>
+            </div>
+            <div class="field">
+              <label style="display:block;font-size:12px;color:var(--text-sec);margin-bottom:6px">Max. Neustarts</label>
+              <input type="number" class="form-input" id="recovery-max-restarts" value="${data.maxRestarts || 5}" min="1" max="100">
+            </div>
+            <div class="field">
+              <label style="display:block;font-size:12px;color:var(--text-sec);margin-bottom:6px">Neustart-Verzoegerung (ms)</label>
+              <input type="number" class="form-input" id="recovery-delay" value="${data.restartDelay || 5000}" min="1000" step="1000">
+            </div>
+            <div class="field">
+              <label style="display:block;font-size:12px;color:var(--text-sec);margin-bottom:6px">Backoff-Strategie</label>
+              <select class="form-select" id="recovery-backoff" style="width:100%">
+                <option value="linear" ${data.backoff === 'linear' ? 'selected' : ''}>Linear</option>
+                <option value="exponential" ${data.backoff === 'exponential' ? 'selected' : ''}>Exponential</option>
+                <option value="fixed" ${data.backoff === 'fixed' || !data.backoff ? 'selected' : ''}>Fixed</option>
+              </select>
+            </div>
+            <div class="field">
+              <label style="display:block;font-size:12px;color:var(--text-sec);margin-bottom:6px">Health Check URL (optional)</label>
+              <input type="text" class="form-input" id="recovery-health-url" value="${esc(data.healthCheckUrl || '')}" placeholder="http://localhost:3000/health">
+            </div>
+            <button class="btn btn--primary" id="recovery-save-btn" style="width:fit-content">Speichern</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('recovery-save-btn')?.addEventListener('click', async () => {
+      try {
+        await api.post(`/bots/${botId}/recovery`, {
+          enabled: document.getElementById('recovery-enabled').checked,
+          maxRestarts: parseInt(document.getElementById('recovery-max-restarts').value) || 5,
+          restartDelay: parseInt(document.getElementById('recovery-delay').value) || 5000,
+          backoff: document.getElementById('recovery-backoff').value,
+          healthCheckUrl: document.getElementById('recovery-health-url').value.trim()
+        });
+        showToast('Recovery-Einstellungen gespeichert', 'success');
+      } catch (err) {
+        showToast('Fehler: ' + err.message, 'error');
+      }
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
 }
 
 // ── Page: Alerts ────────────────────────────────────────────────
@@ -997,6 +1303,7 @@ async function renderAlertsPage(app) {
       <button class="tab active" data-tab="active">Active (${activeAlerts.length})</button>
       <button class="tab" data-tab="resolved">Acknowledged (${ackedAlerts.length})</button>
       <button class="tab" data-tab="rules">Rules</button>
+      <button class="tab" data-tab="webhook">Webhook</button>
     </div>
 
     <div id="alerts-active">
@@ -1027,10 +1334,13 @@ async function renderAlertsPage(app) {
         `).join('')}</tbody>
       </table></div>
     </div>
+
+    <div id="alerts-webhook" style="display:none"><div class="skeleton" style="height:200px"></div></div>
   `;
 
   // Tab switching
-  const tabs = { active: 'alerts-active', resolved: 'alerts-acked', rules: 'alerts-rules' };
+  const tabs = { active: 'alerts-active', resolved: 'alerts-acked', rules: 'alerts-rules', webhook: 'alerts-webhook' };
+  let webhookLoaded = false;
   app.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       app.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1038,6 +1348,7 @@ async function renderAlertsPage(app) {
       Object.values(tabs).forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
       const target = document.getElementById(tabs[tab.dataset.tab]);
       if (target) target.style.display = 'block';
+      if (tab.dataset.tab === 'webhook' && !webhookLoaded) { webhookLoaded = true; loadWebhookSettings(); }
     });
   });
 
@@ -1072,6 +1383,58 @@ function renderAlertCard(a, acked) {
       </div>` : ''}
     </div>
   `;
+}
+
+async function loadWebhookSettings() {
+  const container = document.getElementById('alerts-webhook');
+  if (!container) return;
+  try {
+    const data = await api.get('/settings/webhook');
+    container.innerHTML = `
+      <div class="settings-card">
+        <div class="settings-card__header">Discord Webhook Konfiguration</div>
+        <div class="settings-card__body">
+          <div style="display:grid;gap:16px;max-width:500px">
+            <div class="settings-row" style="border:none;padding:0">
+              <div><div class="settings-row__label">Webhook aktiviert</div></div>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="webhook-enabled" ${data.enabled ? 'checked' : ''}> <span style="font-size:13px">${data.enabled ? 'Aktiv' : 'Inaktiv'}</span>
+              </label>
+            </div>
+            <div class="field">
+              <label style="display:block;font-size:12px;color:var(--text-sec);margin-bottom:6px">Webhook URL</label>
+              <input type="text" class="form-input" id="webhook-url" value="${esc(data.url || '')}" placeholder="https://discord.com/api/webhooks/...">
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--primary" id="webhook-save-btn">Speichern</button>
+              <button class="btn btn--secondary" id="webhook-test-btn">Test senden</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('webhook-save-btn')?.addEventListener('click', async () => {
+      try {
+        await api.post('/settings/webhook', {
+          url: document.getElementById('webhook-url').value.trim(),
+          enabled: document.getElementById('webhook-enabled').checked
+        });
+        showToast('Webhook gespeichert', 'success');
+      } catch (err) { showToast('Fehler: ' + err.message, 'error'); }
+    });
+
+    document.getElementById('webhook-test-btn')?.addEventListener('click', async () => {
+      try {
+        await api.post('/settings/webhook', {
+          url: document.getElementById('webhook-url').value.trim(),
+          enabled: document.getElementById('webhook-enabled').checked
+        });
+        showToast('Test-Alert gesendet', 'success');
+      } catch (err) { showToast('Fehler: ' + err.message, 'error'); }
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
 }
 
 // ── Page: Deployments ───────────────────────────────────────────
@@ -1161,21 +1524,137 @@ async function renderNetworkPage(app) {
       </div>
     </div>` : ''}
 
-    <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Open Ports</h2>
-    <div class="table-wrap"><table class="table table--mono">
-      <thead><tr><th>Port</th><th>Address</th><th>Process</th><th>State</th></tr></thead>
-      <tbody>${ports.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--text-tri)">Keine Port-Daten verfuegbar</td></tr>' :
-        ports.map(p => `
-          <tr>
-            <td style="font-weight:600">${p.port}</td>
-            <td>${esc(p.address)}</td>
-            <td>${esc(p.process)}</td>
-            <td><span class="status status--running"><span class="status__dot"></span>LISTEN</span></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table></div>
+    <div class="tabs" id="network-tabs">
+      <button class="tab active" data-tab="ports">Ports</button>
+      <button class="tab" data-tab="firewall">Firewall</button>
+      <button class="tab" data-tab="ssl">SSL Check</button>
+      <button class="tab" data-tab="uptime">Uptime</button>
+    </div>
+
+    <div id="net-ports">
+      <div class="table-wrap"><table class="table table--mono">
+        <thead><tr><th>Port</th><th>Address</th><th>Process</th><th>State</th></tr></thead>
+        <tbody>${ports.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--text-tri)">Keine Port-Daten verfuegbar</td></tr>' :
+          ports.map(p => `
+            <tr>
+              <td style="font-weight:600">${p.port}</td>
+              <td>${esc(p.address)}</td>
+              <td>${esc(p.process)}</td>
+              <td><span class="status status--running"><span class="status__dot"></span>LISTEN</span></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table></div>
+    </div>
+
+    <div id="net-firewall" style="display:none"><div class="skeleton" style="height:200px"></div></div>
+    <div id="net-ssl" style="display:none">
+      <div class="settings-card">
+        <div class="settings-card__header">SSL/TLS Zertifikat pruefen</div>
+        <div class="settings-card__body">
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <input type="text" class="form-input" id="ssl-host" placeholder="z.B. example.com" style="max-width:300px">
+            <button class="btn btn--primary" id="ssl-check-btn">Pruefen</button>
+          </div>
+          <div id="ssl-result"></div>
+        </div>
+      </div>
+    </div>
+    <div id="net-uptime" style="display:none"><div class="skeleton" style="height:200px"></div></div>
   `;
+
+  // Tab switching
+  const netTabs = { ports: 'net-ports', firewall: 'net-firewall', ssl: 'net-ssl', uptime: 'net-uptime' };
+  let firewallLoaded = false, uptimeLoaded = false;
+  app.querySelectorAll('#network-tabs .tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      app.querySelectorAll('#network-tabs .tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      Object.values(netTabs).forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+      const target = document.getElementById(netTabs[tab.dataset.tab]);
+      if (target) target.style.display = 'block';
+      if (tab.dataset.tab === 'firewall' && !firewallLoaded) { firewallLoaded = true; loadFirewall(); }
+      if (tab.dataset.tab === 'uptime' && !uptimeLoaded) { uptimeLoaded = true; loadUptime(); }
+    });
+  });
+
+  // SSL Check
+  document.getElementById('ssl-check-btn')?.addEventListener('click', async () => {
+    const host = document.getElementById('ssl-host').value.trim();
+    if (!host) return showToast('Hostname eingeben', 'error');
+    const resultDiv = document.getElementById('ssl-result');
+    resultDiv.innerHTML = '<div class="skeleton" style="height:80px"></div>';
+    try {
+      const data = await api.get(`/ssl-check?host=${encodeURIComponent(host)}`);
+      if (data.error) {
+        resultDiv.innerHTML = `<div style="padding:12px;border-radius:var(--radius);background:var(--danger-bg);color:var(--danger)">${esc(data.error)}</div>`;
+      } else {
+        const color = data.daysLeft > 30 ? 'var(--success)' : data.daysLeft > 7 ? 'var(--warning)' : 'var(--danger)';
+        resultDiv.innerHTML = `
+          <div class="agg-stats">
+            <div class="agg-stat"><div class="agg-stat__value" style="color:${data.valid ? 'var(--success)' : 'var(--danger)'}">${data.valid ? 'Gueltig' : 'Ungueltig'}</div><div class="agg-stat__label">Status</div></div>
+            <div class="agg-stat"><div class="agg-stat__value" style="color:${color}">${data.daysLeft}</div><div class="agg-stat__label">Tage verbleibend</div></div>
+            <div class="agg-stat"><div class="agg-stat__value" style="font-size:14px;color:var(--text)">${esc(data.issuer || '-')}</div><div class="agg-stat__label">Aussteller</div></div>
+            <div class="agg-stat"><div class="agg-stat__value" style="font-size:14px;color:var(--text)">${data.expires ? new Date(data.expires).toLocaleDateString('de-DE') : '-'}</div><div class="agg-stat__label">Ablaufdatum</div></div>
+          </div>`;
+      }
+    } catch (err) {
+      resultDiv.innerHTML = `<div style="padding:12px;border-radius:var(--radius);background:var(--danger-bg);color:var(--danger)">${esc(err.message)}</div>`;
+    }
+  });
+}
+
+async function loadFirewall() {
+  const container = document.getElementById('net-firewall');
+  if (!container) return;
+  try {
+    const data = await api.get('/firewall');
+    container.innerHTML = `
+      <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+        <h2 style="font-size:16px;font-weight:600">UFW Firewall</h2>
+        <span class="status ${data.status === 'active' ? 'status--running' : 'status--stopped'}"><span class="status__dot"></span>${esc(data.status || 'unknown')}</span>
+      </div>
+      <div class="table-wrap"><table class="table table--mono">
+        <thead><tr><th>#</th><th>Action</th><th>From</th><th>To</th><th>Port</th><th>Protocol</th></tr></thead>
+        <tbody>${(!data.rules || data.rules.length === 0) ? '<tr><td colspan="6" style="text-align:center;color:var(--text-tri)">Keine Regeln</td></tr>' :
+          data.rules.map(r => `<tr>
+            <td>${r.number || '-'}</td>
+            <td><span class="tag ${r.action === 'ALLOW' ? 'tag--production' : 'tag--testing'}">${esc(r.action)}</span></td>
+            <td>${esc(r.from || 'Anywhere')}</td>
+            <td>${esc(r.to || 'Anywhere')}</td>
+            <td style="font-weight:600">${esc(String(r.port || '-'))}</td>
+            <td>${esc(r.protocol || '-')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
+}
+
+async function loadUptime() {
+  const container = document.getElementById('net-uptime');
+  if (!container) return;
+  try {
+    const data = await api.get('/uptime');
+    container.innerHTML = `
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Uptime Monitoring</h2>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Name</th><th>Host</th><th>Status</th><th>Latenz</th><th>Paketverlust</th><th>Letzter Check</th></tr></thead>
+        <tbody>${(!data.checks || data.checks.length === 0) ? '<tr><td colspan="6" style="text-align:center;color:var(--text-tri)">Keine Uptime-Checks</td></tr>' :
+          data.checks.map(c => `<tr>
+            <td><strong>${esc(c.name)}</strong></td>
+            <td style="font-family:var(--mono);font-size:12px">${esc(c.host)}</td>
+            <td><span class="status ${c.status === 'up' ? 'status--running' : 'status--crashed'}"><span class="status__dot"></span>${c.status === 'up' ? 'Online' : 'Offline'}</span></td>
+            <td style="font-family:var(--mono);font-size:12px">${c.latency != null ? c.latency + ' ms' : '-'}</td>
+            <td style="color:${(c.packetLoss || 0) > 0 ? 'var(--danger)' : 'var(--text-sec)'}">${c.packetLoss != null ? c.packetLoss + '%' : '-'}</td>
+            <td style="font-size:12px;color:var(--text-tri)">${c.lastCheck ? new Date(c.lastCheck).toLocaleString('de-DE') : '-'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
 }
 
 // ── Page: Storage ───────────────────────────────────────────────
@@ -1205,15 +1684,243 @@ async function renderStoragePage(app) {
       </div>
     </div>` : ''}
 
-    <div class="empty-state">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-      <div class="empty-state__title">File Browser</div>
-      <div class="empty-state__desc">Der Dateibrowser wird in einer zukuenftigen Version verfuegbar sein.</div>
+    <div class="tabs" id="storage-tabs">
+      <button class="tab active" data-tab="files">Dateien</button>
+      <button class="tab" data-tab="backups">Backups</button>
     </div>
+
+    <div id="storage-files"></div>
+    <div id="storage-backups" style="display:none"></div>
   `;
+
+  // Tab switching
+  const storageTabs = { files: 'storage-files', backups: 'storage-backups' };
+  app.querySelectorAll('#storage-tabs .tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      app.querySelectorAll('#storage-tabs .tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      Object.values(storageTabs).forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+      const target = document.getElementById(storageTabs[tab.dataset.tab]);
+      if (target) target.style.display = 'block';
+    });
+  });
+
+  // Load file browser and backups
+  loadFileBrowser('/home/ubuntu');
+  loadBackups();
 }
 
-// ── Page: Settings ──────────────────────────────────────────────
+async function loadFileBrowser(dirPath) {
+  const container = document.getElementById('storage-files');
+  if (!container) return;
+  container.innerHTML = '<div class="skeleton" style="height:300px"></div>';
+
+  try {
+    const data = await api.get(`/files?path=${encodeURIComponent(dirPath)}`);
+    const currentPath = data.currentPath || dirPath;
+    const pathParts = currentPath.split('/').filter(Boolean);
+
+    container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div class="file-browser__path">
+          <span class="file-browser__path-segment" data-path="/">/</span>
+          ${pathParts.map((p, i) => {
+            const fullPath = '/' + pathParts.slice(0, i + 1).join('/');
+            return `<span style="color:var(--text-tri)">/</span><span class="file-browser__path-segment" data-path="${esc(fullPath)}">${esc(p)}</span>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn--sm btn--secondary" id="file-new-folder">+ Ordner</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th style="width:30px"></th><th>Name</th><th>Groesse</th><th>Geaendert</th><th>Rechte</th><th>Aktionen</th></tr></thead>
+        <tbody>
+          ${currentPath !== '/' ? `<tr class="file-row" data-path="${esc(currentPath.substring(0, currentPath.lastIndexOf('/'))) || '/'}" data-type="dir">
+            <td><span class="file-icon file-icon--dir">&#128193;</span></td>
+            <td><strong>..</strong></td><td></td><td></td><td></td><td></td>
+          </tr>` : ''}
+          ${(!data.entries || data.entries.length === 0) ? '<tr><td colspan="6" style="text-align:center;color:var(--text-tri)">Leerer Ordner</td></tr>' :
+            data.entries.map(f => `<tr class="file-row" data-path="${esc(currentPath + '/' + f.name)}" data-type="${f.type}">
+              <td><span class="file-icon ${f.type === 'dir' ? 'file-icon--dir' : ''}">${f.type === 'dir' ? '&#128193;' : '&#128196;'}</span></td>
+              <td><strong>${esc(f.name)}</strong></td>
+              <td style="font-size:12px;color:var(--text-sec)">${f.type === 'file' ? formatFileSize(f.size) : '-'}</td>
+              <td style="font-size:12px;color:var(--text-tri)">${f.modified ? new Date(f.modified).toLocaleString('de-DE') : '-'}</td>
+              <td style="font-family:var(--mono);font-size:11px;color:var(--text-tri)">${esc(f.permissions || '-')}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  ${f.type === 'file' ? `<button class="btn btn--sm btn--ghost file-view-btn" data-path="${esc(currentPath + '/' + f.name)}">Ansehen</button>` : ''}
+                  <button class="btn btn--sm btn--danger file-delete-btn" data-path="${esc(currentPath + '/' + f.name)}" data-name="${esc(f.name)}">Loeschen</button>
+                </div>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>
+      <div id="file-editor-area" style="margin-top:16px"></div>
+    `;
+
+    // Navigate directories
+    container.querySelectorAll('.file-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        if (row.dataset.type === 'dir') loadFileBrowser(row.dataset.path);
+      });
+    });
+
+    // Path breadcrumb navigation
+    container.querySelectorAll('.file-browser__path-segment').forEach(seg => {
+      seg.addEventListener('click', () => loadFileBrowser(seg.dataset.path));
+    });
+
+    // New folder
+    container.querySelector('#file-new-folder')?.addEventListener('click', async () => {
+      const name = prompt('Ordnername:');
+      if (!name) return;
+      try {
+        await api.post('/files/mkdir', { path: currentPath + '/' + name });
+        showToast('Ordner erstellt', 'success');
+        loadFileBrowser(currentPath);
+      } catch (err) { showToast('Fehler: ' + err.message, 'error'); }
+    });
+
+    // View/Edit file
+    container.querySelectorAll('.file-view-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const filePath = btn.dataset.path;
+        const editorArea = document.getElementById('file-editor-area');
+        if (!editorArea) return;
+        editorArea.innerHTML = '<div class="skeleton" style="height:200px"></div>';
+        try {
+          const fileData = await api.get(`/files/read?path=${encodeURIComponent(filePath)}`);
+          editorArea.innerHTML = `
+            <div class="settings-card">
+              <div class="settings-card__header" style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-family:var(--mono);font-size:12px">${esc(filePath)}</span>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn--sm btn--primary" id="file-save-btn">Speichern</button>
+                  <button class="btn btn--sm btn--secondary" id="file-close-btn">Schliessen</button>
+                </div>
+              </div>
+              <div class="settings-card__body">
+                <textarea class="code-editor" id="file-content">${esc(fileData.content || '')}</textarea>
+              </div>
+            </div>`;
+          document.getElementById('file-save-btn')?.addEventListener('click', async () => {
+            try {
+              await api.post('/files/write', { path: filePath, content: document.getElementById('file-content').value });
+              showToast('Datei gespeichert', 'success');
+            } catch (err) { showToast('Fehler: ' + err.message, 'error'); }
+          });
+          document.getElementById('file-close-btn')?.addEventListener('click', () => { editorArea.innerHTML = ''; });
+        } catch (err) {
+          editorArea.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+        }
+      });
+    });
+
+    // Delete
+    container.querySelectorAll('.file-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`"${btn.dataset.name}" wirklich loeschen?`)) return;
+        try {
+          await api.post('/files/delete', { path: btn.dataset.path });
+          showToast('Geloescht', 'success');
+          loadFileBrowser(currentPath);
+        } catch (err) { showToast('Fehler: ' + err.message, 'error'); }
+      });
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__title">Fehler</div><div class="empty-state__desc">${esc(err.message)}</div></div>`;
+  }
+}
+
+async function loadBackups() {
+  const container = document.getElementById('storage-backups');
+  if (!container) return;
+  container.innerHTML = '<div class="skeleton" style="height:200px"></div>';
+
+  try {
+    const data = await api.get('/backups');
+    container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="font-size:16px;font-weight:600">Backups</h2>
+        <button class="btn btn--sm btn--primary" id="create-backup-btn">+ Backup erstellen</button>
+      </div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Name</th><th>Groesse</th><th>Datum</th><th>Typ</th><th>Aktionen</th></tr></thead>
+        <tbody>${(!data.backups || data.backups.length === 0) ? '<tr><td colspan="5" style="text-align:center;color:var(--text-tri)">Keine Backups vorhanden</td></tr>' :
+          data.backups.map(b => `<tr>
+            <td><strong>${esc(b.name)}</strong></td>
+            <td style="font-size:12px;color:var(--text-sec)">${formatFileSize(b.size)}</td>
+            <td style="font-size:12px;color:var(--text-tri)">${b.date ? new Date(b.date).toLocaleString('de-DE') : '-'}</td>
+            <td><span class="tag tag--development">${esc(b.type || 'manual')}</span></td>
+            <td><button class="btn btn--sm btn--danger backup-delete-btn" data-name="${esc(b.name)}">Loeschen</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+
+    container.querySelector('#create-backup-btn')?.addEventListener('click', async () => {
+      const name = prompt('Backup-Name (leer fuer automatisch):');
+      try {
+        await api.post('/backups/create', { name: name || undefined });
+        showToast('Backup erstellt', 'success');
+        loadBackups();
+      } catch (err) { showToast('Fehler: ' + err.message, 'error'); }
+    });
+
+    container.querySelectorAll('.backup-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Backup "${btn.dataset.name}" wirklich loeschen?`)) return;
+        try {
+          await api.post('/backups/delete', { name: btn.dataset.name });
+          showToast('Backup geloescht', 'success');
+          loadBackups();
+        } catch (err) { showToast('Fehler: ' + err.message, 'error'); }
+      });
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state__desc">Fehler: ${esc(err.message)}</div></div>`;
+  }
+}
+
+// ── Helper: Format file size ────────────────────────────────────
+function formatFileSize(bytes) {
+  if (bytes == null || isNaN(bytes)) return '-';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+  return (bytes / 1073741824).toFixed(2) + ' GB';
+}
+
+// ── Page: Audit Log ─────────────────────────────────────────────
+async function renderAuditPage(app) {
+  setBreadcrumb({ label: 'Audit Log' });
+  app.innerHTML = '<div class="skeleton" style="height:400px"></div>';
+  try {
+    const data = await api.get('/audit-log?limit=200');
+
+    app.innerHTML = `
+      <div class="page-header"><h1>Audit Log</h1></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Ziel</th><th>Details</th></tr></thead>
+        <tbody>${(!data.entries || data.entries.length === 0) ? '<tr><td colspan="5" style="text-align:center;color:var(--text-tri)">Noch keine Eintraege</td></tr>' :
+          data.entries.map(e => `<tr>
+            <td style="font-family:var(--mono);font-size:12px;white-space:nowrap;color:var(--text-tri)">${new Date(e.time).toLocaleString('de-DE')}</td>
+            <td><strong>${esc(e.user)}</strong></td>
+            <td><span class="tag ${e.action.includes('delete') || e.action.includes('stop') ? 'tag--testing' : e.action.includes('create') || e.action.includes('start') ? 'tag--production' : 'tag--development'}">${esc(e.action)}</span></td>
+            <td style="font-family:var(--mono);font-size:12px">${esc(e.target || '-')}</td>
+            <td style="font-size:12px;color:var(--text-sec);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(e.details || '')}">${esc(e.details || '-')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+  } catch (err) {
+    app.innerHTML = `<div class="page-header"><h1>Audit Log</h1></div><div class="empty-state"><div class="empty-state__title">Fehler</div><div class="empty-state__desc">${esc(err.message)}</div></div>`;
+  }
+}
+
+// ── Page: Settings ────────���─────────────────────���───────────────
 async function renderSettingsPage(app) {
   setBreadcrumb({ label: 'Settings' });
   const me = state.currentUser;
@@ -1266,6 +1973,14 @@ async function renderSettingsPage(app) {
             </div>
             <button class="btn btn--primary" id="save-profile" style="width:fit-content">Speichern</button>
           </div>
+        </div>
+      </div>
+
+      <!-- 2FA Section -->
+      <div class="settings-card" style="margin-top:16px">
+        <div class="settings-card__header">Zwei-Faktor-Authentifizierung (2FA)</div>
+        <div class="settings-card__body" id="twofa-section">
+          <div style="color:var(--text-tri);font-size:13px">Status wird geladen...</div>
         </div>
       </div>
     </div>
@@ -1438,6 +2153,129 @@ async function renderSettingsPage(app) {
       showToast(err.message, 'error');
     }
   });
+
+  // ── 2FA Setup ──────────────────────────────────────────────────
+  async function load2FAStatus() {
+    const section = document.getElementById('twofa-section');
+    if (!section) return;
+    try {
+      const { enabled } = await api.get('/2fa/status');
+      if (enabled) {
+        section.innerHTML = `
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:6px;font-size:13px;font-weight:600;background:rgba(34,197,94,0.1);color:#22C55E;border:1px solid rgba(34,197,94,0.2)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              2FA aktiv
+            </span>
+          </div>
+          <div id="twofa-disable-area" style="display:none;max-width:420px">
+            <div style="font-size:12px;color:var(--text-sec);margin-bottom:8px">Gib deinen aktuellen 2FA-Code ein, um die Zwei-Faktor-Authentifizierung zu deaktivieren:</div>
+            <div style="display:flex;gap:8px;align-items:end">
+              <input type="text" class="form-input" id="twofa-disable-code" maxlength="6" pattern="[0-9]*" inputmode="numeric" placeholder="000000" style="width:140px;font-family:var(--mono);text-align:center;letter-spacing:4px;font-size:16px">
+              <button class="btn btn--sm btn--danger" id="twofa-disable-confirm">Deaktivieren</button>
+              <button class="btn btn--sm btn--ghost" id="twofa-disable-cancel">Abbrechen</button>
+            </div>
+            <div id="twofa-disable-error" style="display:none;color:#EF4444;font-size:12px;margin-top:8px"></div>
+          </div>
+          <button class="btn btn--sm btn--secondary" id="twofa-disable-btn">2FA deaktivieren</button>
+        `;
+        document.getElementById('twofa-disable-btn').addEventListener('click', () => {
+          document.getElementById('twofa-disable-area').style.display = 'block';
+          document.getElementById('twofa-disable-btn').style.display = 'none';
+          document.getElementById('twofa-disable-code').focus();
+        });
+        document.getElementById('twofa-disable-cancel').addEventListener('click', () => {
+          document.getElementById('twofa-disable-area').style.display = 'none';
+          document.getElementById('twofa-disable-btn').style.display = '';
+        });
+        document.getElementById('twofa-disable-code').addEventListener('input', (e) => {
+          e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
+        document.getElementById('twofa-disable-confirm').addEventListener('click', async () => {
+          const code = document.getElementById('twofa-disable-code').value.trim();
+          const errEl = document.getElementById('twofa-disable-error');
+          if (!code || code.length !== 6) {
+            errEl.textContent = 'Bitte gib einen 6-stelligen Code ein.';
+            errEl.style.display = 'block';
+            return;
+          }
+          try {
+            await api.post('/2fa/disable', { code });
+            showToast('2FA wurde deaktiviert', 'success');
+            load2FAStatus();
+          } catch (err) {
+            errEl.textContent = err.message || 'Ungueltiger Code';
+            errEl.style.display = 'block';
+          }
+        });
+      } else {
+        section.innerHTML = `
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:6px;font-size:13px;font-weight:500;background:rgba(161,161,170,0.1);color:#A1A1AA;border:1px solid rgba(161,161,170,0.2)">2FA nicht aktiv</span>
+          </div>
+          <div id="twofa-setup-area" style="display:none;max-width:420px"></div>
+          <button class="btn btn--sm btn--primary" id="twofa-enable-btn">2FA aktivieren</button>
+        `;
+        document.getElementById('twofa-enable-btn').addEventListener('click', async () => {
+          const btn = document.getElementById('twofa-enable-btn');
+          btn.disabled = true;
+          btn.textContent = 'Wird vorbereitet...';
+          try {
+            const data = await api.post('/2fa/setup');
+            btn.style.display = 'none';
+            const area = document.getElementById('twofa-setup-area');
+            area.style.display = 'block';
+            area.innerHTML = `
+              <div style="font-size:13px;color:var(--text-sec);margin-bottom:16px">Scanne den QR-Code mit deiner Authenticator-App (z.B. Google Authenticator, Authy):</div>
+              <div style="text-align:center;margin-bottom:16px;background:#fff;border-radius:8px;padding:12px;display:inline-block">
+                <img src="${data.qrCode}" alt="QR Code" style="width:200px;height:200px">
+              </div>
+              <div style="margin-bottom:16px">
+                <div style="font-size:11px;color:var(--text-tri);margin-bottom:4px">Oder manuell eingeben:</div>
+                <code style="font-size:13px;color:var(--text-sec);background:var(--bg);padding:6px 10px;border-radius:4px;border:1px solid var(--border);display:block;word-break:break-all;font-family:var(--mono)">${data.secret}</code>
+              </div>
+              <div style="font-size:12px;color:var(--text-sec);margin-bottom:8px">Gib den 6-stelligen Code aus der App ein, um die Einrichtung abzuschliessen:</div>
+              <div style="display:flex;gap:8px;align-items:end">
+                <input type="text" class="form-input" id="twofa-setup-code" maxlength="6" pattern="[0-9]*" inputmode="numeric" placeholder="000000" style="width:140px;font-family:var(--mono);text-align:center;letter-spacing:4px;font-size:16px">
+                <button class="btn btn--sm btn--primary" id="twofa-setup-confirm">Aktivieren</button>
+              </div>
+              <div id="twofa-setup-error" style="display:none;color:#EF4444;font-size:12px;margin-top:8px"></div>
+            `;
+            document.getElementById('twofa-setup-code').focus();
+            document.getElementById('twofa-setup-code').addEventListener('input', (e) => {
+              e.target.value = e.target.value.replace(/[^0-9]/g, '');
+            });
+            document.getElementById('twofa-setup-confirm').addEventListener('click', async () => {
+              const code = document.getElementById('twofa-setup-code').value.trim();
+              const errEl = document.getElementById('twofa-setup-error');
+              if (!code || code.length !== 6) {
+                errEl.textContent = 'Bitte gib einen 6-stelligen Code ein.';
+                errEl.style.display = 'block';
+                return;
+              }
+              try {
+                await api.post('/2fa/confirm-setup', { code });
+                showToast('2FA wurde erfolgreich aktiviert', 'success');
+                load2FAStatus();
+              } catch (err) {
+                errEl.textContent = err.message || 'Ungueltiger Code';
+                errEl.style.display = 'block';
+                document.getElementById('twofa-setup-code').value = '';
+                document.getElementById('twofa-setup-code').focus();
+              }
+            });
+          } catch (err) {
+            showToast(err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = '2FA aktivieren';
+          }
+        });
+      }
+    } catch (err) {
+      section.innerHTML = '<div style="color:#EF4444;font-size:13px">Fehler beim Laden des 2FA-Status</div>';
+    }
+  }
+  load2FAStatus();
 
   if (!isAdmin) return;
 
@@ -1636,6 +2474,27 @@ document.getElementById('sidebar-overlay').addEventListener('click', () => {
   document.getElementById('sidebar-overlay').classList.remove('open');
 });
 
+// ── Theme Toggle ────────────────────────────────────────────────
+function initTheme() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  applyTheme(saved);
+}
+function applyTheme(theme) {
+  document.body.classList.toggle('light', theme === 'light');
+  const darkIcon = document.getElementById('theme-icon-dark');
+  const lightIcon = document.getElementById('theme-icon-light');
+  if (darkIcon && lightIcon) {
+    darkIcon.style.display = theme === 'dark' ? '' : 'none';
+    lightIcon.style.display = theme === 'light' ? '' : 'none';
+  }
+  localStorage.setItem('theme', theme);
+}
+document.getElementById('theme-toggle')?.addEventListener('click', () => {
+  const current = localStorage.getItem('theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+});
+initTheme();
+
 // ── User Dropdown ───────────────────────────────────────────────
 document.getElementById('user-menu').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -1679,6 +2538,7 @@ function renderSearchResults(query) {
     { label: 'Deployments', hint: '#/deployments', icon: 'clock', group: 'Pages' },
     { label: 'Network', hint: '#/network', icon: 'globe', group: 'Pages' },
     { label: 'Storage', hint: '#/storage', icon: 'box', group: 'Pages' },
+    { label: 'Audit Log', hint: '#/audit', icon: 'file', group: 'Pages' },
     { label: 'Settings', hint: '#/settings', icon: 'settings', group: 'Pages' },
     { label: 'oracle-prod-01', hint: '#/servers/oracle-prod-01', icon: 'server', group: 'Servers' },
     { label: 'BeatByte', hint: '#/bots/beatbyte', icon: 'bot', group: 'Bots' },

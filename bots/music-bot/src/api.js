@@ -217,6 +217,131 @@ function startAPI(ctx, client) {
                 return json(res, { token, guild: { id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) } });
             }
 
+            // ── Discord OAuth2 ──────────────────────────────────
+            const discordClientId = process.env.CLIENT_ID;
+            const discordClientSecret = process.env.DISCORD_CLIENT_SECRET;
+            const oauthRedirectUri = process.env.OAUTH_REDIRECT_URI || `http://localhost:${port}/api/auth/discord/callback`;
+
+            // GET /api/auth/discord — Redirect to Discord OAuth2
+            if (method === 'GET' && urlPath === '/api/auth/discord') {
+                if (!discordClientSecret) return json(res, { error: 'Discord OAuth nicht konfiguriert' }, 500);
+                const state = crypto.randomBytes(16).toString('hex');
+                // Store state for CSRF protection
+                sessions.set(`oauth_state_${state}`, { createdAt: Date.now() });
+                const params = new URLSearchParams({
+                    client_id: discordClientId,
+                    redirect_uri: oauthRedirectUri,
+                    response_type: 'code',
+                    scope: 'identify guilds',
+                    state,
+                });
+                res.writeHead(302, { Location: `https://discord.com/api/oauth2/authorize?${params}` });
+                return res.end();
+            }
+
+            // GET /api/auth/discord/callback — Handle OAuth2 callback
+            if (method === 'GET' && urlPath === '/api/auth/discord/callback') {
+                const code = url.searchParams.get('code');
+                const state = url.searchParams.get('state');
+                const errorParam = url.searchParams.get('error');
+
+                if (errorParam || !code) {
+                    res.writeHead(302, { Location: '/?error=discord_denied' });
+                    return res.end();
+                }
+
+                // Validate CSRF state
+                const stateKey = `oauth_state_${state}`;
+                if (!state || !sessions.has(stateKey)) {
+                    res.writeHead(302, { Location: '/?error=invalid_state' });
+                    return res.end();
+                }
+                sessions.delete(stateKey);
+
+                try {
+                    // Exchange code for token
+                    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({
+                            client_id: discordClientId,
+                            client_secret: discordClientSecret,
+                            grant_type: 'authorization_code',
+                            code,
+                            redirect_uri: oauthRedirectUri,
+                        }),
+                    });
+                    if (!tokenRes.ok) throw new Error('Token exchange failed');
+                    const tokenData = await tokenRes.json();
+
+                    // Get user info
+                    const userRes = await fetch('https://discord.com/api/users/@me', {
+                        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+                    });
+                    if (!userRes.ok) throw new Error('Failed to fetch user');
+                    const user = await userRes.json();
+
+                    // Get user's guilds
+                    const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
+                        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+                    });
+                    if (!guildsRes.ok) throw new Error('Failed to fetch guilds');
+                    const userGuilds = await guildsRes.json();
+
+                    // Find shared guilds (guilds where the bot is also in)
+                    const sharedGuilds = userGuilds
+                        .filter(ug => client.guilds.cache.has(ug.id))
+                        .map(ug => {
+                            const botGuild = client.guilds.cache.get(ug.id);
+                            return { id: ug.id, name: botGuild.name, icon: botGuild.iconURL({ size: 128 }) };
+                        });
+
+                    if (sharedGuilds.length === 0) {
+                        res.writeHead(302, { Location: '/?error=no_shared_guilds' });
+                        return res.end();
+                    }
+
+                    // Store OAuth data temporarily for guild selection
+                    const oauthToken = crypto.randomBytes(32).toString('hex');
+                    sessions.set(`oauth_pending_${oauthToken}`, {
+                        user: { id: user.id, username: user.username, avatar: user.avatar },
+                        guilds: sharedGuilds,
+                        createdAt: Date.now(),
+                    });
+
+                    // Redirect back to app with token
+                    res.writeHead(302, { Location: `/?discord_token=${oauthToken}` });
+                    return res.end();
+                } catch (err) {
+                    console.error('OAuth error:', err.message);
+                    res.writeHead(302, { Location: '/?error=oauth_failed' });
+                    return res.end();
+                }
+            }
+
+            // POST /api/auth/discord/guilds — Get shared guilds from OAuth token
+            if (method === 'POST' && urlPath === '/api/auth/discord/guilds') {
+                const { oauthToken } = await parseBody(req);
+                if (!oauthToken) return json(res, { error: 'Token fehlt' }, 400);
+                const pending = sessions.get(`oauth_pending_${oauthToken}`);
+                if (!pending) return json(res, { error: 'Ungueltiger oder abgelaufener Token' }, 401);
+                return json(res, { user: pending.user, guilds: pending.guilds });
+            }
+
+            // POST /api/auth/discord/select — Select guild from OAuth
+            if (method === 'POST' && urlPath === '/api/auth/discord/select') {
+                const { oauthToken, guildId } = await parseBody(req);
+                if (!oauthToken || !guildId) return json(res, { error: 'Token und guildId benoetigt' }, 400);
+                const pendingKey = `oauth_pending_${oauthToken}`;
+                const pending = sessions.get(pendingKey);
+                if (!pending) return json(res, { error: 'Ungueltiger oder abgelaufener Token' }, 401);
+                const selectedGuild = pending.guilds.find(g => g.id === guildId);
+                if (!selectedGuild) return json(res, { error: 'Server nicht verfuegbar' }, 403);
+                sessions.delete(pendingKey);
+                const sessionToken = createSession(guildId);
+                return json(res, { token: sessionToken, guild: selectedGuild });
+            }
+
             // POST /api/auth/verify
             if (method === 'POST' && urlPath === '/api/auth/verify') {
                 const auth = authenticateRequest(req);

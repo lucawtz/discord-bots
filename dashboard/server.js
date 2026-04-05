@@ -1,12 +1,22 @@
 require('dotenv').config();
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { WebSocketServer } = require('ws');
+const { Client: SSHClient } = require('ssh2');
+const { TOTP, Secret } = require('otpauth');
+const QRCode = require('qrcode');
 
-const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+const IS_WINDOWS = process.platform === 'win32';
+let config = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+
+function saveConfig() {
+    fs.writeFileSync(path.join(__dirname, 'config.json'), JSON.stringify(config, null, 2), 'utf8');
+}
 const PORT = process.env.PORT || 3000;
 
 // ── User Management ────────────────────────────────────────────
@@ -62,6 +72,8 @@ function getSessionUser(req) {
         sessions.delete(token);
         return null;
     }
+    // Sessions with pending 2FA are not fully authenticated
+    if (session.pending2FA) return null;
     const user = findUserById(session.userId);
     if (!user || user.status !== 'active') {
         sessions.delete(token);
@@ -81,6 +93,30 @@ function parseBody(req) {
         req.on('end', () => resolve(body));
         req.on('error', reject);
     });
+}
+
+// ── TOTP 2FA Helpers ───────────────────────────────────────────
+function createTOTP(secret, email) {
+    return new TOTP({
+        issuer: 'ServerHub',
+        label: email,
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: secret
+    });
+}
+
+function verifyTOTP(secret, code) {
+    const totp = new TOTP({
+        issuer: 'ServerHub',
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: Secret.fromBase32(secret)
+    });
+    const delta = totp.validate({ token: code, window: 1 });
+    return delta !== null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -304,7 +340,7 @@ function checkAlerts() {
         const existing = activeAlerts.find(a => a.ruleId === rule.id);
 
         if (triggered && !existing) {
-            activeAlerts.push({
+            const newAlert = {
                 id: crypto.randomBytes(4).toString('hex'),
                 ruleId: rule.id,
                 ruleName: rule.name,
@@ -314,7 +350,13 @@ function checkAlerts() {
                 threshold: rule.threshold,
                 triggeredAt: new Date().toISOString(),
                 acknowledged: false
-            });
+            };
+            activeAlerts.push(newAlert);
+            sendWebhook(
+                `Alert: ${rule.name}`,
+                `${rule.metric} ist ${value} (Schwellwert: ${rule.threshold})`,
+                rule.severity === 'critical' ? 0xff0000 : 0xffa500
+            );
         } else if (!triggered && existing) {
             const idx = activeAlerts.indexOf(existing);
             activeAlerts.splice(idx, 1);
@@ -341,6 +383,11 @@ function checkAlerts() {
                     acknowledged: false,
                     botId: bot.id
                 });
+                sendWebhook(
+                    `Bot Crash: ${bot.name}`,
+                    `${bot.name} (${bot.service}) ist abgestuerzt!`,
+                    0xff0000
+                );
             }
         }
     }
@@ -412,6 +459,145 @@ setInterval(() => {
     }
 }, 10 * 60 * 1000);
 
+// ── Audit Log ──────────────────────────────────────────────────
+const AUDIT_LOG_FILE = path.join(__dirname, 'audit.json');
+const AUDIT_MAX_ENTRIES = 500;
+
+function loadAuditLog() {
+    try {
+        return JSON.parse(fs.readFileSync(AUDIT_LOG_FILE, 'utf8'));
+    } catch {
+        return [];
+    }
+}
+
+function saveAuditLog(entries) {
+    fs.writeFileSync(AUDIT_LOG_FILE, JSON.stringify(entries, null, 2), 'utf8');
+}
+
+function addAuditEntry(user, action, target, details = '') {
+    const entries = loadAuditLog();
+    entries.unshift({
+        id: crypto.randomBytes(4).toString('hex'),
+        time: new Date().toISOString(),
+        user: user || 'system',
+        action,
+        target,
+        details
+    });
+    if (entries.length > AUDIT_MAX_ENTRIES) entries.length = AUDIT_MAX_ENTRIES;
+    saveAuditLog(entries);
+}
+
+// ── Metrics Persistence ────────────────────────────────────────
+const METRICS_HISTORY_FILE = path.join(__dirname, 'metrics-history.json');
+const METRICS_HISTORY_MAX = 288; // 24h at 5min intervals
+let persistedMetricsHistory = [];
+
+function loadMetricsHistory() {
+    try {
+        persistedMetricsHistory = JSON.parse(fs.readFileSync(METRICS_HISTORY_FILE, 'utf8'));
+    } catch {
+        persistedMetricsHistory = [];
+    }
+}
+
+function saveMetricsHistory() {
+    try {
+        fs.writeFileSync(METRICS_HISTORY_FILE, JSON.stringify(persistedMetricsHistory), 'utf8');
+    } catch (err) {
+        console.error('Fehler beim Speichern der Metriken:', err.message);
+    }
+}
+
+loadMetricsHistory();
+
+// Persist metrics every 5 minutes
+setInterval(() => {
+    if (metricsHistory.length > 0) {
+        const latest = metricsHistory[metricsHistory.length - 1];
+        persistedMetricsHistory.push(latest);
+        if (persistedMetricsHistory.length > METRICS_HISTORY_MAX) {
+            persistedMetricsHistory = persistedMetricsHistory.slice(-METRICS_HISTORY_MAX);
+        }
+        saveMetricsHistory();
+    }
+}, 5 * 60 * 1000);
+
+// ── Uptime Monitoring ──────────────────────────────────────────
+const uptimeResults = {}; // host -> [{time, latency, status}]
+const UPTIME_HISTORY_SIZE = 60;
+
+function checkUptimeTarget(host) {
+    try {
+        const cmd = IS_WINDOWS
+            ? `ping -n 1 -w 2000 ${host}`
+            : `ping -c 1 -W 2 ${host}`;
+        const start = Date.now();
+        const output = execSync(cmd, { encoding: 'utf8', timeout: 5000 });
+        const latency = Date.now() - start;
+        // Try to parse actual latency from ping output
+        let parsedLatency = latency;
+        const latMatch = output.match(/time[=<](\d+(?:\.\d+)?)\s*ms/i);
+        if (latMatch) parsedLatency = parseFloat(latMatch[1]);
+        return { time: Date.now(), latency: parsedLatency, status: 'up' };
+    } catch {
+        return { time: Date.now(), latency: 0, status: 'down' };
+    }
+}
+
+function runUptimeChecks() {
+    const targets = (config.uptime && config.uptime.targets) || [];
+    for (const target of targets) {
+        if (!uptimeResults[target.host]) uptimeResults[target.host] = [];
+        const result = checkUptimeTarget(target.host);
+        uptimeResults[target.host].push(result);
+        if (uptimeResults[target.host].length > UPTIME_HISTORY_SIZE) {
+            uptimeResults[target.host].shift();
+        }
+    }
+}
+
+const uptimeInterval = (config.uptime && config.uptime.interval) || 60;
+setInterval(runUptimeChecks, uptimeInterval * 1000);
+// Initial check after 5 seconds
+setTimeout(runUptimeChecks, 5000);
+
+// ── Discord Webhook ────────────────────────────────────────────
+function sendWebhook(title, description, color = 0xff0000) {
+    if (!config.webhook || !config.webhook.enabled || !config.webhook.url) return;
+    try {
+        const webhookUrl = new URL(config.webhook.url);
+        const payload = JSON.stringify({
+            embeds: [{
+                title,
+                description,
+                color,
+                timestamp: new Date().toISOString()
+            }]
+        });
+        const options = {
+            hostname: webhookUrl.hostname,
+            port: webhookUrl.port || (webhookUrl.protocol === 'https:' ? 443 : 80),
+            path: webhookUrl.pathname + webhookUrl.search,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            }
+        };
+        const mod = webhookUrl.protocol === 'https:' ? https : http;
+        const req = mod.request(options, (resp) => {
+            resp.resume(); // drain response
+        });
+        req.on('error', (err) => console.error('Webhook-Fehler:', err.message));
+        req.write(payload);
+        req.end();
+    } catch (err) {
+        console.error('Webhook-Fehler:', err.message);
+    }
+}
+
 // ── Login Page ──────────────────────────────────────────────────
 const loginHTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
 const resetPasswordHTML = fs.readFileSync(path.join(__dirname, 'reset-password.html'), 'utf8');
@@ -451,11 +637,22 @@ const server = http.createServer(async (req, res) => {
             const pass = params.get('password') || '';
             const user = findUserByEmail(email);
             if (user && user.status === 'active' && await bcrypt.compare(pass, user.passwordHash)) {
-                const token = createSession(user.id);
-                res.writeHead(302, {
-                    'Set-Cookie': `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
-                    'Location': '/'
-                });
+                const token = crypto.randomBytes(32).toString('hex');
+                if (user.totpSecret) {
+                    // User has 2FA enabled - create pending session
+                    sessions.set(token, { userId: user.id, createdAt: Date.now(), pending2FA: true });
+                    res.writeHead(302, {
+                        'Set-Cookie': `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
+                        'Location': '/login?2fa=1'
+                    });
+                } else {
+                    // No 2FA - create normal session
+                    sessions.set(token, { userId: user.id, createdAt: Date.now() });
+                    res.writeHead(302, {
+                        'Set-Cookie': `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
+                        'Location': '/'
+                    });
+                }
                 return res.end();
             }
             res.writeHead(302, { 'Location': '/login?error=1' });
@@ -521,6 +718,29 @@ const server = http.createServer(async (req, res) => {
             return res.end();
         }
 
+        // 2FA verify during login (before auth check - session is pending)
+        if (method === 'POST' && p === '/api/2fa/verify-login') {
+            const token = getSessionToken(req);
+            if (!token) return json(res, { error: 'Keine Session' }, 401);
+            const session = sessions.get(token);
+            if (!session || !session.pending2FA) return json(res, { error: 'Keine 2FA-Verifizierung ausstehend' }, 400);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            const code = (data.code || '').trim();
+            if (!code) return json(res, { error: 'Code erforderlich' }, 400);
+            const user = findUserById(session.userId);
+            if (!user || !user.totpSecret) {
+                sessions.delete(token);
+                return json(res, { error: 'Benutzer nicht gefunden' }, 400);
+            }
+            if (verifyTOTP(user.totpSecret, code)) {
+                session.pending2FA = false;
+                return json(res, { ok: true });
+            }
+            return json(res, { error: 'Ungueltiger Code' }, 401);
+        }
+
         // All else requires auth
         if (!isValidSession(req)) {
             res.writeHead(302, { 'Location': '/login' });
@@ -542,6 +762,74 @@ const server = http.createServer(async (req, res) => {
             const user = getSessionUser(req);
             if (!user) return json(res, { error: 'Nicht authentifiziert' }, 401);
             return json(res, { id: user.id, name: user.name, email: user.email, role: user.role });
+        }
+
+        // ── 2FA Routes (require auth) ──────────────────────────────
+        if (method === 'GET' && p === '/api/2fa/status') {
+            const user = getSessionUser(req);
+            if (!user) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            return json(res, { enabled: !!user.totpSecret });
+        }
+
+        if (method === 'POST' && p === '/api/2fa/setup') {
+            const user = getSessionUser(req);
+            if (!user) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const secret = new Secret();
+            const totp = createTOTP(secret, user.email);
+            const qrCode = await QRCode.toDataURL(totp.toString());
+            const base32Secret = secret.base32;
+            // Store secret temporarily in session
+            const token = getSessionToken(req);
+            const session = sessions.get(token);
+            if (session) session.pendingTotpSecret = base32Secret;
+            return json(res, { qrCode, secret: base32Secret, manualEntry: totp.toString() });
+        }
+
+        if (method === 'POST' && p === '/api/2fa/confirm-setup') {
+            const user = getSessionUser(req);
+            if (!user) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const token = getSessionToken(req);
+            const session = sessions.get(token);
+            if (!session || !session.pendingTotpSecret) return json(res, { error: 'Kein 2FA-Setup aktiv' }, 400);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            const code = (data.code || '').trim();
+            if (!code) return json(res, { error: 'Code erforderlich' }, 400);
+            if (verifyTOTP(session.pendingTotpSecret, code)) {
+                const users = loadUsers();
+                const u = users.find(u => u.id === user.id);
+                if (u) {
+                    u.totpSecret = session.pendingTotpSecret;
+                    saveUsers(users);
+                }
+                delete session.pendingTotpSecret;
+                addAuditEntry(user.name, '2fa.enable', user.email, '2FA aktiviert');
+                return json(res, { ok: true });
+            }
+            return json(res, { error: 'Ungueltiger Code' }, 400);
+        }
+
+        if (method === 'POST' && p === '/api/2fa/disable') {
+            const user = getSessionUser(req);
+            if (!user) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            if (!user.totpSecret) return json(res, { error: '2FA ist nicht aktiviert' }, 400);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            const code = (data.code || '').trim();
+            if (!code) return json(res, { error: 'Code erforderlich' }, 400);
+            if (verifyTOTP(user.totpSecret, code)) {
+                const users = loadUsers();
+                const u = users.find(u => u.id === user.id);
+                if (u) {
+                    delete u.totpSecret;
+                    saveUsers(users);
+                }
+                addAuditEntry(user.name, '2fa.disable', user.email, '2FA deaktiviert');
+                return json(res, { ok: true });
+            }
+            return json(res, { error: 'Ungueltiger Code' }, 400);
         }
 
         // List all users (admin only)
@@ -581,6 +869,7 @@ const server = http.createServer(async (req, res) => {
             };
             users.push(newUser);
             saveUsers(users);
+            addAuditEntry(me.name, 'user.create', newUser.email, `Role: ${newUser.role}`);
             return json(res, { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role, status: newUser.status }, 201);
         }
 
@@ -620,6 +909,7 @@ const server = http.createServer(async (req, res) => {
             }
 
             saveUsers(users);
+            addAuditEntry(me.name, 'user.update', user.email, `Updated fields: ${Object.keys(data).join(', ')}`);
             return json(res, { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status });
         }
 
@@ -634,8 +924,10 @@ const server = http.createServer(async (req, res) => {
             const users = loadUsers();
             const idx = users.findIndex(u => u.id === targetId);
             if (idx === -1) return json(res, { error: 'User nicht gefunden' }, 404);
+            const deletedUser = users[idx];
             users.splice(idx, 1);
             saveUsers(users);
+            addAuditEntry(me.name, 'user.delete', deletedUser.email, `Deleted user: ${deletedUser.name}`);
 
             // Invalidate sessions for deleted user
             for (const [token, session] of sessions) {
@@ -826,6 +1118,7 @@ const server = http.createServer(async (req, res) => {
             controlBot(bot.service, action);
 
             const actionUser = getSessionUser(req);
+            addAuditEntry(actionUser ? actionUser.name : 'Unknown', `bot.${action}`, bot.name, `Service: ${bot.service}`);
             addDeployment({
                 type: action,
                 bot: bot.name,
@@ -888,6 +1181,447 @@ const server = http.createServer(async (req, res) => {
             return json(res, { ports });
         }
 
+        // ── Audit Log Route ─────────────────────────────────────
+        if (method === 'GET' && p === '/api/audit-log') {
+            const me = getSessionUser(req);
+            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit')) || 100), 500);
+            const entries = loadAuditLog().slice(0, limit);
+            return json(res, { entries });
+        }
+
+        // ── File Browser Routes ────────────────────────────────
+        const FILE_BASE = IS_WINDOWS ? process.cwd() : '/home/ubuntu';
+
+        function resolveSafePath(requestedPath) {
+            const resolved = path.resolve(FILE_BASE, requestedPath || '');
+            if (!resolved.startsWith(FILE_BASE)) return null;
+            return resolved;
+        }
+
+        if (method === 'GET' && p === '/api/files') {
+            const me = getSessionUser(req);
+            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const reqPath = url.searchParams.get('path') || FILE_BASE;
+            const safePath = resolveSafePath(reqPath);
+            if (!safePath) return json(res, { error: 'Zugriff verweigert' }, 403);
+            try {
+                const items = fs.readdirSync(safePath);
+                const entries = [];
+                for (const name of items) {
+                    try {
+                        const fullPath = path.join(safePath, name);
+                        const stat = fs.statSync(fullPath);
+                        entries.push({
+                            name,
+                            type: stat.isDirectory() ? 'dir' : 'file',
+                            size: stat.size,
+                            modified: stat.mtime.toISOString(),
+                            permissions: (stat.mode & 0o777).toString(8)
+                        });
+                    } catch { /* skip inaccessible entries */ }
+                }
+                return json(res, { entries, currentPath: safePath });
+            } catch (err) {
+                return json(res, { error: 'Verzeichnis nicht lesbar', details: err.message }, 400);
+            }
+        }
+
+        if (method === 'GET' && p === '/api/files/read') {
+            const me = getSessionUser(req);
+            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const reqPath = url.searchParams.get('path') || '';
+            const safePath = resolveSafePath(reqPath);
+            if (!safePath) return json(res, { error: 'Zugriff verweigert' }, 403);
+            try {
+                const stat = fs.statSync(safePath);
+                if (stat.size > 1024 * 1024) return json(res, { error: 'Datei zu gross (max 1MB)' }, 400);
+                if (stat.isDirectory()) return json(res, { error: 'Ist ein Verzeichnis' }, 400);
+                const content = fs.readFileSync(safePath, 'utf8');
+                return json(res, { content, path: safePath, size: stat.size });
+            } catch (err) {
+                return json(res, { error: 'Datei nicht lesbar', details: err.message }, 400);
+            }
+        }
+
+        if (method === 'POST' && p === '/api/files/write') {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            if (!data.path || typeof data.content !== 'string') return json(res, { error: 'path und content erforderlich' }, 400);
+            const safePath = resolveSafePath(data.path);
+            if (!safePath) return json(res, { error: 'Zugriff verweigert' }, 403);
+            try {
+                fs.writeFileSync(safePath, data.content, 'utf8');
+                addAuditEntry(me.name, 'file.write', safePath, `${data.content.length} Bytes geschrieben`);
+                return json(res, { ok: true });
+            } catch (err) {
+                return json(res, { error: 'Schreiben fehlgeschlagen', details: err.message }, 500);
+            }
+        }
+
+        if (method === 'POST' && p === '/api/files/mkdir') {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            if (!data.path) return json(res, { error: 'path erforderlich' }, 400);
+            const safePath = resolveSafePath(data.path);
+            if (!safePath) return json(res, { error: 'Zugriff verweigert' }, 403);
+            try {
+                fs.mkdirSync(safePath, { recursive: true });
+                addAuditEntry(me.name, 'file.mkdir', safePath);
+                return json(res, { ok: true });
+            } catch (err) {
+                return json(res, { error: 'Erstellen fehlgeschlagen', details: err.message }, 500);
+            }
+        }
+
+        if (method === 'POST' && p === '/api/files/delete') {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            if (!data.path) return json(res, { error: 'path erforderlich' }, 400);
+            const safePath = resolveSafePath(data.path);
+            if (!safePath) return json(res, { error: 'Zugriff verweigert' }, 403);
+            try {
+                const stat = fs.statSync(safePath);
+                if (stat.isDirectory()) {
+                    fs.rmSync(safePath, { recursive: true });
+                } else {
+                    fs.unlinkSync(safePath);
+                }
+                addAuditEntry(me.name, 'file.delete', safePath);
+                return json(res, { ok: true });
+            } catch (err) {
+                return json(res, { error: 'Loeschen fehlgeschlagen', details: err.message }, 500);
+            }
+        }
+
+        // ── Env Variables Routes ───────────────────────────────
+        const envGetMatch = p.match(/^\/api\/bots\/([\w-]+)\/env$/);
+        if (method === 'GET' && envGetMatch) {
+            const me = getSessionUser(req);
+            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const bot = config.bots.find(b => b.id === envGetMatch[1]);
+            if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
+            const envPath = path.resolve(__dirname, '..', 'bots', bot.service, '.env');
+            try {
+                const content = fs.readFileSync(envPath, 'utf8');
+                const vars = content.split('\n')
+                    .filter(line => line.trim() && !line.trim().startsWith('#'))
+                    .map(line => {
+                        const eqIdx = line.indexOf('=');
+                        if (eqIdx === -1) return null;
+                        return { key: line.substring(0, eqIdx).trim(), value: line.substring(eqIdx + 1).trim() };
+                    })
+                    .filter(Boolean);
+                return json(res, { vars });
+            } catch {
+                return json(res, { vars: [] });
+            }
+        }
+
+        if (method === 'POST' && envGetMatch) {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const bot = config.bots.find(b => b.id === envGetMatch[1]);
+            if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            if (!Array.isArray(data.vars)) return json(res, { error: 'vars Array erforderlich' }, 400);
+            const envPath = path.resolve(__dirname, '..', 'bots', bot.service, '.env');
+            const content = data.vars.map(v => `${v.key}=${v.value}`).join('\n') + '\n';
+            try {
+                fs.writeFileSync(envPath, content, 'utf8');
+                addAuditEntry(me.name, 'env.update', bot.name, `${data.vars.length} Variablen aktualisiert`);
+                return json(res, { ok: true });
+            } catch (err) {
+                return json(res, { error: 'Env schreiben fehlgeschlagen', details: err.message }, 500);
+            }
+        }
+
+        // ── Docker Routes ──────────────────────────────────────
+        if (method === 'GET' && p === '/api/docker/containers') {
+            try {
+                const raw = execSync("docker ps -a --format '{{json .}}'", { encoding: 'utf8', timeout: 10000 });
+                const containers = raw.trim().split('\n').filter(Boolean).map(line => {
+                    try {
+                        const c = JSON.parse(line);
+                        return {
+                            id: c.ID,
+                            name: c.Names,
+                            image: c.Image,
+                            status: c.Status,
+                            state: c.State,
+                            ports: c.Ports,
+                            created: c.CreatedAt
+                        };
+                    } catch { return null; }
+                }).filter(Boolean);
+                return json(res, { containers });
+            } catch {
+                return json(res, { containers: [] });
+            }
+        }
+
+        const dockerActionMatch = p.match(/^\/api\/docker\/containers\/([\w]+)\/(start|stop|restart)$/);
+        if (method === 'POST' && dockerActionMatch) {
+            const me = getSessionUser(req);
+            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const containerId = dockerActionMatch[1];
+            const dockerAction = dockerActionMatch[2];
+            if (!/^[\w]+$/.test(containerId)) return json(res, { error: 'Ungueltige Container ID' }, 400);
+            try {
+                execSync(`docker ${dockerAction} ${containerId}`, { encoding: 'utf8', timeout: 30000 });
+                addAuditEntry(me.name, `docker.${dockerAction}`, containerId);
+                return json(res, { ok: true });
+            } catch (err) {
+                return json(res, { error: 'Docker Aktion fehlgeschlagen', details: err.message }, 500);
+            }
+        }
+
+        const dockerLogsMatch = p.match(/^\/api\/docker\/containers\/([\w]+)\/logs$/);
+        if (method === 'GET' && dockerLogsMatch) {
+            const containerId = dockerLogsMatch[1];
+            if (!/^[\w]+$/.test(containerId)) return json(res, { error: 'Ungueltige Container ID' }, 400);
+            const lines = Math.min(Math.max(1, parseInt(url.searchParams.get('lines')) || 100), 1000);
+            try {
+                const logs = execSync(`docker logs --tail ${lines} ${containerId} 2>&1`, { encoding: 'utf8', timeout: 10000 });
+                return json(res, { logs });
+            } catch {
+                return json(res, { logs: 'Keine Logs verfuegbar' });
+            }
+        }
+
+        // ── Firewall Route ─────────────────────────────────────
+        if (method === 'GET' && p === '/api/firewall') {
+            try {
+                const raw = execSync('sudo ufw status numbered 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
+                const lines = raw.trim().split('\n');
+                const statusLine = lines.find(l => l.startsWith('Status:'));
+                const status = statusLine ? statusLine.split(':')[1].trim() : 'unknown';
+                const rules = [];
+                for (const line of lines) {
+                    const match = line.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT|LIMIT)\s+(IN|OUT)?\s*(.*)$/i);
+                    if (match) {
+                        rules.push({
+                            number: parseInt(match[1]),
+                            to: match[2].trim(),
+                            action: match[3],
+                            direction: match[4] || 'IN',
+                            from: match[5].trim()
+                        });
+                    }
+                }
+                return json(res, { rules, status });
+            } catch {
+                return json(res, { rules: [], status: IS_WINDOWS ? 'not available on Windows' : 'error' });
+            }
+        }
+
+        // ── Cron Route ─────────────────────────────────────────
+        if (method === 'GET' && p === '/api/cron') {
+            const jobs = [];
+            try {
+                const userCron = execSync('crontab -l 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
+                for (const line of userCron.trim().split('\n')) {
+                    if (line.trim() && !line.trim().startsWith('#')) {
+                        const parts = line.trim().split(/\s+/);
+                        if (parts.length >= 6) {
+                            jobs.push({ schedule: parts.slice(0, 5).join(' '), command: parts.slice(5).join(' '), user: 'current' });
+                        }
+                    }
+                }
+            } catch { /* no user crontab */ }
+            try {
+                const rootCron = execSync('sudo crontab -l 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
+                for (const line of rootCron.trim().split('\n')) {
+                    if (line.trim() && !line.trim().startsWith('#')) {
+                        const parts = line.trim().split(/\s+/);
+                        if (parts.length >= 6) {
+                            jobs.push({ schedule: parts.slice(0, 5).join(' '), command: parts.slice(5).join(' '), user: 'root' });
+                        }
+                    }
+                }
+            } catch { /* no root crontab */ }
+            return json(res, { jobs });
+        }
+
+        // ── Backup Routes ──────────────────────────────────────
+        if (method === 'GET' && p === '/api/backups') {
+            const backupDir = (config.backups && config.backups.directory) || '/home/ubuntu/backups';
+            try {
+                const items = fs.readdirSync(backupDir);
+                const backups = items.map(name => {
+                    try {
+                        const stat = fs.statSync(path.join(backupDir, name));
+                        return {
+                            name,
+                            size: stat.size,
+                            date: stat.mtime.toISOString(),
+                            type: name.endsWith('.tar.gz') ? 'tar.gz' : path.extname(name).replace('.', '') || 'unknown'
+                        };
+                    } catch { return null; }
+                }).filter(Boolean);
+                return json(res, { backups });
+            } catch {
+                return json(res, { backups: [] });
+            }
+        }
+
+        if (method === 'POST' && p === '/api/backups/create') {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const body = await parseBody(req);
+            let data = {};
+            try { data = JSON.parse(body); } catch { /* use defaults */ }
+            const backupDir = (config.backups && config.backups.directory) || '/home/ubuntu/backups';
+            const name = (data.name && /^[\w.-]+$/.test(data.name) ? data.name : `backup-${Date.now()}`) + '.tar.gz';
+            const backupPath = path.join(backupDir, name);
+            try {
+                execSync(`mkdir -p ${backupDir}`, { timeout: 5000 });
+                execSync(`tar -czf ${backupPath} /home/ubuntu/bots/ 2>/dev/null`, { timeout: 120000 });
+                const stat = fs.statSync(backupPath);
+                const backup = { name, size: stat.size, date: stat.mtime.toISOString(), type: 'tar.gz' };
+                addAuditEntry(me.name, 'backup.create', name, `${stat.size} Bytes`);
+                return json(res, { ok: true, backup });
+            } catch (err) {
+                return json(res, { error: 'Backup fehlgeschlagen', details: err.message }, 500);
+            }
+        }
+
+        if (method === 'POST' && p === '/api/backups/delete') {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            if (!data.name || !/^[\w.-]+$/.test(data.name)) return json(res, { error: 'Ungueltiger Backup-Name' }, 400);
+            const backupDir = (config.backups && config.backups.directory) || '/home/ubuntu/backups';
+            const backupPath = path.join(backupDir, data.name);
+            // Prevent path traversal
+            if (!backupPath.startsWith(backupDir)) return json(res, { error: 'Zugriff verweigert' }, 403);
+            try {
+                fs.unlinkSync(backupPath);
+                addAuditEntry(me.name, 'backup.delete', data.name);
+                return json(res, { ok: true });
+            } catch (err) {
+                return json(res, { error: 'Loeschen fehlgeschlagen', details: err.message }, 500);
+            }
+        }
+
+        // ── Webhook Settings Routes ────────────────────────────
+        if (method === 'GET' && p === '/api/settings/webhook') {
+            const me = getSessionUser(req);
+            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            return json(res, { url: config.webhook ? config.webhook.url : '', enabled: config.webhook ? config.webhook.enabled : false });
+        }
+
+        if (method === 'POST' && p === '/api/settings/webhook') {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            if (!config.webhook) config.webhook = {};
+            if (typeof data.url === 'string') config.webhook.url = data.url;
+            if (typeof data.enabled === 'boolean') config.webhook.enabled = data.enabled;
+            saveConfig();
+            addAuditEntry(me.name, 'settings.webhook', 'webhook', `Enabled: ${config.webhook.enabled}`);
+            return json(res, { ok: true });
+        }
+
+        // ── SSL Check Route ────────────────────────────────────
+        if (method === 'GET' && p === '/api/ssl-check') {
+            const host = url.searchParams.get('host') || '';
+            if (!host || !/^[\w.-]+$/.test(host)) return json(res, { error: 'Ungueltiger Hostname' }, 400);
+            try {
+                const raw = execSync(`echo | openssl s_client -connect ${host}:443 -servername ${host} 2>/dev/null | openssl x509 -noout -dates -issuer`, { encoding: 'utf8', timeout: 10000 });
+                let issuer = '', notBefore = '', notAfter = '';
+                for (const line of raw.trim().split('\n')) {
+                    if (line.startsWith('issuer=')) issuer = line.replace('issuer=', '').trim();
+                    if (line.startsWith('notBefore=')) notBefore = line.replace('notBefore=', '').trim();
+                    if (line.startsWith('notAfter=')) notAfter = line.replace('notAfter=', '').trim();
+                }
+                const expires = notAfter ? new Date(notAfter) : null;
+                const daysLeft = expires ? Math.floor((expires.getTime() - Date.now()) / 86400000) : 0;
+                return json(res, { valid: daysLeft > 0, issuer, expires: notAfter, daysLeft, error: null });
+            } catch (err) {
+                return json(res, { valid: false, issuer: null, expires: null, daysLeft: 0, error: IS_WINDOWS ? 'Nicht verfuegbar auf Windows' : err.message });
+            }
+        }
+
+        // ── Uptime Route ───────────────────────────────────────
+        if (method === 'GET' && p === '/api/uptime') {
+            const targets = (config.uptime && config.uptime.targets) || [];
+            const checks = targets.map(t => {
+                const results = uptimeResults[t.host] || [];
+                const upCount = results.filter(r => r.status === 'up').length;
+                const uptimePercent = results.length > 0 ? ((upCount / results.length) * 100).toFixed(1) : 0;
+                const upResults = results.filter(r => r.status === 'up');
+                const avgLatency = upResults.length > 0 ? (upResults.reduce((s, r) => s + r.latency, 0) / upResults.length).toFixed(1) : 0;
+                const last = results.length > 0 ? results[results.length - 1] : null;
+                return {
+                    name: t.name,
+                    host: t.host,
+                    latency: last ? last.latency : 0,
+                    status: last ? last.status : 'unknown',
+                    uptimePercent: parseFloat(uptimePercent),
+                    avgLatency: parseFloat(avgLatency),
+                    lastCheck: last ? new Date(last.time).toISOString() : null
+                };
+            });
+            return json(res, { checks, history: uptimeResults });
+        }
+
+        // ── Crash Recovery Routes ──────────────────────────────
+        const recoveryGetMatch = p.match(/^\/api\/bots\/([\w-]+)\/recovery$/);
+        if (method === 'GET' && recoveryGetMatch) {
+            const me = getSessionUser(req);
+            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            const bot = config.bots.find(b => b.id === recoveryGetMatch[1]);
+            if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
+            return json(res, bot.recovery || { enabled: true, maxRestarts: 5, restartDelay: 3, backoff: 'exponential', healthCheckUrl: null });
+        }
+
+        if (method === 'POST' && recoveryGetMatch) {
+            const me = getSessionUser(req);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
+            const bot = config.bots.find(b => b.id === recoveryGetMatch[1]);
+            if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
+            const body = await parseBody(req);
+            let data;
+            try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
+            bot.recovery = {
+                enabled: typeof data.enabled === 'boolean' ? data.enabled : true,
+                maxRestarts: parseInt(data.maxRestarts) || 5,
+                restartDelay: parseInt(data.restartDelay) || 3,
+                backoff: ['linear', 'exponential', 'fixed'].includes(data.backoff) ? data.backoff : 'exponential',
+                healthCheckUrl: data.healthCheckUrl || null
+            };
+            saveConfig();
+            addAuditEntry(me.name, 'recovery.update', bot.name, JSON.stringify(bot.recovery));
+            return json(res, { ok: true });
+        }
+
+        // ── Long-term Metrics Route ────────────────────────────
+        if (method === 'GET' && p === '/api/metrics/history') {
+            const range = url.searchParams.get('range') || '24h';
+            let cutoff = Date.now();
+            if (range === '1h') cutoff -= 60 * 60 * 1000;
+            else if (range === '6h') cutoff -= 6 * 60 * 60 * 1000;
+            else cutoff -= 24 * 60 * 60 * 1000;
+            const filtered = persistedMetricsHistory.filter(m => m.time >= cutoff);
+            return json(res, { metrics: filtered });
+        }
+
         // ── Static Files / SPA ──────────────────────────────────
 
         // Serve static files from public/
@@ -916,3 +1650,120 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => console.log(`Dashboard laeuft auf Port ${PORT}`));
+
+// ── WebSocket SSH Terminal ───────────────────────────────────────
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', (ws, req) => {
+    // Auth check: parse session cookie from upgrade request
+    const cookie = req.headers.cookie || '';
+    const sessionMatch = cookie.match(/session=([a-f0-9]+)/);
+    if (!sessionMatch) {
+        ws.close(4001, 'Nicht authentifiziert');
+        return;
+    }
+    const session = sessions.get(sessionMatch[1]);
+    if (!session || session.pending2FA) {
+        ws.close(4001, 'Ungueltige Session');
+        return;
+    }
+
+    // Parse target server from URL query: ws://host/terminal?server=oracle-prod-01
+    const wsUrl = new URL(req.url, `http://localhost:${PORT}`);
+    const serverId = wsUrl.searchParams.get('server');
+    const srv = config.servers.find(s => s.id === serverId);
+
+    if (!srv) {
+        ws.close(4002, 'Server nicht gefunden');
+        return;
+    }
+
+    // For local server, use localhost SSH
+    const sshConfig = {
+        host: srv.isLocal ? '127.0.0.1' : srv.host,
+        port: 22,
+        username: srv.user || 'ubuntu',
+        // Try agent auth first (SSH_AUTH_SOCK), then key-based
+        agent: process.env.SSH_AUTH_SOCK || undefined,
+        privateKey: undefined,
+    };
+
+    // Try to load SSH key
+    const keyPaths = [
+        path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', 'id_rsa'),
+        path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', 'id_ed25519'),
+    ];
+    for (const keyPath of keyPaths) {
+        try {
+            sshConfig.privateKey = fs.readFileSync(keyPath);
+            break;
+        } catch {}
+    }
+
+    if (!sshConfig.agent && !sshConfig.privateKey) {
+        ws.send(JSON.stringify({ type: 'error', data: 'Kein SSH-Key gefunden. Bitte SSH-Key unter ~/.ssh/ ablegen.' }));
+        ws.close(4003, 'Kein SSH-Key');
+        return;
+    }
+
+    const ssh = new SSHClient();
+    let stream = null;
+
+    ssh.on('ready', () => {
+        ws.send(JSON.stringify({ type: 'status', data: 'connected' }));
+
+        ssh.shell({ term: 'xterm-256color', cols: 120, rows: 30 }, (err, s) => {
+            if (err) {
+                ws.send(JSON.stringify({ type: 'error', data: err.message }));
+                ws.close();
+                return;
+            }
+            stream = s;
+
+            stream.on('data', (data) => {
+                if (ws.readyState === 1) {
+                    ws.send(JSON.stringify({ type: 'data', data: data.toString('utf8') }));
+                }
+            });
+
+            stream.on('close', () => {
+                ws.close();
+            });
+
+            stream.stderr.on('data', (data) => {
+                if (ws.readyState === 1) {
+                    ws.send(JSON.stringify({ type: 'data', data: data.toString('utf8') }));
+                }
+            });
+        });
+    });
+
+    ssh.on('error', (err) => {
+        ws.send(JSON.stringify({ type: 'error', data: 'SSH-Verbindung fehlgeschlagen: ' + err.message }));
+        ws.close();
+    });
+
+    ws.on('message', (msg) => {
+        try {
+            const parsed = JSON.parse(msg);
+            if (parsed.type === 'data' && stream) {
+                stream.write(parsed.data);
+            } else if (parsed.type === 'resize' && stream) {
+                stream.setWindow(parsed.rows, parsed.cols, 0, 0);
+            }
+        } catch {}
+    });
+
+    ws.on('close', () => {
+        if (stream) stream.close();
+        ssh.end();
+    });
+
+    ssh.connect(sshConfig);
+
+    // Add audit entry
+    const user = findUserById(session.userId);
+    addAuditEntry(user ? user.name : 'Unknown', 'ssh_connect', srv.name, `Terminal-Verbindung zu ${srv.host}`);
+});
+
+console.log('WebSocket SSH-Terminal bereit');
