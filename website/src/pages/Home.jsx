@@ -43,7 +43,7 @@ export default function Home() {
             discordId: '1488966705488330932',
             avatarHash: '96e1cfe3af1b12407f702d356d916038',
             tags: ['Fun', 'Sounds', 'Dashboard'],
-            highlights: ['Custom Upload', 'Web Dashboard', '10 Kategorien', 'Favoriten'],
+            highlights: ['Custom Upload', 'Web Dashboard', t('soundboardBot.features.categories'), t('soundboardBot.features.favorites')],
             path: '/bots/soundboard-bot', inviteUrl: SOUNDBOARD_INVITE,
         },
         {

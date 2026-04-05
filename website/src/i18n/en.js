@@ -1,4 +1,20 @@
 export default {
+    musicPlayer: {
+        nowPlaying: 'Now Playing',
+        preview: 'Preview',
+        live: 'Live',
+        offline: 'Offline',
+        noSong: 'No song',
+        waitingForPlayback: 'Waiting for playback...',
+        queue: 'Queue',
+        unknown: 'Unknown',
+    },
+    notFound: {
+        title: 'Page not found',
+        subtitle: 'The page you are looking for does not exist or has been moved.',
+        home: 'Home',
+        back: 'Go back',
+    },
     nav: {
         bots: 'Bots',
         commands: 'Commands',
@@ -162,6 +178,7 @@ export default {
             volume: 'Set personal volume.',
         },
         screenshots: ['Soundboard Panel', 'Web Dashboard', 'Sound Upload', 'Favorites'],
+        categories: ['General', 'Memes', 'Music', 'Sound Effects', 'Speech', 'Animals', 'Games', 'Movies & Series', 'Alerts', 'Ambient'],
     },
     commands: {
         title: 'Commands',

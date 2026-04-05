@@ -404,6 +404,16 @@ function getMostPlayedInGuild(guildId, days = 30, limit = 20) {
   );
 }
 
+function getMostPlayedGlobal(days = 30, limit = 12) {
+  return getAll(
+    `SELECT track_title, track_url, artist, thumbnail, duration, COUNT(*) as play_count
+     FROM listening_history
+     WHERE played_at >= datetime('now', :days) AND artist IS NOT NULL
+     GROUP BY track_url ORDER BY play_count DESC LIMIT :limit`,
+    { ':days': `-${days} days`, ':limit': limit }
+  );
+}
+
 module.exports = {
   init,
   save,
@@ -432,4 +442,5 @@ module.exports = {
   // Stats
   getTopArtistsFromHistory,
   getMostPlayedInGuild,
+  getMostPlayedGlobal,
 };

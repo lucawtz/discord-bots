@@ -73,7 +73,7 @@ export default function Premium() {
                             </Stack>
                             <Button fullWidth variant="contained" disabled
                                 sx={{ mt: 4, background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff', '&.Mui-disabled': { color: 'rgba(255,255,255,0.5)' } }}>
-                                Coming Soon
+                                {t('bots.comingSoon')}
                             </Button>
                         </CardContent>
                     </Card>

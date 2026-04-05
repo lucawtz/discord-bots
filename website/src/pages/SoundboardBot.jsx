@@ -22,10 +22,10 @@ const fadeInUp = keyframes`
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const categories = ['Allgemein', 'Memes', 'Musik', 'Soundeffekte', 'Sprache', 'Tiere', 'Spiele', 'Filme & Serien', 'Alerts', 'Ambient'];
-
 export default function SoundboardBot() {
     const { t } = useLanguage();
+
+    const categories = t('soundboardBot.categories');
 
     const features = [
         { icon: <LibraryMusicIcon />, title: t('soundboardBot.features.library'), text: t('soundboardBot.features.libraryText') },
@@ -82,7 +82,7 @@ export default function SoundboardBot() {
             <Box sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 5, px: 3 }}>
                 <Container maxWidth="md">
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent="center">
-                        {categories.map((c) => (
+                        {(Array.isArray(categories) ? categories : []).map((c) => (
                             <Chip key={c} label={c} size="small" sx={{ bgcolor: 'rgba(168,85,247,0.08)', color: 'primary.light', fontSize: '0.7rem' }} />
                         ))}
                     </Stack>

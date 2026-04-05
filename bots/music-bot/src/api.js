@@ -13,7 +13,7 @@ function startAPI(ctx, client) {
     const apiKey = process.env.API_KEY || '';
 
     // ── Rate Limiting ────────────────────────────────────────────
-    const isApiLimited = createRateLimiter(100, 60_000);
+    const isApiLimited = createRateLimiter(150, 60_000);
     const isSearchLimited = createRateLimiter(20, 60_000);
     const isAuthLimited = createRateLimiter(5, 15 * 60_000);
 
@@ -382,7 +382,8 @@ function startAPI(ctx, client) {
             // ── Geschuetzte API-Endpunkte ────────────────────────
             if (urlPath.startsWith('/api/')) {
                 if (urlPath.includes('/search') && isSearchLimited(clientIp)) return json(res, { error: 'Zu viele Suchanfragen.' }, 429);
-                if (isApiLimited(clientIp)) return json(res, { error: 'Zu viele Anfragen.' }, 429);
+                // Discover endpoints are cached client-side, don't count against rate limit
+                if (!urlPath.startsWith('/api/discover/') && isApiLimited(clientIp)) return json(res, { error: 'Zu viele Anfragen.' }, 429);
 
                 const auth = authenticateRequest(req);
                 if (!auth) return json(res, { error: 'Nicht authentifiziert. Nutze /app in Discord für einen Zugangs-Code.' }, 401);
@@ -414,27 +415,195 @@ function startAPI(ctx, client) {
 
                 // ── Discover Endpoints ─────────────────────────────
 
-                // GET /api/discover/trending
+                // GET /api/discover/trending — Trending songs via Spotify search
                 if (method === 'GET' && urlPath === '/api/discover/trending') {
+                    const genreFilter = url.searchParams.get('genre') || 'all';
+                    const langFilter = url.searchParams.get('lang') || 'all';
+
+                    const allArtists = {
+                        pop: ['Sabrina Carpenter', 'Billie Eilish', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande', 'Olivia Rodrigo', 'Charli XCX', 'Tyla', 'Chappell Roan'],
+                        hiphop: ['Kendrick Lamar', 'Travis Scott', 'Drake', 'Future', 'Metro Boomin', 'Central Cee', 'Lil Baby', 'Playboi Carti', 'Don Toliver'],
+                        rnb: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean', 'Daniel Caesar', 'Brent Faiyaz'],
+                        rock: ['Maneskin', 'Linkin Park', 'Imagine Dragons', 'Arctic Monkeys', 'Twenty One Pilots', 'Green Day'],
+                        electronic: ['Fred again..', 'Calvin Harris', 'David Guetta', 'Peggy Gou', 'Tiesto', 'Robin Schulz'],
+                        latin: ['Bad Bunny', 'Peso Pluma', 'Feid', 'Rauw Alejandro', 'Karol G', 'Ozuna'],
+                        kpop: ['BLACKPINK', 'BTS', 'Stray Kids', 'NewJeans', 'aespa', 'TWICE', 'IVE'],
+                    };
+
+                    // Language-specific artist pools
+                    const langArtists = {
+                        de: ['Apache 207', 'Luciano', 'Pashanim', 'Shirin David', 'Nina Chuba', 'Capital Bra', 'Cro', 'RIN', 'Ufo361', 'Kontra K'],
+                        en: ['Sabrina Carpenter', 'Billie Eilish', 'The Weeknd', 'Drake', 'Kendrick Lamar', 'Dua Lipa', 'SZA', 'Post Malone'],
+                        es: ['Bad Bunny', 'Peso Pluma', 'Feid', 'Rauw Alejandro', 'Karol G', 'Ozuna', 'Maluma', 'J Balvin'],
+                        fr: ['Aya Nakamura', 'Ninho', 'Jul', 'Stromae', 'Indila', 'Angele'],
+                        ko: ['BLACKPINK', 'BTS', 'Stray Kids', 'NewJeans', 'aespa', 'TWICE', 'IVE', 'ENHYPEN'],
+                        tr: ['Tarkan', 'Mero', 'Enes Batur', 'Murda', 'Ezhel', 'Sagopa Kajmer', 'Ben Fero'],
+                    };
+
+                    // Build artist list based on filters
+                    let pool;
+                    if (langFilter !== 'all' && langArtists[langFilter]) {
+                        pool = langArtists[langFilter];
+                    } else if (genreFilter !== 'all' && allArtists[genreFilter]) {
+                        pool = allArtists[genreFilter];
+                    } else {
+                        // Mix from all genres
+                        const seed = Date.now() / 3600000 | 0;
+                        pool = Object.values(allArtists).map((artists, gi) => artists[(seed + gi * 7) % artists.length]);
+                    }
+
+                    // Pick up to 8 artists
+                    const seed = Date.now() / 3600000 | 0;
+                    const picks = [...pool].sort((a, b) => Math.sin(seed + a.length) - Math.sin(seed + b.length)).slice(0, 8);
+
                     try {
-                        const tracks = await ctx.searchTracks(`trending music ${new Date().getFullYear()}`, 10);
+                        const results = await Promise.allSettled(
+                            picks.map(artist =>
+                                ctx.spotifyFetch(`/search?q=${encodeURIComponent(artist)}&type=track&limit=4&market=DE`)
+                            )
+                        );
+
+                        const seen = new Set();
+                        const tracks = [];
+                        for (const r of results) {
+                            if (r.status !== 'fulfilled') continue;
+                            for (const t of (r.value.tracks?.items || [])) {
+                                if (seen.has(t.id)) continue;
+                                seen.add(t.id);
+                                tracks.push({
+                                    title: t.name,
+                                    artist: t.artists?.map(a => a.name).join(', ') || '',
+                                    thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
+                                    duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
+                                    url: `${t.artists?.[0]?.name || ''} ${t.name}`,
+                                    popularity: t.popularity,
+                                    source: 'spotify',
+                                });
+                            }
+                        }
+                        // Sort by popularity (most popular first)
+                        tracks.sort((a, b) => b.popularity - a.popularity);
+                        if (tracks.length > 0) return json(res, tracks.slice(0, 15));
+                        throw new Error('No popular tracks found');
+                    } catch (err) {
+                        console.error('Spotify trending failed:', err.message);
+                        try {
+                            const results = await Promise.allSettled(
+                                picks.slice(0, 4).map(a => ctx.searchTracks(a, 3))
+                            );
+                            return json(res, results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).slice(0, 12));
+                        } catch { return json(res, []); }
+                    }
+                }
+
+                // GET /api/discover/sections — Genre/mood sections like Spotify home
+                if (method === 'GET' && urlPath === '/api/discover/sections') {
+                    const genreFilter = url.searchParams.get('genre') || 'all';
+                    const langFilter = url.searchParams.get('lang') || 'all';
+
+                    const allSections = [
+                        { title: 'Pop Hits', query: 'pop hits 2025', genre: 'pop' },
+                        { title: 'Hip-Hop', query: 'hip hop rap trending', genre: 'hiphop' },
+                        { title: 'Chill Vibes', query: 'chill lofi relaxing', genre: 'electronic' },
+                        { title: 'Deutsch Rap', query: 'deutsch rap neue songs', lang: 'de' },
+                        { title: 'Party', query: 'party dance hits', genre: 'electronic' },
+                        { title: 'R&B & Soul', query: 'rnb soul smooth', genre: 'rnb' },
+                        { title: 'Rock & Indie', query: 'rock indie alternative', genre: 'rock' },
+                        { title: 'Latin Hits', query: 'reggaeton latin hits', genre: 'latin' },
+                        { title: 'K-Pop', query: 'kpop korean pop hits', genre: 'kpop' },
+                        { title: 'Deutsche Hits', query: 'deutsche pop hits', lang: 'de' },
+                        { title: 'Tuerkische Hits', query: 'turkish pop hits muzik', lang: 'tr' },
+                        { title: 'French Pop', query: 'french pop hits chanson', lang: 'fr' },
+                        { title: 'Reggaeton', query: 'reggaeton perreo nuevo', lang: 'es' },
+                    ];
+
+                    // Filter sections by active genre/lang
+                    let sections = allSections;
+                    if (genreFilter !== 'all') sections = sections.filter(s => s.genre === genreFilter);
+                    if (langFilter !== 'all') sections = sections.filter(s => s.lang === langFilter || (!s.lang && langFilter === 'en'));
+                    if (sections.length === 0) sections = allSections; // fallback
+
+                    // Pick 4 sections
+                    const hour = new Date().getHours();
+                    const offset = (hour * 2) % sections.length;
+                    const picked = [];
+                    for (let i = 0; i < Math.min(4, sections.length); i++) picked.push(sections[(offset + i) % sections.length]);
+
+                    try {
+                        const results = await Promise.allSettled(
+                            picked.map(s =>
+                                ctx.spotifyFetch(`/search?q=${encodeURIComponent(s.query)}&type=track&limit=6&market=DE`)
+                                    .then(data => ({
+                                        title: s.title,
+                                        icon: s.icon,
+                                        tracks: (data.tracks?.items || []).map(t => ({
+                                            title: t.name,
+                                            artist: t.artists?.map(a => a.name).join(', ') || '',
+                                            thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
+                                            duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
+                                            url: `${t.artists?.[0]?.name || ''} ${t.name}`,
+                                        })),
+                                    }))
+                            )
+                        );
+                        return json(res, results.filter(r => r.status === 'fulfilled').map(r => r.value).filter(s => s.tracks.length > 0));
+                    } catch { return json(res, []); }
+                }
+
+                // GET /api/discover/new-releases — New songs via Spotify search (sorted by recent)
+                if (method === 'GET' && urlPath === '/api/discover/new-releases') {
+                    try {
+                        const langFilter = url.searchParams.get('lang') || 'all';
+                        const genreFilter = url.searchParams.get('genre') || 'all';
+                        const year = new Date().getFullYear();
+                        const langKeywords = { de: ' deutsch german', es: ' spanish latin', fr: ' french', ko: ' korean kpop', tr: ' turkish' };
+                        const genreKeywords = { pop: ' pop', hiphop: ' hip hop rap', rnb: ' rnb', rock: ' rock', electronic: ' electronic dance', latin: ' latin reggaeton', kpop: ' kpop korean' };
+                        const extra = (langKeywords[langFilter] || '') + (genreKeywords[genreFilter] || '');
+                        const data = await ctx.spotifyFetch(`/search?q=${encodeURIComponent(`tag:new year:${year}${extra}`)}&type=track&limit=12&market=DE`);
+                        const tracks = (data.tracks?.items || [])
+                            .filter(t => (t.popularity || 0) >= 40)
+                            .map(t => ({
+                                id: t.id,
+                                name: t.name,
+                                artist: t.artists?.map(a => a.name).join(', ') || '',
+                                image: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
+                                releaseDate: t.album?.release_date || null,
+                                url: `${t.artists?.[0]?.name || ''} ${t.name}`,
+                            }));
                         return json(res, tracks);
                     } catch { return json(res, []); }
                 }
 
-                // GET /api/discover/new-releases
-                if (method === 'GET' && urlPath === '/api/discover/new-releases') {
+                // GET /api/discover/popular-artists — Popular artists via Spotify search
+                if (method === 'GET' && urlPath === '/api/discover/popular-artists') {
                     try {
-                        const data = await ctx.spotifyFetch('/browse/new-releases?country=DE&limit=12');
-                        const albums = (data.albums?.items || []).map(a => ({
-                            id: a.id,
-                            name: a.name,
-                            artist: a.artists?.map(ar => ar.name).join(', ') || '',
-                            image: a.images?.[1]?.url || a.images?.[0]?.url || null,
-                            releaseDate: a.release_date || null,
-                            totalTracks: a.total_tracks || 0,
-                        }));
-                        return json(res, albums);
+                        const artistNames = ['Sabrina Carpenter', 'Billie Eilish', 'The Weeknd', 'Bad Bunny', 'SZA', 'Kendrick Lamar', 'Dua Lipa', 'Travis Scott', 'Taylor Swift', 'Drake', 'Apache 207', 'Central Cee'];
+                        const seed = (Date.now() / 3600000 | 0);
+                        const picked = artistNames.sort((a, b) => Math.sin(seed + a.length) - Math.sin(seed + b.length)).slice(0, 8);
+
+                        const results = await Promise.allSettled(
+                            picked.map(name => ctx.spotifyFetch(`/search?q=${encodeURIComponent(name)}&type=artist&limit=1`))
+                        );
+
+                        const artists = results
+                            .filter(r => r.status === 'fulfilled')
+                            .map(r => r.value.artists?.items?.[0])
+                            .filter(Boolean)
+                            .map(a => ({
+                                id: a.id,
+                                name: a.name,
+                                image: a.images?.[1]?.url || a.images?.[0]?.url || null,
+                                genres: a.genres?.slice(0, 2) || [],
+                            }));
+
+                        return json(res, artists);
+                    } catch { return json(res, []); }
+                }
+
+                // GET /api/discover/global-popular — Most played across all guilds
+                if (method === 'GET' && urlPath === '/api/discover/global-popular') {
+                    try {
+                        return json(res, ctx.db.getMostPlayedGlobal(30, 12));
                     } catch { return json(res, []); }
                 }
 
@@ -463,14 +632,16 @@ function startAPI(ctx, client) {
                         const recs = await ctx.spotifyFetch(
                             `/recommendations?seed_artists=${seedArtistIds.join(',')}&limit=10&market=DE`
                         );
-                        const forYou = (recs.tracks || []).map(t => ({
-                            title: `${t.artists?.[0]?.name || ''} – ${t.name}`,
-                            artist: t.artists?.map(a => a.name).join(', ') || '',
-                            thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
-                            duration: Math.floor((t.duration_ms || 0) / 1000),
-                            spotifyId: t.id,
-                            searchQuery: `${t.artists?.[0]?.name} ${t.name}`,
-                        }));
+                        const forYou = (recs.tracks || []).map(t => {
+                            const searchQ = `${t.artists?.[0]?.name || ''} ${t.name}`;
+                            return {
+                                title: t.name,
+                                artist: t.artists?.map(a => a.name).join(', ') || '',
+                                thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
+                                duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
+                                url: searchQ,
+                            };
+                        });
 
                         return json(res, {
                             forYou,

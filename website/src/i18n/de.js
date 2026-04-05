@@ -1,4 +1,20 @@
 export default {
+    musicPlayer: {
+        nowPlaying: 'Aktueller Song',
+        preview: 'Vorschau',
+        live: 'Live',
+        offline: 'Offline',
+        noSong: 'Kein Song',
+        waitingForPlayback: 'Warte auf Wiedergabe...',
+        queue: 'Warteschlange',
+        unknown: 'Unbekannt',
+    },
+    notFound: {
+        title: 'Seite nicht gefunden',
+        subtitle: 'Die Seite die du suchst existiert nicht oder wurde verschoben.',
+        home: 'Startseite',
+        back: 'Zurück',
+    },
     nav: {
         bots: 'Bots',
         commands: 'Commands',
@@ -162,6 +178,7 @@ export default {
             volume: 'Persönliche Lautstärke setzen.',
         },
         screenshots: ['Soundboard Panel', 'Web Dashboard', 'Sound Upload', 'Favoriten'],
+        categories: ['Allgemein', 'Memes', 'Musik', 'Soundeffekte', 'Sprache', 'Tiere', 'Spiele', 'Filme & Serien', 'Alerts', 'Ambient'],
     },
     commands: {
         title: 'Commands',

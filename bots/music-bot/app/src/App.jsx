@@ -90,9 +90,35 @@ function App() {
   // Dynamic homepage content
   const [trendingTracks, setTrendingTracks] = useState([]);
   const [newReleases, setNewReleases] = useState([]);
-  const [recommendedTracks, setRecommendedTracks] = useState([]);
+  const [recommendedData, setRecommendedData] = useState({ forYou: [], becauseYouListened: null });
+  const [popularOnServer, setPopularOnServer] = useState([]);
+  const [globalPopular, setGlobalPopular] = useState([]);
   const [popularArtists, setPopularArtists] = useState([]);
+  const [genreSections, setGenreSections] = useState([]);
   const [homeLoading, setHomeLoading] = useState(false);
+  const [activeGenre, setActiveGenre] = useState('all');
+  const [activeLang, setActiveLang] = useState('all');
+
+  const filterGenres = [
+    { id: 'all', label: 'Alle' },
+    { id: 'pop', label: 'Pop' },
+    { id: 'hiphop', label: 'Hip-Hop' },
+    { id: 'rnb', label: 'R&B' },
+    { id: 'rock', label: 'Rock' },
+    { id: 'electronic', label: 'Electronic' },
+    { id: 'latin', label: 'Latin' },
+    { id: 'kpop', label: 'K-Pop' },
+  ];
+
+  const filterLangs = [
+    { id: 'all', label: 'Alle Sprachen' },
+    { id: 'de', label: 'Deutsch' },
+    { id: 'en', label: 'English' },
+    { id: 'es', label: 'Espanol' },
+    { id: 'fr', label: 'Francais' },
+    { id: 'ko', label: 'Korean' },
+    { id: 'tr', label: 'Tuerkisch' },
+  ];
   const [likedSongs, setLikedSongs] = useState(() => {
     try { return JSON.parse(localStorage.getItem('likedSongs') || '[]'); } catch { return []; }
   });
@@ -300,7 +326,8 @@ function App() {
   useEffect(() => {
     if (!connected || !guild) return;
     fetchState(guild.id);
-    const interval = setInterval(() => fetchState(guild.id), 3000);
+    // Poll less aggressively — WebSocket handles real-time updates
+    const interval = setInterval(() => fetchState(guild.id), 10000);
     return () => clearInterval(interval);
   }, [connected, guild, fetchState]);
 
@@ -431,44 +458,78 @@ function App() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch dynamic homepage content
-  const fetchHomepageContent = useCallback(async () => {
+  // Fetch dynamic homepage content — cached in sessionStorage, delayed to not block core requests
+  const fetchHomepageContent = useCallback(async (force = false) => {
     if (!connected || !guild || homeLoading) return;
-    setHomeLoading(true);
-    const fetchCategory = async (query) => {
+
+    const filterParams = (activeGenre !== 'all' || activeLang !== 'all')
+      ? `${activeGenre !== 'all' ? `&genre=${activeGenre}` : ''}${activeLang !== 'all' ? `&lang=${activeLang}` : ''}`
+      : '';
+
+    // Check sessionStorage cache (15 min TTL)
+    const cacheKey = `discover_${guild.id}_${activeGenre}_${activeLang}`;
+    if (!force) {
       try {
-        const res = await fetch(`${botUrl}/api/search?q=${encodeURIComponent(query)}&limit=10`, { headers: getHeaders() });
-        if (res.ok) return await res.json();
+        const cached = JSON.parse(sessionStorage.getItem(cacheKey));
+        if (cached && Date.now() - cached.ts < 15 * 60 * 1000) {
+          if (cached.trending) setTrendingTracks(cached.trending);
+          if (cached.releases) setNewReleases(cached.releases);
+          if (cached.recs) setRecommendedData(cached.recs);
+          if (cached.serverPop) setPopularOnServer(cached.serverPop);
+          if (cached.globalPop) setGlobalPopular(cached.globalPop);
+          if (cached.artists) setPopularArtists(cached.artists);
+          if (cached.sections) setGenreSections(cached.sections);
+          return;
+        }
       } catch {}
-      return [];
+    }
+
+    setHomeLoading(true);
+    const h = getHeaders();
+    const fetchJson = async (url) => {
+      try { const r = await fetch(url, { headers: h }); if (r.ok) return await r.json(); } catch {} return null;
     };
 
-    const [trending, newRel, recommended] = await Promise.all([
-      fetchCategory('trending music 2025'),
-      fetchCategory('new music releases 2025'),
-      fetchCategory(likedSongs.length > 0 ? `${likedSongs[0]?.artist || 'music'} mix` : 'top hits mix'),
+    // Fetch in two batches to not overwhelm the server
+    const [trending, releases, serverPop] = await Promise.all([
+      fetchJson(`${botUrl}/api/discover/trending?x=1${filterParams}`),
+      fetchJson(`${botUrl}/api/discover/new-releases?x=1${filterParams}`),
+      fetchJson(`${botUrl}/api/guild/${guild.id}/discover/popular`),
     ]);
 
-    setTrendingTracks(trending.slice(0, 8));
-    setNewReleases(newRel.slice(0, 8));
-    setRecommendedTracks(recommended.slice(0, 8));
+    if (trending) setTrendingTracks(trending);
+    if (releases) setNewReleases(releases);
+    if (serverPop) setPopularOnServer(serverPop);
 
-    // Extract unique artists from all results
-    const artistMap = {};
-    [...trending, ...newRel, ...recommended, ...recentlyPlayed, ...likedSongs].forEach(t => {
-      if (t.artist && !artistMap[t.artist]) {
-        artistMap[t.artist] = { name: t.artist, thumbnail: t.thumbnail };
-      }
-    });
-    setPopularArtists(Object.values(artistMap).slice(0, 8));
+    // Second batch — lower priority
+    const [recs, globalPop, artists, sections] = await Promise.all([
+      fetchJson(`${botUrl}/api/guild/${guild.id}/discover/recommendations`),
+      fetchJson(`${botUrl}/api/discover/global-popular`),
+      fetchJson(`${botUrl}/api/discover/popular-artists?x=1${filterParams}`),
+      fetchJson(`${botUrl}/api/discover/sections?x=1${filterParams}`),
+    ]);
+
+    if (recs) setRecommendedData(recs);
+    if (globalPop) setGlobalPopular(globalPop);
+    if (artists) setPopularArtists(artists);
+    if (sections) setGenreSections(sections);
+
+    // Cache results
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        ts: Date.now(), trending, releases, recs, serverPop, globalPop, artists, sections,
+      }));
+    } catch {}
+
     setHomeLoading(false);
-  }, [connected, guild, botUrl, getHeaders, likedSongs, recentlyPlayed, homeLoading]);
+  }, [connected, guild, botUrl, getHeaders, homeLoading]);
 
   useEffect(() => {
-    if (connected && guild && trendingTracks.length === 0 && !homeLoading) {
-      fetchHomepageContent();
-    }
-  }, [connected, guild]);
+    if (!connected || !guild) return;
+    const isInitial = trendingTracks.length === 0;
+    const timer = setTimeout(() => fetchHomepageContent(true), isInitial ? 1500 : 100);
+    return () => clearTimeout(timer);
+  }, [connected, guild, activeGenre, activeLang]);
 
   const totalDuration = state.current ? parseDuration(state.current.duration) : 0;
   const progress = totalDuration > 0 ? Math.min((localElapsed / totalDuration) * 100, 100) : 0;
@@ -719,20 +780,39 @@ function App() {
         </div>
       </section>
 
-      {/* Trending Now */}
+      {/* Filter Chips */}
+      <section className="content-section filter-section">
+        <div className="filter-row">
+          <div className="filter-group">
+            {filterGenres.map(g => (
+              <button key={g.id} className={`filter-chip${activeGenre === g.id ? ' active' : ''}`} onClick={() => setActiveGenre(g.id)}>{g.label}</button>
+            ))}
+          </div>
+          <div className="filter-divider" />
+          <div className="filter-group">
+            {filterLangs.map(l => (
+              <button key={l.id} className={`filter-chip lang${activeLang === l.id ? ' active' : ''}`} onClick={() => setActiveLang(l.id)}>{l.label}</button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Trending Now — Spotify + YouTube Mix */}
       {trendingTracks.length > 0 && (
         <section className="content-section">
           <div className="section-header">
             <h2 className="section-title">{Icons.fire} Trending Now</h2>
-            <button className="btn-refresh" onClick={fetchHomepageContent} title="Aktualisieren">{Icons.refresh}</button>
+            <button className="btn-refresh" onClick={() => fetchHomepageContent(true)} title="Aktualisieren">{Icons.refresh}</button>
           </div>
           <div className="card-scroll">
-            {trendingTracks.map((track, i) => <TrackCard key={i} track={track} />)}
+            {trendingTracks.map((track, i) => (
+              <TrackCard key={i} track={{ ...track, title: track.title, artist: track.artist }} />
+            ))}
           </div>
         </section>
       )}
 
-      {/* Featured Song Cards */}
+      {/* Featured — from recently played / queue */}
       {featuredTracks.length > 0 && (
         <section className="content-section">
           <div className="featured-grid">
@@ -741,34 +821,86 @@ function App() {
         </section>
       )}
 
-      {/* Fuer dich empfohlen */}
-      {recommendedTracks.length > 0 && (
+      {/* Fuer dich empfohlen — Spotify Recommendations */}
+      {recommendedData.forYou.length > 0 && (
         <section className="content-section">
-          <h2 className="section-title">{Icons.sparkle} Fuer dich empfohlen</h2>
+          <h2 className="section-title">
+            {Icons.sparkle} Fuer dich empfohlen
+            {recommendedData.becauseYouListened && (
+              <span className="section-subtitle">Weil du {recommendedData.becauseYouListened} gehoert hast</span>
+            )}
+          </h2>
           <div className="track-list">
-            {recommendedTracks.slice(0, 6).map((track, i) => (
+            {recommendedData.forYou.slice(0, 6).map((track, i) => (
               <TrackRow key={i} track={track} index={i} />
             ))}
           </div>
         </section>
       )}
 
-      {/* Neu erschienen */}
+      {/* Neu erschienen — Spotify New Releases */}
       {newReleases.length > 0 && (
         <section className="content-section">
           <h2 className="section-title">Neu erschienen</h2>
           <div className="card-scroll">
-            {newReleases.map((track, i) => <TrackCard key={i} track={track} />)}
+            {newReleases.map((album, i) => (
+              <div key={i} className="album-card" onClick={() => searchGenre(`${album.artist} ${album.name}`)}>
+                <div className="album-card-cover">
+                  {album.image ? <img src={album.image} alt="" /> : <div className="track-card-empty" />}
+                  <div className="track-card-play">{Icons.playSmall}</div>
+                </div>
+                <div className="track-card-title">{album.name}</div>
+                <div className="track-card-artist">{album.artist}</div>
+              </div>
+            ))}
           </div>
         </section>
       )}
 
-      {/* Beliebte Artists */}
+      {/* Beliebt auf deinem Server */}
+      {popularOnServer.length > 0 && (
+        <section className="content-section">
+          <h2 className="section-title">Beliebt auf {guild?.name || 'deinem Server'}</h2>
+          <div className="track-list">
+            {popularOnServer.slice(0, 6).map((track, i) => (
+              <TrackRow key={i} track={{ title: track.track_title, url: track.track_url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Beliebte Artists — Spotify */}
       {popularArtists.length > 0 && (
         <section className="content-section">
           <h2 className="section-title">Beliebte Artists</h2>
           <div className="artist-scroll">
-            {popularArtists.map((artist, i) => <ArtistCard key={i} artist={artist} />)}
+            {popularArtists.map((artist, i) => (
+              <ArtistCard key={i} artist={{ name: artist.name, thumbnail: artist.image }} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Genre/Mood Sections — like Spotify home */}
+      {genreSections.map((section, si) => (
+        <section key={si} className="content-section">
+          <h2 className="section-title">{section.title}</h2>
+          <div className="card-scroll">
+            {section.tracks.map((track, i) => (
+              <TrackCard key={i} track={track} />
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {/* Global beliebt — BeatByte Community */}
+      {globalPopular.length > 0 && (
+        <section className="content-section">
+          <h2 className="section-title">{Icons.equalizer} Beliebt auf BeatByte</h2>
+          <div className="card-scroll">
+            {globalPopular.map((track, i) => (
+              <TrackCard key={i} track={{ title: track.track_title, url: track.track_url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }} />
+            ))}
           </div>
         </section>
       )}
@@ -785,7 +917,7 @@ function App() {
         </section>
       )}
 
-      {/* Up Next Cards */}
+      {/* Up Next */}
       {state.tracks.length > 0 && (
         <section className="content-section">
           <h2 className="section-title">Up Next <span className="badge">{state.tracks.length}</span></h2>
@@ -814,7 +946,7 @@ function App() {
         </section>
       )}
 
-      {/* Loading indicator for homepage content */}
+      {/* Loading */}
       {homeLoading && trendingTracks.length === 0 && (
         <div className="home-loading">
           <span className="adding-spinner large" />
@@ -980,11 +1112,10 @@ function App() {
     <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-top">
-          <div className="sidebar-brand">
+          <div className="sidebar-brand" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
             <div className="brand-icon">{Icons.equalizer}</div>
             <span className="brand-text">BeatByte</span>
           </div>
-          <button className="btn-collapse" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{Icons.collapse}</button>
         </div>
 
         <nav className="sidebar-nav">

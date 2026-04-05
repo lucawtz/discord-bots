@@ -2,3 +2,9 @@ node_modules/
 .env
 *.key
 .vite/
+
+# Sensitive data
+dashboard/users.json
+dashboard/audit.json
+dashboard/metrics-history.json
+*.db

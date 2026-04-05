@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Box, Typography, IconButton, Stack, Slider } from '@mui/material';
+import { useLanguage } from '../i18n/LanguageContext';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
@@ -47,6 +48,7 @@ function VisualizerBars({ playing }) {
 }
 
 export default function MusicPlayer() {
+    const { t } = useLanguage();
     const [state, setState] = useState({
         connected: false,
         playing: false,
@@ -107,7 +109,7 @@ export default function MusicPlayer() {
                 <Typography variant="caption" sx={{
                     fontWeight: 600, textTransform: 'uppercase', letterSpacing: 2, color: 'text.disabled',
                 }}>
-                    Now Playing
+                    {t('musicPlayer.nowPlaying', 'Now Playing')}
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={0.75}>
                     <FiberManualRecordIcon sx={{
@@ -120,7 +122,7 @@ export default function MusicPlayer() {
                         },
                     }} />
                     <Typography variant="caption" sx={{ color: isDemoMode ? 'success.main' : (state.connected ? 'success.main' : 'text.disabled') }}>
-                        {isDemoMode ? 'Preview' : (state.connected ? 'Live' : 'Offline')}
+                        {isDemoMode ? t('musicPlayer.preview', 'Preview') : (state.connected ? t('musicPlayer.live', 'Live') : t('musicPlayer.offline', 'Offline'))}
                     </Typography>
                 </Stack>
             </Stack>
@@ -153,10 +155,10 @@ export default function MusicPlayer() {
                 <Typography variant="h6" sx={{
                     fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
-                    {displaySong?.title || 'Kein Song'}
+                    {displaySong?.title || t('musicPlayer.noSong', 'No song')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                    {displaySong?.artist || 'Warte auf Wiedergabe...'}
+                    {displaySong?.artist || t('musicPlayer.waitingForPlayback', 'Waiting for playback...')}
                 </Typography>
             </Box>
 
@@ -243,7 +245,7 @@ export default function MusicPlayer() {
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                         <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'text.disabled' }}>
                             <QueueMusicIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
-                            Warteschlange
+                            {t('musicPlayer.queue', 'Queue')}
                         </Typography>
                         <Typography variant="caption" color="text.disabled">
                             {displayQueue.length} Songs
@@ -270,7 +272,7 @@ export default function MusicPlayer() {
                                         {song.title}
                                     </Typography>
                                     <Typography variant="caption" color="text.disabled">
-                                        {song.artist || 'Unbekannt'}
+                                        {song.artist || t('musicPlayer.unknown', 'Unknown')}
                                     </Typography>
                                 </Box>
                                 <Typography variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace' }}>

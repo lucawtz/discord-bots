@@ -11,6 +11,7 @@ import Commands from './pages/Commands';
 import Premium from './pages/Premium';
 import Status from './pages/Status';
 import Changelog from './pages/Changelog';
+import NotFound from './pages/NotFound';
 
 export default function App() {
     return (
@@ -27,6 +28,7 @@ export default function App() {
                 <Route path="/changelog" element={<Changelog />} />
                 <Route path="/impressum" element={<Impressum />} />
                 <Route path="/datenschutz" element={<Datenschutz />} />
+                <Route path="*" element={<NotFound />} />
             </Route>
         </Routes>
     );

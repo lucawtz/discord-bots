@@ -21,13 +21,25 @@ function DiscordIcon(props) {
     );
 }
 
+function Flag({ code, size = 20 }) {
+    return <Box component="img" src={`https://flagcdn.com/w40/${code}.png`} alt=""
+        sx={{ width: size, height: size, objectFit: 'cover', borderRadius: '50%', display: 'block' }} />;
+}
+
+const languages = [
+    { code: 'de', label: 'Deutsch', flagCode: 'de' },
+    { code: 'en', label: 'English', flagCode: 'gb' },
+];
+
 export default function Navbar() {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [user, setUser] = useState(null);
     const [anchorEl, setAnchorEl] = useState(null);
+    const [langAnchor, setLangAnchor] = useState(null);
     const location = useLocation();
     const scrolled = useScrollTrigger({ disableHysteresis: true, threshold: 30 });
     const { t, lang, setLang } = useLanguage();
+    const currentLang = languages.find(l => l.code === lang) ?? languages[0];
 
     const navItems = [
         { label: t('nav.bots'), path: '/bots' },
@@ -76,7 +88,10 @@ export default function Navbar() {
         setAnchorEl(null);
     };
 
-    const toggleLang = () => setLang(lang === 'de' ? 'en' : 'de');
+    const handleLangSelect = (code) => {
+        setLang(code);
+        setLangAnchor(null);
+    };
 
     return (
         <>
@@ -99,7 +114,7 @@ export default function Navbar() {
                         {navItems.map((item) => (
                             <Button key={item.path} component={Link} to={item.path} size="small"
                                 sx={{
-                                    color: location.pathname === item.path ? '#fafafa' : '#a1a1aa',
+                                    color: location.pathname.startsWith(item.path) ? '#fafafa' : '#a1a1aa',
                                     fontSize: '0.875rem', fontWeight: 500, px: 2,
                                     '&:hover': { color: '#fafafa', bgcolor: 'transparent' },
                                 }}>
@@ -109,15 +124,31 @@ export default function Navbar() {
                     </Box>
 
                     <Stack direction="row" spacing={0.5} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
-                        {/* Language Toggle */}
-                        <Button size="small" onClick={toggleLang}
+                        {/* Language Dropdown */}
+                        <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
                             startIcon={<LanguageIcon sx={{ fontSize: 18 }} />}
                             sx={{
                                 color: '#a1a1aa', fontSize: '0.8rem', fontWeight: 600, minWidth: 0, px: 1.5,
                                 '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.04)' },
                             }}>
-                            {lang.toUpperCase()}
+                            <Flag code={currentLang.flagCode} size={18} />
                         </Button>
+                        <Menu anchorEl={langAnchor} open={Boolean(langAnchor)} onClose={() => setLangAnchor(null)}
+                            PaperProps={{
+                                sx: { bgcolor: '#18181b', border: '1px solid rgba(255,255,255,0.08)', mt: 1, minWidth: 140 },
+                            }}>
+                            {languages.map((l) => (
+                                <MenuItem key={l.code} onClick={() => handleLangSelect(l.code)}
+                                    selected={lang === l.code}
+                                    sx={{
+                                        fontSize: '0.85rem', color: lang === l.code ? '#fafafa' : '#a1a1aa', gap: 1.5,
+                                        '&.Mui-selected': { bgcolor: 'rgba(168,85,247,0.1)' },
+                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
+                                    }}>
+                                    <Flag code={l.flagCode} size={18} /> {l.label}
+                                </MenuItem>
+                            ))}
+                        </Menu>
 
                         {/* Discord Login / User */}
                         {user ? (
@@ -179,13 +210,19 @@ export default function Navbar() {
 
                     <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
 
-                    {/* Mobile Language Toggle */}
-                    <Button fullWidth size="small" onClick={toggleLang}
-                        startIcon={<LanguageIcon sx={{ fontSize: 18 }} />}
-                        sx={{ color: '#a1a1aa', justifyContent: 'flex-start', px: 2, mb: 1,
-                            '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' } }}>
-                        {lang === 'de' ? 'English' : 'Deutsch'}
-                    </Button>
+                    {/* Mobile Language Select */}
+                    {languages.map((l) => (
+                        <Button key={l.code} fullWidth size="small"
+                            onClick={() => setLang(l.code)}
+                            sx={{
+                                color: lang === l.code ? '#fafafa' : '#a1a1aa',
+                                justifyContent: 'flex-start', px: 2, mb: 0.5,
+                                bgcolor: lang === l.code ? 'rgba(168,85,247,0.1)' : 'transparent',
+                                '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+                            }}>
+                            <Flag code={l.flagCode} size={18} /> {l.label}
+                        </Button>
+                    ))}
 
                     {/* Mobile Discord Login */}
                     {user ? (

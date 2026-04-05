@@ -148,7 +148,7 @@ export default function MusicBot() {
                         </Card>
                         <Card sx={{ flex: 1, bgcolor: '#18181b', opacity: 0.6, transition: 'all 0.2s' }}>
                             <CardContent sx={{ p: 4, textAlign: 'center', position: 'relative' }}>
-                                <Chip label="Coming Soon" size="small" sx={{
+                                <Chip label={t('bots.comingSoon')} size="small" sx={{
                                     position: 'absolute', top: 16, right: 16,
                                     bgcolor: 'rgba(168,85,247,0.1)', color: '#a855f7', fontSize: '0.7rem',
                                 }} />
@@ -177,7 +177,7 @@ export default function MusicBot() {
                     <Chip label={t('musicBot.screenshotsLabel')} size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
                     <Typography variant="h4" sx={{ mb: 6, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>{t('musicBot.screenshotsTitle')}</Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
-                        {['Now Playing', 'Queue', 'Web Player', 'Desktop App'].map((l, i) => (
+                        {[t('musicPlayer.nowPlaying', 'Now Playing'), t('musicPlayer.queue', 'Queue'), t('musicBot.webApp'), t('musicBot.desktopApp')].map((l, i) => (
                             <Box key={i} sx={{
                                 aspectRatio: '16/9', borderRadius: 4, bgcolor: '#18181b',
                                 border: '1px solid rgba(168,85,247,0.06)',

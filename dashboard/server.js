@@ -49,9 +49,23 @@ const { createRateLimiter } = require('../libs/rateLimiter');
 const isLoginLimited = createRateLimiter(5, 15 * 60 * 1000);
 const isApiLimited = createRateLimiter(60, 60 * 1000);
 
-// ── Auth ────────────────────────────────────────────────────────
+// ── Auth ────────���──────────────────────────────────��────────────
 const sessions = new Map(); // token -> { userId, createdAt }
 const SESSION_MAX_AGE = 24 * 60 * 60 * 1000;
+
+// Cleanup abgelaufener Sessions alle 10 Minuten
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, session] of sessions) {
+        if (now - session.createdAt > SESSION_MAX_AGE) sessions.delete(token);
+    }
+}, 10 * 60 * 1000);
+
+function invalidateUserSessions(userId, exceptToken = null) {
+    for (const [token, session] of sessions) {
+        if (session.userId === userId && token !== exceptToken) sessions.delete(token);
+    }
+}
 
 function createSession(userId) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -536,13 +550,17 @@ setInterval(() => {
 const uptimeResults = {}; // host -> [{time, latency, status}]
 const UPTIME_HISTORY_SIZE = 60;
 
-function checkUptimeTarget(host) {
+async function checkUptimeTarget(host) {
+    // Hostname-Validierung gegen Command Injection
+    if (!/^[\w.-]+$/.test(host)) {
+        return { time: Date.now(), latency: 0, status: 'down' };
+    }
     try {
-        const cmd = IS_WINDOWS
-            ? `ping -n 1 -w 2000 ${host}`
-            : `ping -c 1 -W 2 ${host}`;
+        const args = IS_WINDOWS
+            ? ['-n', '1', '-w', '2000', host]
+            : ['-c', '1', '-W', '2', host];
         const start = Date.now();
-        const output = execSync(cmd, { encoding: 'utf8', timeout: 5000 });
+        const { stdout: output } = await execFileAsync('ping', args, { encoding: 'utf8', timeout: 5000 });
         const latency = Date.now() - start;
         // Try to parse actual latency from ping output
         let parsedLatency = latency;
@@ -554,11 +572,11 @@ function checkUptimeTarget(host) {
     }
 }
 
-function runUptimeChecks() {
+async function runUptimeChecks() {
     const targets = (config.uptime && config.uptime.targets) || [];
     for (const target of targets) {
         if (!uptimeResults[target.host]) uptimeResults[target.host] = [];
-        const result = checkUptimeTarget(target.host);
+        const result = await checkUptimeTarget(target.host);
         uptimeResults[target.host].push(result);
         if (uptimeResults[target.host].length > UPTIME_HISTORY_SIZE) {
             uptimeResults[target.host].shift();
@@ -713,6 +731,7 @@ const server = http.createServer(async (req, res) => {
             user.passwordHash = await bcrypt.hash(password, 12);
             saveUsers(users);
             resetTokens.delete(token);
+            invalidateUserSessions(user.id);
             return json(res, { ok: true, message: 'Passwort wurde geaendert. Du kannst dich jetzt anmelden.' });
         }
 
@@ -915,6 +934,10 @@ const server = http.createServer(async (req, res) => {
             }
             if (data.password && data.password.length >= 8) {
                 user.passwordHash = await bcrypt.hash(data.password, 12);
+                invalidateUserSessions(user.id, isSelf ? getSessionToken(req) : null);
+            }
+            if (data.status === 'disabled') {
+                invalidateUserSessions(user.id);
             }
 
             saveUsers(users);
@@ -1164,7 +1187,8 @@ const server = http.createServer(async (req, res) => {
             const lines = parseInt(url.searchParams.get('lines')) || 50;
             let logs = '';
             try {
-                logs = execSync(`journalctl --no-pager -n ${Math.min(lines, 200)} --output=short-iso 2>/dev/null`, { encoding: 'utf8', timeout: 5000 });
+                const { stdout } = await execFileAsync('journalctl', ['--no-pager', '-n', String(Math.min(lines, 200)), '--output=short-iso'], { encoding: 'utf8', timeout: 5000 });
+                logs = stdout;
             } catch { logs = 'Keine Logs verfuegbar'; }
             return json(res, { logs });
         }
@@ -1202,7 +1226,7 @@ const server = http.createServer(async (req, res) => {
         // ── File Browser Routes ────────────────────────────────
         const FILE_BASE = IS_WINDOWS ? process.cwd() : '/home/ubuntu';
 
-        const PROTECTED_FILES = ['audit.json', 'users.json', '.env', 'id_rsa', 'id_ed25519'];
+        const PROTECTED_FILES = ['audit.json', 'users.json', '.env', 'id_rsa', 'id_ed25519', 'id_ecdsa', 'config.json', 'authorized_keys', '.bash_history', 'shadow', 'passwd'];
 
         function resolveSafePath(requestedPath) {
             const resolved = path.resolve(FILE_BASE, requestedPath || '');
@@ -1499,8 +1523,8 @@ const server = http.createServer(async (req, res) => {
             const name = (data.name && /^[\w.-]+$/.test(data.name) ? data.name : `backup-${Date.now()}`) + '.tar.gz';
             const backupPath = path.join(backupDir, name);
             try {
-                execSync(`mkdir -p ${backupDir}`, { timeout: 5000 });
-                execSync(`tar -czf ${backupPath} /home/ubuntu/bots/ 2>/dev/null`, { timeout: 120000 });
+                await execFileAsync('mkdir', ['-p', backupDir], { timeout: 5000 });
+                await execFileAsync('tar', ['-czf', backupPath, '/home/ubuntu/bots/'], { timeout: 120000 });
                 const stat = fs.statSync(backupPath);
                 const backup = { name, size: stat.size, date: stat.mtime.toISOString(), type: 'tar.gz' };
                 addAuditEntry(me.name, 'backup.create', name, `${stat.size} Bytes`);

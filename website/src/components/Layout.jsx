@@ -4,9 +4,27 @@ import Footer from './Footer';
 import { Box } from '@mui/material';
 import { useEffect } from 'react';
 
+const pageTitles = {
+    '/': 'ByteBots',
+    '/bots': 'Bots | ByteBots',
+    '/bots/music-bot': 'BeatByte | ByteBots',
+    '/bots/soundboard-bot': 'EarTastic | ByteBots',
+    '/commands': 'Commands | ByteBots',
+    '/premium': 'Premium | ByteBots',
+    '/guide': 'Guide | ByteBots',
+    '/status': 'Status | ByteBots',
+    '/changelog': 'Changelog | ByteBots',
+    '/impressum': 'Impressum | ByteBots',
+    '/datenschutz': 'Datenschutz | ByteBots',
+};
+
 export default function Layout() {
     const location = useLocation();
-    useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
+
+    useEffect(() => {
+        window.scrollTo(0, 0);
+        document.title = pageTitles[location.pathname] || 'ByteBots';
+    }, [location.pathname]);
 
     return (
         <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
