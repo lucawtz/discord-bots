@@ -98,6 +98,7 @@ module.exports = {
                 thumbnail: t.thumbnail || null,
                 artist: t.artist || null,
                 requestedBy: interaction.user.toString(),
+                _requestedById: interaction.user.id,
             }));
             queue.tracks.push(...tracks);
 

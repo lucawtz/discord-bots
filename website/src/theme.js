@@ -3,27 +3,25 @@ import { createTheme } from '@mui/material/styles';
 const theme = createTheme({
     palette: {
         mode: 'dark',
-        primary: { main: '#08fcfe' },
-        secondary: { main: '#f0a0ee' },
-        success: { main: '#8df286' },
-        warning: { main: '#ffa64d' },
-        info: { main: '#b48afe' },
+        primary: { main: '#a855f7', light: '#c084fc', dark: '#7c3aed' },
+        secondary: { main: '#d946ef' },
+        success: { main: '#34d399' },
         background: {
-            default: '#0a0a0f',
-            paper: '#1a1a25',
+            default: '#09090b',
+            paper: '#18181b',
         },
         text: {
-            primary: '#f0f0f5',
-            secondary: '#a0a0b5',
-            disabled: '#6a6a80',
+            primary: '#fafafa',
+            secondary: '#a1a1aa',
+            disabled: '#52525b',
         },
-        divider: '#2a2a3a',
+        divider: 'rgba(255,255,255,0.06)',
     },
     typography: {
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        h1: { fontWeight: 800 },
-        h2: { fontWeight: 700 },
-        h3: { fontWeight: 700 },
+        h1: { fontWeight: 800, letterSpacing: '-0.025em' },
+        h2: { fontWeight: 700, letterSpacing: '-0.02em' },
+        h3: { fontWeight: 700, letterSpacing: '-0.015em' },
         h4: { fontWeight: 600 },
         h5: { fontWeight: 600 },
         h6: { fontWeight: 600 },
@@ -34,40 +32,21 @@ const theme = createTheme({
             styleOverrides: {
                 body: {
                     scrollbarWidth: 'thin',
-                    scrollbarColor: '#2a2a3a #0a0a0f',
-                    '&::-webkit-scrollbar': { width: 8 },
-                    '&::-webkit-scrollbar-track': { background: '#0a0a0f' },
-                    '&::-webkit-scrollbar-thumb': {
-                        background: '#2a2a3a',
-                        borderRadius: 4,
-                    },
+                    scrollbarColor: '#27272a #09090b',
+                    '&::-webkit-scrollbar': { width: 6 },
+                    '&::-webkit-scrollbar-track': { background: 'transparent' },
+                    '&::-webkit-scrollbar-thumb': { background: '#27272a', borderRadius: 3 },
                 },
             },
         },
         MuiButton: {
             styleOverrides: {
-                root: {
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    borderRadius: 12,
-                    padding: '10px 24px',
-                },
-            },
-        },
-        MuiChip: {
-            styleOverrides: {
-                root: {
-                    fontWeight: 500,
-                    borderRadius: 50,
-                },
+                root: { textTransform: 'none', fontWeight: 600, borderRadius: 8 },
             },
         },
         MuiCard: {
             styleOverrides: {
-                root: {
-                    backgroundImage: 'none',
-                    border: '1px solid #2a2a3a',
-                },
+                root: { backgroundImage: 'none', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12 },
             },
         },
     },

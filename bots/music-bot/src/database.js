@@ -50,14 +50,79 @@ async function init() {
     )
   `);
 
+  // ── Listening History ──────────────────────────────────────────
+  db.run(`
+    CREATE TABLE IF NOT EXISTS listening_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      guild_id TEXT NOT NULL,
+      track_title TEXT,
+      track_url TEXT,
+      artist TEXT,
+      thumbnail TEXT,
+      duration TEXT,
+      played_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // ── Liked Tracks ─────────────────────────────────────────────
+  db.run(`
+    CREATE TABLE IF NOT EXISTS liked_tracks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      guild_id TEXT NOT NULL,
+      track_title TEXT,
+      track_url TEXT,
+      artist TEXT,
+      thumbnail TEXT,
+      duration TEXT,
+      liked_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, track_url)
+    )
+  `);
+
+  // ── Followed Artists ─────────────────────────────────────────
+  db.run(`
+    CREATE TABLE IF NOT EXISTS followed_artists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      artist_name TEXT,
+      artist_id TEXT,
+      artist_image TEXT,
+      followed_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, artist_id)
+    )
+  `);
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlists_guild ON playlists(guild_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_history_user ON listening_history(user_id, guild_id, played_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_likes_user ON liked_tracks(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_followed_user ON followed_artists(user_id)`);
+
+  db.run("PRAGMA foreign_keys = ON");
 
   save();
   return module.exports;
 }
 
+let _saveTimer = null;
 function save() {
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    try {
+      const data = db.export();
+      const buffer = Buffer.from(data);
+      fs.writeFileSync(dbPath, buffer);
+    } catch (err) {
+      console.error('DB save error:', err.message);
+    }
+  }, 1000);
+}
+
+function saveNow() {
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.writeFileSync(dbPath, buffer);
@@ -191,19 +256,152 @@ function getGuildSettings(guildId) {
 }
 
 function setGuildSetting(guildId, key, value) {
-  const allowed = ['auto_dj', 'default_volume'];
-  if (!allowed.includes(key)) return;
+  const allowedColumns = { auto_dj: 'auto_dj', default_volume: 'default_volume' };
+  const column = allowedColumns[key];
+  if (!column) return;
 
   run(
-    `INSERT INTO guild_settings (guild_id, ${key}) VALUES (:guildId, :val)
-     ON CONFLICT(guild_id) DO UPDATE SET ${key} = :val`,
+    `INSERT INTO guild_settings (guild_id, ${column}) VALUES (:guildId, :val)
+     ON CONFLICT(guild_id) DO UPDATE SET ${column} = :val`,
     { ':guildId': guildId, ':val': value }
+  );
+}
+
+// ── Listening History ────────────────────────────────────────────
+
+function addToHistory(userId, guildId, track) {
+  run(
+    `INSERT INTO listening_history (user_id, guild_id, track_title, track_url, artist, thumbnail, duration)
+     VALUES (:uid, :gid, :title, :url, :artist, :thumb, :dur)`,
+    {
+      ':uid': userId, ':gid': guildId,
+      ':title': track.title, ':url': track.url,
+      ':artist': track.artist || null,
+      ':thumb': track.thumbnail || null,
+      ':dur': track.duration || null,
+    }
+  );
+}
+
+function getHistory(userId, guildId, limit = 50) {
+  return getAll(
+    `SELECT track_title, track_url, artist, thumbnail, duration, played_at
+     FROM listening_history
+     WHERE user_id = :uid AND guild_id = :gid
+     ORDER BY played_at DESC LIMIT :limit`,
+    { ':uid': userId, ':gid': guildId, ':limit': limit }
+  );
+}
+
+function clearHistory(userId, guildId) {
+  run(
+    `DELETE FROM listening_history WHERE user_id = :uid AND guild_id = :gid`,
+    { ':uid': userId, ':gid': guildId }
+  );
+}
+
+// ── Liked Tracks ────────────────────────────────────────────────
+
+function likeTrack(userId, guildId, track) {
+  try {
+    run(
+      `INSERT OR IGNORE INTO liked_tracks (user_id, guild_id, track_title, track_url, artist, thumbnail, duration)
+       VALUES (:uid, :gid, :title, :url, :artist, :thumb, :dur)`,
+      {
+        ':uid': userId, ':gid': guildId,
+        ':title': track.title, ':url': track.url,
+        ':artist': track.artist || null,
+        ':thumb': track.thumbnail || null,
+        ':dur': track.duration || null,
+      }
+    );
+    return true;
+  } catch { return false; }
+}
+
+function unlikeTrack(userId, trackUrl) {
+  run(
+    `DELETE FROM liked_tracks WHERE user_id = :uid AND track_url = :url`,
+    { ':uid': userId, ':url': trackUrl }
+  );
+}
+
+function isTrackLiked(userId, trackUrl) {
+  return !!getOne(
+    `SELECT id FROM liked_tracks WHERE user_id = :uid AND track_url = :url`,
+    { ':uid': userId, ':url': trackUrl }
+  );
+}
+
+function getLikedTracks(userId, limit = 200) {
+  return getAll(
+    `SELECT track_title, track_url, artist, thumbnail, duration, liked_at
+     FROM liked_tracks WHERE user_id = :uid
+     ORDER BY liked_at DESC LIMIT :limit`,
+    { ':uid': userId, ':limit': limit }
+  );
+}
+
+// ── Followed Artists ────────────────────────────────────────────
+
+function followArtist(userId, artist) {
+  try {
+    run(
+      `INSERT OR IGNORE INTO followed_artists (user_id, artist_name, artist_id, artist_image)
+       VALUES (:uid, :name, :aid, :img)`,
+      {
+        ':uid': userId, ':name': artist.name,
+        ':aid': artist.id || artist.name,
+        ':img': artist.image || null,
+      }
+    );
+    return true;
+  } catch { return false; }
+}
+
+function unfollowArtist(userId, artistId) {
+  run(
+    `DELETE FROM followed_artists WHERE user_id = :uid AND artist_id = :aid`,
+    { ':uid': userId, ':aid': artistId }
+  );
+}
+
+function getFollowedArtists(userId) {
+  return getAll(
+    `SELECT artist_name, artist_id, artist_image, followed_at
+     FROM followed_artists WHERE user_id = :uid
+     ORDER BY followed_at DESC`,
+    { ':uid': userId }
+  );
+}
+
+// ── Stats (for recommendations) ─────────────────────────────────
+
+function getTopArtistsFromHistory(userId, guildId, days = 30, limit = 10) {
+  return getAll(
+    `SELECT artist, COUNT(*) as play_count
+     FROM listening_history
+     WHERE user_id = :uid AND guild_id = :gid AND artist IS NOT NULL
+       AND played_at >= datetime('now', :days)
+     GROUP BY artist ORDER BY play_count DESC LIMIT :limit`,
+    { ':uid': userId, ':gid': guildId, ':days': `-${days} days`, ':limit': limit }
+  );
+}
+
+function getMostPlayedInGuild(guildId, days = 30, limit = 20) {
+  return getAll(
+    `SELECT track_title, track_url, artist, thumbnail, duration, COUNT(*) as play_count
+     FROM listening_history
+     WHERE guild_id = :gid AND played_at >= datetime('now', :days)
+     GROUP BY track_url ORDER BY play_count DESC LIMIT :limit`,
+    { ':gid': guildId, ':days': `-${days} days`, ':limit': limit }
   );
 }
 
 module.exports = {
   init,
   save,
+  saveNow,
   createPlaylist,
   deletePlaylist,
   getPlaylist,
@@ -212,4 +410,20 @@ module.exports = {
   searchPlaylists,
   getGuildSettings,
   setGuildSetting,
+  // History
+  addToHistory,
+  getHistory,
+  clearHistory,
+  // Likes
+  likeTrack,
+  unlikeTrack,
+  isTrackLiked,
+  getLikedTracks,
+  // Following
+  followArtist,
+  unfollowArtist,
+  getFollowedArtists,
+  // Stats
+  getTopArtistsFromHistory,
+  getMostPlayedInGuild,
 };

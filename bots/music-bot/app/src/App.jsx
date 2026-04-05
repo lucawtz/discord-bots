@@ -227,12 +227,15 @@ function App() {
 
   const connectWebSocket = (authToken) => {
     wsRef.current?.close();
-    const wsUrl = botUrl.replace(/^http/, 'ws') + `?token=${authToken}`;
+    const wsUrl = botUrl.replace(/^http/, 'ws');
     const ws = new WebSocket(wsUrl);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', token: authToken }));
+    };
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        if (msg.data?.guildId === guildRef.current?.id) setState(msg.data);
+        if (msg.event === 'stateUpdate' && msg.data?.guildId === guildRef.current?.id) setState(msg.data);
       } catch {}
     };
     ws.onclose = () => {};

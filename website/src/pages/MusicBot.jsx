@@ -27,125 +27,100 @@ const fadeInUp = keyframes`
 `;
 
 const features = [
-    { icon: <PlayCircleOutlineIcon />, title: 'YouTube Streaming', text: 'Songs und Playlists direkt von YouTube. URL oder Suchbegriff.' },
-    { icon: <QueueMusicIcon />, title: 'Queue Management', text: 'Hinzufuegen, entfernen, mischen, Drag & Drop Reihenfolge.' },
-    { icon: <RepeatIcon />, title: 'Loop Modi', text: 'Song oder Queue wiederholen. Drei Modi: Aus, Song, Queue.' },
-    { icon: <TuneIcon />, title: 'Lautstaerke & Seek', text: 'Lautstaerke 0-200% und an beliebige Stellen springen.' },
-    { icon: <SaveIcon />, title: 'Playlists', text: 'Queue als Playlist speichern und jederzeit wieder laden.' },
-    { icon: <AutoAwesomeIcon />, title: 'Auto-DJ', text: 'Automatische Vorschlaege wenn die Queue leer ist.' },
-    { icon: <WebIcon />, title: 'Web Player', text: 'Spotify-aehnliches Interface im Browser mit Live-Updates.' },
-    { icon: <LyricsIcon />, title: 'Lyrics', text: 'Songtexte direkt ueber Discord finden.' },
+    { icon: <PlayCircleOutlineIcon />, title: 'YouTube Streaming', text: 'Songs und Playlists direkt von YouTube.' },
+    { icon: <QueueMusicIcon />, title: 'Queue Management', text: 'Hinzufuegen, entfernen, mischen, Drag & Drop.' },
+    { icon: <RepeatIcon />, title: 'Loop Modi', text: 'Song oder Queue wiederholen.' },
+    { icon: <TuneIcon />, title: 'Volume & Seek', text: 'Lautstaerke 0-200%, beliebig springen.' },
+    { icon: <SaveIcon />, title: 'Playlists', text: 'Queue speichern und laden.' },
+    { icon: <AutoAwesomeIcon />, title: 'Auto-DJ', text: 'Automatische Vorschlaege.' },
+    { icon: <WebIcon />, title: 'Web Player', text: 'Spotify-Style Interface im Browser.' },
+    { icon: <LyricsIcon />, title: 'Lyrics', text: 'Songtexte direkt finden.' },
 ];
 
 const commands = [
-    { name: '/play <query>', description: 'Song oder Playlist abspielen. YouTube-URLs und Suchbegriffe.' },
-    { name: '/playnow <query>', description: 'Alles ueberspringen und sofort abspielen.' },
-    { name: '/skip', description: 'Aktuellen Song ueberspringen. Vote-Skip oder DJ-Rolle.' },
-    { name: '/pause', description: 'Wiedergabe pausieren oder fortsetzen.' },
-    { name: '/stop', description: 'Wiedergabe stoppen und Queue leeren.' },
-    { name: '/queue', description: 'Aktuelle Warteschlange anzeigen.' },
-    { name: '/nowplaying', description: 'Details zum aktuellen Song.' },
-    { name: '/clear', description: 'Queue leeren, aktuellen Song behalten.' },
-    { name: '/remove <pos>', description: 'Song nach Position entfernen.' },
-    { name: '/shuffle', description: 'Warteschlange zufaellig mischen.' },
-    { name: '/loop [modus]', description: 'Loop-Modus: off, song oder queue.' },
-    { name: '/seek <zeit>', description: 'Zu bestimmter Zeit springen (z.B. 1:30).' },
-    { name: '/volume [%]', description: 'Lautstaerke aendern (0-200%).' },
-    { name: '/join', description: 'Voice Channel beitreten.' },
-    { name: '/lyrics [query]', description: 'Songtexte suchen.' },
-    { name: '/app', description: 'Web Player mit Zugangscode oeffnen.' },
+    { name: '/play <query>', description: 'Song oder Playlist abspielen.' },
+    { name: '/playnow <query>', description: 'Sofort abspielen, Queue ueberspringen.' },
+    { name: '/skip', description: 'Song ueberspringen.' },
+    { name: '/pause', description: 'Pausieren / fortsetzen.' },
+    { name: '/stop', description: 'Stoppen und Queue leeren.' },
+    { name: '/queue', description: 'Warteschlange anzeigen.' },
+    { name: '/nowplaying', description: 'Aktuellen Song anzeigen.' },
+    { name: '/clear', description: 'Queue leeren.' },
+    { name: '/remove <pos>', description: 'Song entfernen.' },
+    { name: '/shuffle', description: 'Queue mischen.' },
+    { name: '/loop [modus]', description: 'Loop: off / song / queue.' },
+    { name: '/seek <zeit>', description: 'Zu Position springen.' },
+    { name: '/volume [%]', description: 'Lautstaerke aendern.' },
+    { name: '/join', description: 'Channel beitreten.' },
+    { name: '/lyrics [query]', description: 'Lyrics suchen.' },
+    { name: '/app', description: 'Web Player oeffnen.' },
 ];
 
 export default function MusicBot() {
     return (
         <Box>
             {/* Hero */}
-            <Box sx={{ pt: 10, pb: 8, px: 3 }}>
-                <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+            <Box sx={{ pt: 12, pb: 8, px: 3, textAlign: 'center' }}>
+                <Container maxWidth="md">
                     <Box sx={{
-                        width: 72, height: 72, borderRadius: 2.5, mx: 'auto', mb: 3,
+                        width: 72, height: 72, borderRadius: 3, mx: 'auto', mb: 3,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        bgcolor: 'rgba(8,252,254,0.06)', border: '1px solid rgba(8,252,254,0.12)',
+                        background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                        color: '#fff', boxShadow: '0 12px 32px rgba(168,85,247,0.3)',
                         animation: `${fadeInUp} 0.4s ease`,
                     }}>
-                        <MusicNoteIcon sx={{ fontSize: 36, color: 'primary.main' }} />
+                        <MusicNoteIcon sx={{ fontSize: 36 }} />
                     </Box>
-                    <Typography variant="h2" sx={{
-                        fontSize: { xs: '2rem', md: '2.75rem' }, fontWeight: 800, mb: 1.5,
-                        animation: `${fadeInUp} 0.4s ease 0.05s both`,
-                    }}>
+                    <Typography variant="h2" sx={{ fontSize: { xs: '2rem', md: '2.75rem' }, mb: 1.5, animation: `${fadeInUp} 0.4s ease 0.05s both` }}>
                         BeatByte
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{
-                        maxWidth: 480, mx: 'auto', mb: 4, lineHeight: 1.7,
-                        animation: `${fadeInUp} 0.4s ease 0.1s both`,
-                    }}>
+                    <Typography color="text.secondary" sx={{ maxWidth: 480, mx: 'auto', mb: 4, lineHeight: 1.7, animation: `${fadeInUp} 0.4s ease 0.1s both` }}>
                         Discord Music Bot mit YouTube-Streaming, Queue-Management, Playlists,
                         Auto-DJ und einem Web Player im Spotify-Style.
                     </Typography>
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center" sx={{ animation: `${fadeInUp} 0.4s ease 0.15s both` }}>
-                        <Button
-                            variant="contained"
-                            href={BEATBYTE_INVITE} target="_blank" rel="noopener noreferrer"
-                            startIcon={<AddIcon />}
-                            sx={{
-                                background: 'linear-gradient(135deg, #08fcfe, #0ac2fe)',
-                                color: '#0a0a0f', px: 3,
-                                '&:hover': { boxShadow: '0 4px 20px rgba(8,252,254,0.2)' },
-                            }}
-                        >
-                            Bot einladen
+                        <Button variant="contained" href={BEATBYTE_INVITE} target="_blank" startIcon={<AddIcon />}
+                            sx={{ background: 'linear-gradient(135deg, #a855f7, #a855f7)', color: '#fff', borderRadius: 3, px: 3,
+                                boxShadow: '0 6px 24px rgba(168,85,247,0.3)', '&:hover': { boxShadow: '0 8px 32px rgba(168,85,247,0.4)' } }}>
+                            Add to Server
                         </Button>
                         <Button variant="outlined" href="https://app.bytebots.de" target="_blank" startIcon={<WebIcon />}
-                            sx={{ borderColor: 'rgba(255,255,255,0.1)', color: 'text.primary', px: 3,
-                                '&:hover': { borderColor: 'rgba(255,255,255,0.2)', bgcolor: 'rgba(255,255,255,0.02)' } }}
-                        >
+                            sx={{ borderColor: 'rgba(168,85,247,0.25)', borderRadius: 3, px: 3,
+                                '&:hover': { borderColor: 'rgba(168,85,247,0.5)', bgcolor: 'rgba(168,85,247,0.04)' } }}>
                             Web App
                         </Button>
                         <Button variant="outlined" href="#download" startIcon={<DownloadIcon />}
-                            sx={{ borderColor: 'rgba(255,255,255,0.1)', color: 'text.primary', px: 3,
-                                '&:hover': { borderColor: 'rgba(255,255,255,0.2)', bgcolor: 'rgba(255,255,255,0.02)' } }}
-                        >
+                            sx={{ borderColor: 'rgba(168,85,247,0.25)', borderRadius: 3, px: 3,
+                                '&:hover': { borderColor: 'rgba(168,85,247,0.5)', bgcolor: 'rgba(168,85,247,0.04)' } }}>
                             Desktop App
                         </Button>
                     </Stack>
                 </Container>
             </Box>
 
-            {/* Player Preview */}
-            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', py: 10, px: 3 }}>
+            {/* Player */}
+            <Box sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 10, px: 3 }}>
                 <Container maxWidth="sm">
-                    <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 3, mb: 1, display: 'block', textAlign: 'center' }}>
-                        Preview
-                    </Typography>
-                    <Typography variant="h4" sx={{ textAlign: 'center', mb: 4, fontSize: { xs: '1.4rem', md: '1.75rem' }, fontWeight: 700 }}>
-                        Spotify-Style Player
-                    </Typography>
+                    <Chip label="Preview" size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
+                    <Typography variant="h4" sx={{ mb: 4, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>Spotify-Style Player</Typography>
                     <MusicPlayer />
                 </Container>
             </Box>
 
             {/* Features */}
-            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', py: 10, px: 3 }}>
+            <Box sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 10, px: 3 }}>
                 <Container maxWidth="lg">
-                    <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 3, mb: 1, display: 'block' }}>Features</Typography>
-                    <Typography variant="h4" sx={{ mb: 6, fontSize: { xs: '1.4rem', md: '1.75rem' }, fontWeight: 700 }}>
-                        Alles was du brauchst
-                    </Typography>
-                    <Box sx={{
-                        display: 'grid',
-                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
-                        gap: 2,
-                    }}>
+                    <Chip label="Features" size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
+                    <Typography variant="h4" sx={{ mb: 6, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>Alles was du brauchst</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
                         {features.map((f, i) => (
                             <Box key={i} sx={{
-                                p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider',
-                                transition: 'all 0.2s ease',
-                                '&:hover': { borderColor: 'rgba(255,255,255,0.08)' },
+                                p: 3, borderRadius: 4, bgcolor: '#18181b', border: '1px solid rgba(168,85,247,0.06)',
+                                transition: 'all 0.2s', '&:hover': { borderColor: 'rgba(168,85,247,0.15)', transform: 'translateY(-2px)' },
                             }}>
-                                <Box sx={{ color: 'primary.main', mb: 1.5, opacity: 0.7, '& svg': { fontSize: 24 } }}>{f.icon}</Box>
-                                <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 600 }}>{f.title}</Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>{f.text}</Typography>
+                                <Box sx={{ color: 'primary.light', mb: 1.5, opacity: 0.7, '& svg': { fontSize: 22 } }}>{f.icon}</Box>
+                                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>{f.title}</Typography>
+                                <Typography variant="caption" color="text.secondary">{f.text}</Typography>
                             </Box>
                         ))}
                     </Box>
@@ -153,45 +128,34 @@ export default function MusicBot() {
             </Box>
 
             {/* Download */}
-            <Box id="download" sx={{ borderTop: '1px solid', borderColor: 'divider', py: 10, px: 3 }}>
+            <Box id="download" sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 10, px: 3 }}>
                 <Container maxWidth="md">
-                    <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 3, mb: 1, display: 'block' }}>Apps</Typography>
-                    <Typography variant="h4" sx={{ mb: 2, fontSize: { xs: '1.4rem', md: '1.75rem' }, fontWeight: 700 }}>
-                        Ueberall verfuegbar
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 5, maxWidth: 440, lineHeight: 1.7 }}>
-                        Nutze BeatByte im Browser oder als native Desktop App.
-                    </Typography>
+                    <Chip label="Apps" size="small" sx={{ mb: 2, bgcolor: 'rgba(91,141,239,0.1)', color: 'secondary.light' }} />
+                    <Typography variant="h4" sx={{ mb: 5, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>Ueberall verfuegbar</Typography>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5}>
-                        <Card sx={{ flex: 1, '&:hover': { borderColor: 'rgba(8,252,254,0.15)' }, transition: 'all 0.2s' }}>
-                            <CardContent sx={{ p: 3.5, textAlign: 'center' }}>
-                                <WebIcon sx={{ fontSize: 32, color: 'primary.main', mb: 2, opacity: 0.8 }} />
-                                <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>Web App</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.6 }}>
-                                    Direkt im Browser. Kein Download noetig.
-                                </Typography>
+                        <Card sx={{ flex: 1, bgcolor: '#18181b', '&:hover': { borderColor: 'rgba(168,85,247,0.15)' }, transition: 'all 0.2s' }}>
+                            <CardContent sx={{ p: 4, textAlign: 'center' }}>
+                                <WebIcon sx={{ fontSize: 32, color: 'primary.light', mb: 2, opacity: 0.7 }} />
+                                <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>Web App</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Im Browser. Kein Download.</Typography>
                                 <Button variant="contained" fullWidth href="https://app.bytebots.de" target="_blank" startIcon={<OpenInNewIcon />}
-                                    sx={{ background: 'linear-gradient(135deg, #08fcfe, #0ac2fe)', color: '#0a0a0f' }}>
+                                    sx={{ background: 'linear-gradient(135deg, #a855f7, #a855f7)', color: '#fff', borderRadius: 2.5 }}>
                                     Oeffnen
                                 </Button>
                             </CardContent>
                         </Card>
-                        <Card sx={{ flex: 1, '&:hover': { borderColor: 'rgba(180,138,254,0.15)' }, transition: 'all 0.2s' }}>
-                            <CardContent sx={{ p: 3.5, textAlign: 'center' }}>
-                                <DesktopWindowsIcon sx={{ fontSize: 32, color: '#b48afe', mb: 2, opacity: 0.8 }} />
-                                <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>Desktop App</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.6 }}>
-                                    Native App mit Tauri. Schnell und leichtgewichtig.
-                                </Typography>
+                        <Card sx={{ flex: 1, bgcolor: '#18181b', '&:hover': { borderColor: 'rgba(91,141,239,0.15)' }, transition: 'all 0.2s' }}>
+                            <CardContent sx={{ p: 4, textAlign: 'center' }}>
+                                <DesktopWindowsIcon sx={{ fontSize: 32, color: 'secondary.light', mb: 2, opacity: 0.7 }} />
+                                <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>Desktop App</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Native App mit Tauri.</Typography>
                                 <Stack direction="row" spacing={1}>
                                     <Button variant="outlined" fullWidth startIcon={<DesktopWindowsIcon />}
-                                        sx={{ borderColor: 'rgba(255,255,255,0.1)', color: 'text.primary',
-                                            '&:hover': { borderColor: 'rgba(255,255,255,0.2)' } }}>
+                                        sx={{ borderColor: 'rgba(168,85,247,0.2)', borderRadius: 2.5, '&:hover': { borderColor: 'rgba(168,85,247,0.4)' } }}>
                                         Windows
                                     </Button>
                                     <Button variant="outlined" fullWidth startIcon={<AppleIcon />}
-                                        sx={{ borderColor: 'rgba(255,255,255,0.1)', color: 'text.primary',
-                                            '&:hover': { borderColor: 'rgba(255,255,255,0.2)' } }}>
+                                        sx={{ borderColor: 'rgba(168,85,247,0.2)', borderRadius: 2.5, '&:hover': { borderColor: 'rgba(168,85,247,0.4)' } }}>
                                         macOS
                                     </Button>
                                 </Stack>
@@ -202,22 +166,20 @@ export default function MusicBot() {
             </Box>
 
             {/* Screenshots */}
-            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', py: 10, px: 3 }}>
+            <Box sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 10, px: 3 }}>
                 <Container maxWidth="lg">
-                    <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 3, mb: 1, display: 'block' }}>Screenshots</Typography>
-                    <Typography variant="h4" sx={{ mb: 6, fontSize: { xs: '1.4rem', md: '1.75rem' }, fontWeight: 700 }}>
-                        So sieht es aus
-                    </Typography>
+                    <Chip label="Screenshots" size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
+                    <Typography variant="h4" sx={{ mb: 6, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>So sieht es aus</Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
-                        {['Now Playing Embed', 'Queue Ansicht', 'Web Player', 'Desktop App'].map((label, i) => (
+                        {['Now Playing', 'Queue', 'Web Player', 'Desktop App'].map((l, i) => (
                             <Box key={i} sx={{
-                                aspectRatio: '16/9', borderRadius: 2,
-                                bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
+                                aspectRatio: '16/9', borderRadius: 4, bgcolor: '#18181b',
+                                border: '1px solid rgba(168,85,247,0.06)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                             }}>
                                 <Stack alignItems="center" spacing={0.5}>
-                                    <SearchIcon sx={{ fontSize: 32, opacity: 0.15 }} />
-                                    <Typography variant="caption" color="text.disabled">{label}</Typography>
+                                    <SearchIcon sx={{ fontSize: 28, opacity: 0.12 }} />
+                                    <Typography variant="caption" color="text.disabled">{l}</Typography>
                                 </Stack>
                             </Box>
                         ))}
@@ -225,37 +187,13 @@ export default function MusicBot() {
                 </Container>
             </Box>
 
-            {/* Video */}
-            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', py: 10, px: 3 }}>
-                <Container maxWidth="md">
-                    <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 3, mb: 1, display: 'block' }}>Tutorial</Typography>
-                    <Typography variant="h4" sx={{ mb: 4, fontSize: { xs: '1.4rem', md: '1.75rem' }, fontWeight: 700 }}>Erklaervideo</Typography>
-                    <Box sx={{
-                        position: 'relative', width: '100%', pb: '56.25%', borderRadius: 2, overflow: 'hidden',
-                        bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
-                    }}>
-                        <Box sx={{
-                            position: 'absolute', inset: 0,
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
-                        }}>
-                            <PlayCircleOutlineIcon sx={{ fontSize: 48, opacity: 0.15 }} />
-                            <Typography variant="caption" color="text.disabled">Video Platzhalter</Typography>
-                        </Box>
-                    </Box>
-                </Container>
-            </Box>
-
             {/* Commands */}
-            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', py: 10, px: 3 }}>
+            <Box sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 10, px: 3 }}>
                 <Container maxWidth="md">
-                    <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 3, mb: 1, display: 'block' }}>Befehle</Typography>
-                    <Typography variant="h4" sx={{ mb: 1, fontSize: { xs: '1.4rem', md: '1.75rem' }, fontWeight: 700 }}>
-                        {commands.length} Commands
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 5 }}>
-                        Slash-Commands fuer jeden Text-Channel.
-                    </Typography>
-                    <CommandList commands={commands} accentColor="#08fcfe" />
+                    <Chip label="Commands" size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
+                    <Typography variant="h4" sx={{ mb: 1, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>{commands.length} Commands</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 5 }}>Slash-Commands fuer jeden Text-Channel.</Typography>
+                    <CommandList commands={commands} accentColor="#a855f7" />
                 </Container>
             </Box>
         </Box>

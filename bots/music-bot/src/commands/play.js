@@ -27,7 +27,7 @@ module.exports = {
             const isUrl = query.startsWith('http://') || query.startsWith('https://');
             if (isUrl && ctx.isPlaylistUrl(query)) {
                 const playlist = await ctx.searchPlaylist(query);
-                const tracks = playlist.tracks.map(t => ({ ...t, requestedBy: interaction.user.toString() }));
+                const tracks = playlist.tracks.map(t => ({ ...t, requestedBy: interaction.user.toString(), _requestedById: interaction.user.id }));
                 queue.tracks.push(...tracks);
 
                 if (!queue.current) {
@@ -51,6 +51,7 @@ module.exports = {
             // Einzelner Track
             const track = await ctx.searchTrack(query);
             track.requestedBy = interaction.user.toString();
+            track._requestedById = interaction.user.id;
 
             queue.tracks.push(track);
 

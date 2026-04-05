@@ -11,6 +11,7 @@ const { createRateLimiter } = require('../../../libs/rateLimiter');
 function startAPI(ctx, client) {
     const port = process.env.API_PORT || 3001;
     const apiKey = process.env.API_KEY || '';
+    const webappUrl = process.env.WEBAPP_URL || process.env.APP_URL || `http://localhost:${port}`;
 
     // ── Rate Limiting ────────────────────────────────────────────
     const isApiLimited = createRateLimiter(100, 60_000);
@@ -52,9 +53,9 @@ function startAPI(ctx, client) {
         return null;
     }
 
-    function createSession(guildId) {
+    function createSession(guildId, userData = null) {
         const token = crypto.randomBytes(32).toString('hex');
-        sessions.set(token, { guildId, createdAt: Date.now() });
+        sessions.set(token, { guildId, user: userData, createdAt: Date.now() });
         return token;
     }
 
@@ -68,14 +69,19 @@ function startAPI(ctx, client) {
         return session;
     }
 
-    // Cleanup abgelaufener Codes & Sessions
+    // Cleanup abgelaufener Codes, Sessions & OAuth States
+    const OAUTH_STATE_EXPIRY_MS = 10 * 60_000; // 10 Minuten
     setInterval(() => {
         const now = Date.now();
         for (const [guildId, entry] of guildAccessCodes) {
             if (now - entry.createdAt > CODE_EXPIRY_MS) guildAccessCodes.delete(guildId);
         }
         for (const [token, session] of sessions) {
-            if (now - session.createdAt > SESSION_EXPIRY_MS) sessions.delete(token);
+            if (token.startsWith('oauth_state_')) {
+                if (now - session.createdAt > OAUTH_STATE_EXPIRY_MS) sessions.delete(token);
+            } else if (now - session.createdAt > SESSION_EXPIRY_MS) {
+                sessions.delete(token);
+            }
         }
     }, 60_000);
 
@@ -162,7 +168,7 @@ function startAPI(ctx, client) {
     }
 
     function getClientIp(req) {
-        return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+        return req.headers['x-real-ip'] || req.socket.remoteAddress;
     }
 
     // ── HTTP Server ──────────────────────────────────────────────
@@ -174,16 +180,20 @@ function startAPI(ctx, client) {
         res.setHeader('X-XSS-Protection', '0');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com https://i.ytimg.com https://*.scdn.co; connect-src 'self' wss://app.bytebots.de; frame-ancestors 'none'");
 
         // CORS
         const corsOrigin = getCorsOrigin(req);
         if (corsOrigin) {
             res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
             res.setHeader('Vary', 'Origin');
         }
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-        if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+        if (req.method === 'OPTIONS') {
+            if (!corsOrigin) { res.writeHead(403); return res.end(); }
+            res.writeHead(204); return res.end();
+        }
 
         const url = new URL(req.url, `http://localhost:${port}`);
         const urlPath = url.pathname;
@@ -246,14 +256,14 @@ function startAPI(ctx, client) {
                 const errorParam = url.searchParams.get('error');
 
                 if (errorParam || !code) {
-                    res.writeHead(302, { Location: '/?error=discord_denied' });
+                    res.writeHead(302, { Location: `${webappUrl}/app?error=discord_denied` });
                     return res.end();
                 }
 
                 // Validate CSRF state
                 const stateKey = `oauth_state_${state}`;
                 if (!state || !sessions.has(stateKey)) {
-                    res.writeHead(302, { Location: '/?error=invalid_state' });
+                    res.writeHead(302, { Location: `${webappUrl}/app?error=invalid_state` });
                     return res.end();
                 }
                 sessions.delete(stateKey);
@@ -297,7 +307,7 @@ function startAPI(ctx, client) {
                         });
 
                     if (sharedGuilds.length === 0) {
-                        res.writeHead(302, { Location: '/?error=no_shared_guilds' });
+                        res.writeHead(302, { Location: `${webappUrl}/app?error=no_shared_guilds` });
                         return res.end();
                     }
 
@@ -309,12 +319,13 @@ function startAPI(ctx, client) {
                         createdAt: Date.now(),
                     });
 
-                    // Redirect back to app with token
-                    res.writeHead(302, { Location: `/?discord_token=${oauthToken}` });
-                    return res.end();
+                    // Post token to app via sessionStorage, then redirect to webapp
+                    const appTarget = `${webappUrl}/app`;
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                    return res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><script>sessionStorage.setItem('discord_oauth_token','${oauthToken}');window.location.replace('${appTarget}');</script></body></html>`);
                 } catch (err) {
                     console.error('OAuth error:', err.message);
-                    res.writeHead(302, { Location: '/?error=oauth_failed' });
+                    res.writeHead(302, { Location: `${webappUrl}/app?error=oauth_failed` });
                     return res.end();
                 }
             }
@@ -338,17 +349,28 @@ function startAPI(ctx, client) {
                 const selectedGuild = pending.guilds.find(g => g.id === guildId);
                 if (!selectedGuild) return json(res, { error: 'Server nicht verfuegbar' }, 403);
                 sessions.delete(pendingKey);
-                const sessionToken = createSession(guildId);
-                return json(res, { token: sessionToken, guild: selectedGuild });
+                const sessionToken = createSession(guildId, { ...pending.user, authType: 'discord' });
+                return json(res, { token: sessionToken, user: pending.user, guild: selectedGuild });
             }
 
             // POST /api/auth/verify
             if (method === 'POST' && urlPath === '/api/auth/verify') {
+                const authHeader = req.headers['authorization'];
                 const auth = authenticateRequest(req);
                 if (!auth) return json(res, { valid: false }, 401);
                 if (auth.type === 'admin') return json(res, { valid: true, type: 'admin' });
                 const guild = client.guilds.cache.get(auth.guildId);
-                return json(res, { valid: true, guild: guild ? { id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) } : null });
+                // Include user data from session
+                const session = authHeader?.startsWith('Bearer ') ? validateSession(authHeader.slice(7)) : null;
+                const userData = session?.user || null;
+                return json(res, {
+                    valid: true,
+                    userId: userData?.id || null,
+                    username: userData?.username || null,
+                    avatar: userData?.avatar || null,
+                    authType: userData?.authType || 'code',
+                    guild: guild ? { id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) } : null,
+                });
             }
 
             // POST /api/auth/logout
@@ -380,11 +402,159 @@ function startAPI(ctx, client) {
                     return json(res, guild ? [{ id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) }] : []);
                 }
 
-                // GET /api/search?q=...
+                // GET /api/search?q=...&enhanced=1
                 if (method === 'GET' && urlPath === '/api/search') {
                     const q = url.searchParams.get('q');
                     if (!q) return json(res, { error: 'Query fehlt' }, 400);
+                    // Enhanced search returns categorized results (artists, tracks, albums)
+                    if (url.searchParams.get('enhanced') === '1') {
+                        return json(res, await ctx.searchEnhanced(q));
+                    }
                     return json(res, await ctx.searchTracks(q));
+                }
+
+                // ── Discover Endpoints ─────────────────────────────
+
+                // GET /api/discover/trending
+                if (method === 'GET' && urlPath === '/api/discover/trending') {
+                    try {
+                        const tracks = await ctx.searchTracks(`trending music ${new Date().getFullYear()}`, 10);
+                        return json(res, tracks);
+                    } catch { return json(res, []); }
+                }
+
+                // GET /api/discover/new-releases
+                if (method === 'GET' && urlPath === '/api/discover/new-releases') {
+                    try {
+                        const data = await ctx.spotifyFetch('/browse/new-releases?country=DE&limit=12');
+                        const albums = (data.albums?.items || []).map(a => ({
+                            id: a.id,
+                            name: a.name,
+                            artist: a.artists?.map(ar => ar.name).join(', ') || '',
+                            image: a.images?.[1]?.url || a.images?.[0]?.url || null,
+                            releaseDate: a.release_date || null,
+                            totalTracks: a.total_tracks || 0,
+                        }));
+                        return json(res, albums);
+                    } catch { return json(res, []); }
+                }
+
+                // GET /api/guild/:id/discover/recommendations
+                const recsMatch = urlPath.match(/^\/api\/guild\/(\d+)\/discover\/recommendations$/);
+                if (method === 'GET' && recsMatch) {
+                    const guildId = recsMatch[1];
+                    try {
+                        // Get top artists from history
+                        const topArtists = ctx.db.getTopArtistsFromHistory('guild', guildId, 30, 3);
+                        if (topArtists.length === 0) return json(res, { forYou: [], becauseYouListened: null });
+
+                        // Search Spotify for seed artists
+                        const seedSearches = await Promise.all(
+                            topArtists.slice(0, 2).map(a =>
+                                ctx.spotifyFetch(`/search?q=${encodeURIComponent(a.artist)}&type=artist&limit=1`)
+                                    .then(d => d.artists?.items?.[0]?.id)
+                                    .catch(() => null)
+                            )
+                        );
+                        const seedArtistIds = seedSearches.filter(Boolean);
+
+                        if (seedArtistIds.length === 0) return json(res, { forYou: [], becauseYouListened: null });
+
+                        // Get recommendations from Spotify
+                        const recs = await ctx.spotifyFetch(
+                            `/recommendations?seed_artists=${seedArtistIds.join(',')}&limit=10&market=DE`
+                        );
+                        const forYou = (recs.tracks || []).map(t => ({
+                            title: `${t.artists?.[0]?.name || ''} – ${t.name}`,
+                            artist: t.artists?.map(a => a.name).join(', ') || '',
+                            thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
+                            duration: Math.floor((t.duration_ms || 0) / 1000),
+                            spotifyId: t.id,
+                            searchQuery: `${t.artists?.[0]?.name} ${t.name}`,
+                        }));
+
+                        return json(res, {
+                            forYou,
+                            becauseYouListened: topArtists[0]?.artist || null,
+                        });
+                    } catch { return json(res, { forYou: [], becauseYouListened: null }); }
+                }
+
+                // GET /api/guild/:id/discover/popular
+                const popularDiscoverMatch = urlPath.match(/^\/api\/guild\/(\d+)\/discover\/popular$/);
+                if (method === 'GET' && popularDiscoverMatch) {
+                    return json(res, ctx.db.getMostPlayedInGuild(popularDiscoverMatch[1], 30, 10));
+                }
+
+                // GET /api/artist/:spotifyId
+                const artistMatch = urlPath.match(/^\/api\/artist\/([a-zA-Z0-9]+)$/);
+                if (method === 'GET' && artistMatch) {
+                    try {
+                        const [artist, topTracks, albumsData, related] = await Promise.all([
+                            ctx.spotifyFetch(`/artists/${artistMatch[1]}`),
+                            ctx.spotifyFetch(`/artists/${artistMatch[1]}/top-tracks?market=DE`),
+                            ctx.spotifyFetch(`/artists/${artistMatch[1]}/albums?include_groups=album,single&market=DE&limit=20`),
+                            ctx.spotifyFetch(`/artists/${artistMatch[1]}/related-artists`),
+                        ]);
+                        return json(res, {
+                            id: artist.id,
+                            name: artist.name,
+                            image: artist.images?.[0]?.url || null,
+                            imageSmall: artist.images?.[1]?.url || artist.images?.[0]?.url || null,
+                            genres: artist.genres || [],
+                            followers: artist.followers?.total || 0,
+                            topTracks: (topTracks.tracks || []).map(t => ({
+                                title: t.name,
+                                artist: t.artists?.map(a => a.name).join(', ') || '',
+                                thumbnail: t.album?.images?.[2]?.url || t.album?.images?.[0]?.url || null,
+                                duration: Math.floor((t.duration_ms || 0) / 1000),
+                                searchQuery: `${t.artists?.[0]?.name} ${t.name}`,
+                                albumName: t.album?.name || '',
+                            })),
+                            albums: (albumsData.items || []).filter(a => a.album_group === 'album').map(a => ({
+                                id: a.id, name: a.name,
+                                image: a.images?.[1]?.url || a.images?.[0]?.url || null,
+                                releaseDate: a.release_date, totalTracks: a.total_tracks,
+                            })),
+                            singles: (albumsData.items || []).filter(a => a.album_group === 'single').map(a => ({
+                                id: a.id, name: a.name,
+                                image: a.images?.[1]?.url || a.images?.[0]?.url || null,
+                                releaseDate: a.release_date, totalTracks: a.total_tracks,
+                            })),
+                            related: (related.artists || []).slice(0, 8).map(a => ({
+                                id: a.id, name: a.name,
+                                image: a.images?.[1]?.url || a.images?.[0]?.url || null,
+                            })),
+                        });
+                    } catch (err) {
+                        return json(res, { error: 'Artist nicht gefunden' }, 404);
+                    }
+                }
+
+                // GET /api/album/:spotifyId
+                const albumMatch = urlPath.match(/^\/api\/album\/([a-zA-Z0-9]+)$/);
+                if (method === 'GET' && albumMatch) {
+                    try {
+                        const album = await ctx.spotifyFetch(`/albums/${albumMatch[1]}?market=DE`);
+                        return json(res, {
+                            id: album.id,
+                            name: album.name,
+                            artist: album.artists?.map(a => ({ id: a.id, name: a.name })) || [],
+                            image: album.images?.[0]?.url || null,
+                            imageSmall: album.images?.[1]?.url || null,
+                            releaseDate: album.release_date,
+                            totalTracks: album.total_tracks,
+                            tracks: (album.tracks?.items || []).map((t, i) => ({
+                                title: t.name,
+                                artist: t.artists?.map(a => a.name).join(', ') || '',
+                                duration: Math.floor((t.duration_ms || 0) / 1000),
+                                trackNumber: t.track_number || i + 1,
+                                searchQuery: `${t.artists?.[0]?.name} ${t.name}`,
+                            })),
+                        });
+                    } catch {
+                        return json(res, { error: 'Album nicht gefunden' }, 404);
+                    }
                 }
 
                 // GET /api/guild/:id/channels
@@ -418,6 +588,7 @@ function startAPI(ctx, client) {
                     if (!queue || !queue.connection) return json(res, { error: 'Bot ist nicht verbunden. Nutze /play in Discord.' }, 400);
                     const track = await ctx.searchTrack(query);
                     track.requestedBy = 'Web App';
+                    track._requestedById = getUserId();
                     queue.tracks.push(track);
                     if (!queue.current) ctx.playNext(playMatch[1]);
                     broadcast('stateUpdate', getGuildState(playMatch[1]));
@@ -624,35 +795,152 @@ function startAPI(ctx, client) {
                     return json(res, { ok: true });
                 }
 
+                // GET /api/guild/:id/voice-status
+                const voiceStatusMatch = urlPath.match(/^\/api\/guild\/(\d+)\/voice-status$/);
+                if (method === 'GET' && voiceStatusMatch) {
+                    const guildId = voiceStatusMatch[1];
+                    const guild = client.guilds.cache.get(guildId);
+                    if (!guild) return json(res, { error: 'Server nicht gefunden' }, 404);
+
+                    // Bot's voice channel and current song
+                    const botMember = guild.members.cache.get(client.user.id);
+                    const botVoice = botMember?.voice?.channel;
+                    const queue = ctx.queues.get(guildId);
+
+                    const voiceMembers = botVoice
+                        ? botVoice.members
+                            .filter(m => !m.user.bot)
+                            .map(m => ({ id: m.id, username: m.user.username, avatar: m.user.avatar }))
+                        : [];
+
+                    return json(res, {
+                        botConnected: !!botVoice,
+                        channelName: botVoice?.name || null,
+                        channelId: botVoice?.id || null,
+                        members: voiceMembers,
+                        currentSong: queue?.current ? { title: queue.current.title, artist: queue.current.artist } : null,
+                    });
+                }
+
+                // ── User Endpoints (Likes, History, Following) ───────
+
+                // Helper: get userId from session
+                function getUserId() {
+                    const authH = req.headers['authorization'];
+                    if (!authH?.startsWith('Bearer ')) return null;
+                    const sess = validateSession(authH.slice(7));
+                    return sess?.user?.id || `guest_${sess?.guildId}`;
+                }
+
+                // GET /api/guild/:id/likes
+                const likesGetMatch = urlPath.match(/^\/api\/guild\/(\d+)\/likes$/);
+                if (method === 'GET' && likesGetMatch) {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    return json(res, ctx.db.getLikedTracks(uid));
+                }
+
+                // POST /api/guild/:id/likes
+                if (method === 'POST' && likesGetMatch) {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    const track = await parseBody(req);
+                    if (!track.title || !track.url) return json(res, { error: 'title und url benoetigt' }, 400);
+                    ctx.db.likeTrack(uid, likesGetMatch[1], track);
+                    return json(res, { ok: true }, 201);
+                }
+
+                // DELETE /api/guild/:id/likes
+                const likesDeleteMatch = urlPath.match(/^\/api\/guild\/(\d+)\/likes\/(.+)$/);
+                if (method === 'DELETE' && likesDeleteMatch) {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    ctx.db.unlikeTrack(uid, decodeURIComponent(likesDeleteMatch[2]));
+                    return json(res, { ok: true });
+                }
+
+                // GET /api/guild/:id/likes/check?url=...
+                const likesCheckMatch = urlPath.match(/^\/api\/guild\/(\d+)\/likes\/check$/);
+                if (method === 'GET' && likesCheckMatch) {
+                    const uid = getUserId();
+                    const trackUrl = url.searchParams.get('url');
+                    if (!uid || !trackUrl) return json(res, { liked: false });
+                    return json(res, { liked: ctx.db.isTrackLiked(uid, trackUrl) });
+                }
+
+                // GET /api/guild/:id/history
+                const historyGetMatch = urlPath.match(/^\/api\/guild\/(\d+)\/history$/);
+                if (method === 'GET' && historyGetMatch) {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    const limit = parseInt(url.searchParams.get('limit')) || 50;
+                    return json(res, ctx.db.getHistory(uid, historyGetMatch[1], Math.min(limit, 200)));
+                }
+
+                // DELETE /api/guild/:id/history
+                if (method === 'DELETE' && historyGetMatch) {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    ctx.db.clearHistory(uid, historyGetMatch[1]);
+                    return json(res, { ok: true });
+                }
+
+                // GET /api/guild/:id/stats/top-artists
+                const topArtistsMatch = urlPath.match(/^\/api\/guild\/(\d+)\/stats\/top-artists$/);
+                if (method === 'GET' && topArtistsMatch) {
+                    const uid = getUserId();
+                    if (!uid) return json(res, []);
+                    const days = parseInt(url.searchParams.get('days')) || 30;
+                    return json(res, ctx.db.getTopArtistsFromHistory(uid, topArtistsMatch[1], days));
+                }
+
+                // GET /api/guild/:id/stats/popular
+                const popularMatch = urlPath.match(/^\/api\/guild\/(\d+)\/stats\/popular$/);
+                if (method === 'GET' && popularMatch) {
+                    return json(res, ctx.db.getMostPlayedInGuild(popularMatch[1]));
+                }
+
                 return json(res, { error: 'Not found' }, 404);
             }
 
-            // ── Web App (statische Dateien aus app/dist) ──────────
-            const distDir = path.join(__dirname, '..', 'app', 'dist');
+            // ── Webapp (statische Dateien aus website/dist) ─────────
+            const distDir = path.join(__dirname, '..', '..', '..', 'website', 'dist');
             const mimeTypes = {
                 '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
                 '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
                 '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
             };
-            let filePath = path.join(distDir, urlPath === '/' ? 'index.html' : urlPath);
+
+            // Redirect root to /app
+            if (urlPath === '/') {
+                res.writeHead(302, { Location: '/app' });
+                return res.end();
+            }
+
+            // Serve static assets (JS, CSS, images)
+            let filePath = path.join(distDir, urlPath);
             const resolvedDist = path.resolve(distDir);
             if (!path.resolve(filePath).startsWith(resolvedDist + path.sep) && path.resolve(filePath) !== resolvedDist) {
                 return json(res, { error: 'Not found' }, 404);
             }
+
             try {
                 const stat = await fsp.stat(filePath);
-                if (stat.isDirectory()) filePath = path.join(distDir, 'index.html');
-            } catch {
-                filePath = path.join(distDir, 'index.html');
-            }
-            try {
+                if (!stat.isFile()) throw new Error('not a file');
                 const content = await fsp.readFile(filePath);
                 const ext = path.extname(filePath);
                 res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
                 return res.end(content);
-            } catch { /* dist nicht vorhanden, weiter zu 404 */ }
-
-            json(res, { error: 'Not found' }, 404);
+            } catch {
+                // SPA fallback: serve index.html for all non-file routes (React Router)
+                try {
+                    const indexHtml = await fsp.readFile(path.join(distDir, 'index.html'));
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    return res.end(indexHtml);
+                } catch {
+                    json(res, { error: 'Not found' }, 404);
+                }
+            }
         } catch (err) {
             console.error('API-Fehler:', err);
             json(res, { error: 'Interner Serverfehler' }, 500);
@@ -664,30 +952,26 @@ function startAPI(ctx, client) {
     const wss = new WebSocketServer({ server });
 
     wss.on('connection', (ws, req) => {
-        const wsUrl = new URL(req.url, `http://localhost:${port}`);
-        const token = wsUrl.searchParams.get('token');
-        const key = wsUrl.searchParams.get('key');
+        // Auth only via first message (tokens in URLs can leak via logs)
+        ws._authTimeout = setTimeout(() => {
+            if (!ws.authenticated) ws.close(4001, 'Nicht authentifiziert');
+        }, 5000);
 
-        if (key && apiKey && key === apiKey) {
-            ws.guildId = null;
-            ws.authenticated = true;
-        } else if (token) {
-            const session = validateSession(token);
-            if (session) {
-                ws.guildId = session.guildId;
-                ws.authenticated = true;
-            }
-        }
-
-        if (!ws.authenticated) {
-            ws._authTimeout = setTimeout(() => {
-                if (!ws.authenticated) ws.close(4001, 'Nicht authentifiziert');
-            }, 5000);
-
-            ws.on('message', (msg) => {
-                try {
-                    const data = JSON.parse(msg);
-                    if (data.type === 'auth' && data.token) {
+        ws.on('message', (msg) => {
+            if (ws.authenticated) return;
+            try {
+                const data = JSON.parse(msg);
+                if (data.type === 'auth') {
+                    // API key auth
+                    if (data.key && apiKey && data.key === apiKey) {
+                        ws.guildId = null;
+                        ws.authenticated = true;
+                        clearTimeout(ws._authTimeout);
+                        ws.send(JSON.stringify({ event: 'authenticated', data: { guildId: null } }));
+                        return;
+                    }
+                    // Token auth
+                    if (data.token) {
                         const session = validateSession(data.token);
                         if (session) {
                             ws.guildId = session.guildId;
@@ -698,9 +982,9 @@ function startAPI(ctx, client) {
                             ws.close(4001, 'Ungültiger Token');
                         }
                     }
-                } catch { /* Ungültiges JSON von WebSocket-Client, ignoriert */ }
-            });
-        }
+                }
+            } catch { /* Ungültiges JSON von WebSocket-Client, ignoriert */ }
+        });
     });
 
     function broadcast(event, data) {

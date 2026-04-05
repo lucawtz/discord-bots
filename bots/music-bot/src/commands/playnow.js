@@ -21,6 +21,7 @@ module.exports = {
         try {
             const track = await ctx.searchTrack(query);
             track.requestedBy = interaction.user.toString();
+            track._requestedById = interaction.user.id;
 
             await ctx.ensureConnection(interaction, ctx);
 

@@ -3,7 +3,9 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { execSync } = require('child_process');
+const { execSync, execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
@@ -86,10 +88,15 @@ function isValidSession(req) {
     return getSessionUser(req) !== null;
 }
 
-function parseBody(req) {
+function parseBody(req, maxBytes = 1024 * 1024) {
     return new Promise((resolve, reject) => {
         let body = '';
-        req.on('data', chunk => body += chunk);
+        let size = 0;
+        req.on('data', chunk => {
+            size += chunk.length;
+            if (size > maxBytes) { req.destroy(); return reject(new Error('Body too large')); }
+            body += chunk;
+        });
         req.on('end', () => resolve(body));
         req.on('error', reject);
     });
@@ -129,10 +136,10 @@ function validateServiceName(service) {
     }
 }
 
-function getBotStatus(service) {
+async function getBotStatus(service) {
     validateServiceName(service);
     try {
-        const raw = execSync(`systemctl show ${service} --property=ActiveState,SubState,MainPID,ExecMainStartTimestamp,MemoryCurrent 2>/dev/null`, { encoding: 'utf8', timeout: 5000 });
+        const { stdout: raw } = await execFileAsync('systemctl', ['show', service, '--property=ActiveState,SubState,MainPID,ExecMainStartTimestamp,MemoryCurrent'], { encoding: 'utf8', timeout: 5000 });
         const props = {};
         raw.trim().split('\n').forEach(line => {
             const [key, ...val] = line.split('=');
@@ -170,21 +177,22 @@ function getBotStatus(service) {
     }
 }
 
-function getBotLogs(service, lines = 50) {
+async function getBotLogs(service, lines = 50) {
     validateServiceName(service);
     lines = Math.max(1, Math.min(500, parseInt(lines) || 50));
     try {
-        return execSync(`journalctl -u ${service} --no-pager -n ${lines} --output=short-iso 2>/dev/null`, { encoding: 'utf8', timeout: 5000 });
+        const { stdout } = await execFileAsync('journalctl', ['-u', service, '--no-pager', '-n', String(lines), '--output=short-iso'], { encoding: 'utf8', timeout: 5000 });
+        return stdout;
     } catch {
         return 'Keine Logs verfuegbar';
     }
 }
 
-function controlBot(service, action) {
+async function controlBot(service, action) {
     validateServiceName(service);
     const allowed = ['start', 'stop', 'restart'];
     if (!allowed.includes(action)) throw new Error('Invalid action');
-    execSync(`sudo systemctl ${action} ${service}`, { timeout: 15000 });
+    await execFileAsync('sudo', ['systemctl', action, service], { timeout: 15000 });
 }
 
 function getSystemInfo() {
@@ -323,7 +331,7 @@ function addDeployment(entry) {
 // ── Active Alerts (in-memory) ───────────────────────────────────
 const activeAlerts = [];
 
-function checkAlerts() {
+async function checkAlerts() {
     const sys = latestSystemInfo;
     const now = Date.now();
 
@@ -367,7 +375,7 @@ function checkAlerts() {
 
     // Check bot crashes
     for (const bot of config.bots) {
-        const st = getBotStatus(bot.service);
+        const st = await getBotStatus(bot.service);
         if (st.status === 'crashed') {
             const existing = activeAlerts.find(a => a.ruleId === `bot-crash-${bot.id}`);
             if (!existing) {
@@ -612,6 +620,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com; connect-src 'self' wss://dashboard.bytebots.de; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const p = url.pathname;
@@ -626,7 +635,7 @@ const server = http.createServer(async (req, res) => {
 
         // Login POST
         if (method === 'POST' && p === '/login') {
-            const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+            const clientIp = req.headers['x-real-ip'] || req.socket.remoteAddress;
             if (isLoginLimited(clientIp)) {
                 res.writeHead(429, { 'Content-Type': 'text/plain', 'Retry-After': '900' });
                 return res.end('Zu viele Login-Versuche. Bitte warte 15 Minuten.');
@@ -642,14 +651,14 @@ const server = http.createServer(async (req, res) => {
                     // User has 2FA enabled - create pending session
                     sessions.set(token, { userId: user.id, createdAt: Date.now(), pending2FA: true });
                     res.writeHead(302, {
-                        'Set-Cookie': `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
+                        'Set-Cookie': `session=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400`,
                         'Location': '/login?2fa=1'
                     });
                 } else {
                     // No 2FA - create normal session
                     sessions.set(token, { userId: user.id, createdAt: Date.now() });
                     res.writeHead(302, {
-                        'Set-Cookie': `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`,
+                        'Set-Cookie': `session=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400`,
                         'Location': '/'
                     });
                 }
@@ -661,7 +670,7 @@ const server = http.createServer(async (req, res) => {
 
         // Password reset request (from login page)
         if (method === 'POST' && p === '/api/password-reset/request') {
-            const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+            const clientIp = req.headers['x-real-ip'] || req.socket.remoteAddress;
             if (isLoginLimited(clientIp)) {
                 return json(res, { error: 'Zu viele Versuche.' }, 429);
             }
@@ -689,8 +698,8 @@ const server = http.createServer(async (req, res) => {
             let data;
             try { data = JSON.parse(body); } catch { return json(res, { error: 'Ungueltiges JSON' }, 400); }
             const { token, password } = data;
-            if (!token || !password || password.length < 6) {
-                return json(res, { error: 'Token und Passwort (min. 6 Zeichen) erforderlich' }, 400);
+            if (!token || !password || password.length < 8) {
+                return json(res, { error: 'Token und Passwort (min. 8 Zeichen) erforderlich' }, 400);
             }
             const resetData = validateResetToken(token);
             if (!resetData) {
@@ -712,7 +721,7 @@ const server = http.createServer(async (req, res) => {
             const token = getSessionToken(req);
             if (token) sessions.delete(token);
             res.writeHead(302, {
-                'Set-Cookie': 'session=; Path=/; HttpOnly; Max-Age=0',
+                'Set-Cookie': 'session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0',
                 'Location': '/login'
             });
             return res.end();
@@ -749,7 +758,7 @@ const server = http.createServer(async (req, res) => {
 
         // Rate limiting for API
         if (p.startsWith('/api/')) {
-            const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+            const clientIp = req.headers['x-real-ip'] || req.socket.remoteAddress;
             if (isApiLimited(clientIp)) {
                 return json(res, { error: 'Zu viele Anfragen.' }, 429);
             }
@@ -904,7 +913,7 @@ const server = http.createServer(async (req, res) => {
             } else {
                 if (data.name) user.name = data.name.trim();
             }
-            if (data.password && data.password.length >= 6) {
+            if (data.password && data.password.length >= 8) {
                 user.passwordHash = await bcrypt.hash(data.password, 12);
             }
 
@@ -981,7 +990,7 @@ const server = http.createServer(async (req, res) => {
         if (method === 'GET' && p === '/api/servers') {
             const sys = latestSystemInfo;
             const bots = config.bots.filter(b => b.server === 'oracle-prod-01');
-            const botStatuses = bots.map(b => ({ ...b, ...getBotStatus(b.service) }));
+            const botStatuses = await Promise.all(bots.map(async b => ({ ...b, ...(await getBotStatus(b.service)) })));
             const running = botStatuses.filter(b => b.running).length;
             const crashed = botStatuses.filter(b => b.status === 'crashed').length;
 
@@ -1019,10 +1028,10 @@ const server = http.createServer(async (req, res) => {
             if (!srv) return json(res, { error: 'Server nicht gefunden' }, 404);
 
             const sys = latestSystemInfo;
-            const bots = config.bots.filter(b => b.server === serverId).map(b => ({
+            const bots = await Promise.all(config.bots.filter(b => b.server === serverId).map(async b => ({
                 ...b,
-                ...getBotStatus(b.service)
-            }));
+                ...(await getBotStatus(b.service))
+            })));
 
             return json(res, {
                 ...srv,
@@ -1081,10 +1090,10 @@ const server = http.createServer(async (req, res) => {
 
         // All bots
         if (method === 'GET' && p === '/api/bots') {
-            const bots = config.bots.map(bot => ({
+            const bots = await Promise.all(config.bots.map(async bot => ({
                 ...bot,
-                ...getBotStatus(bot.service),
-            }));
+                ...(await getBotStatus(bot.service)),
+            })));
             const system = {
                 ...latestSystemInfo,
                 cpuPercent: latestSystemInfo.cpuPercent || 0
@@ -1097,7 +1106,7 @@ const server = http.createServer(async (req, res) => {
             const botId = p.split('/').pop();
             const bot = config.bots.find(b => b.id === botId);
             if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
-            return json(res, { ...bot, ...getBotStatus(bot.service) });
+            return json(res, { ...bot, ...(await getBotStatus(bot.service)) });
         }
 
         // Bot Logs
@@ -1106,7 +1115,7 @@ const server = http.createServer(async (req, res) => {
             const bot = config.bots.find(b => b.id === logsMatch[1]);
             if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
             const lines = parseInt(url.searchParams.get('lines')) || 50;
-            return json(res, { logs: getBotLogs(bot.service, lines) });
+            return json(res, { logs: await getBotLogs(bot.service, lines) });
         }
 
         // Bot Control
@@ -1115,7 +1124,7 @@ const server = http.createServer(async (req, res) => {
             const bot = config.bots.find(b => b.id === controlMatch[1]);
             if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
             const action = controlMatch[2];
-            controlBot(bot.service, action);
+            await controlBot(bot.service, action);
 
             const actionUser = getSessionUser(req);
             addAuditEntry(actionUser ? actionUser.name : 'Unknown', `bot.${action}`, bot.name, `Service: ${bot.service}`);
@@ -1129,7 +1138,7 @@ const server = http.createServer(async (req, res) => {
             });
 
             await new Promise(r => setTimeout(r, 2000));
-            return json(res, { ok: true, ...getBotStatus(bot.service) });
+            return json(res, { ok: true, ...(await getBotStatus(bot.service)) });
         }
 
         // Alerts
@@ -1193,15 +1202,19 @@ const server = http.createServer(async (req, res) => {
         // ── File Browser Routes ────────────────────────────────
         const FILE_BASE = IS_WINDOWS ? process.cwd() : '/home/ubuntu';
 
+        const PROTECTED_FILES = ['audit.json', 'users.json', '.env', 'id_rsa', 'id_ed25519'];
+
         function resolveSafePath(requestedPath) {
             const resolved = path.resolve(FILE_BASE, requestedPath || '');
             if (!resolved.startsWith(FILE_BASE)) return null;
+            const basename = path.basename(resolved);
+            if (PROTECTED_FILES.includes(basename)) return null;
             return resolved;
         }
 
         if (method === 'GET' && p === '/api/files') {
             const me = getSessionUser(req);
-            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
             const reqPath = url.searchParams.get('path') || FILE_BASE;
             const safePath = resolveSafePath(reqPath);
             if (!safePath) return json(res, { error: 'Zugriff verweigert' }, 403);
@@ -1229,7 +1242,7 @@ const server = http.createServer(async (req, res) => {
 
         if (method === 'GET' && p === '/api/files/read') {
             const me = getSessionUser(req);
-            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
             const reqPath = url.searchParams.get('path') || '';
             const safePath = resolveSafePath(reqPath);
             if (!safePath) return json(res, { error: 'Zugriff verweigert' }, 403);
@@ -1307,7 +1320,7 @@ const server = http.createServer(async (req, res) => {
         const envGetMatch = p.match(/^\/api\/bots\/([\w-]+)\/env$/);
         if (method === 'GET' && envGetMatch) {
             const me = getSessionUser(req);
-            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
             const bot = config.bots.find(b => b.id === envGetMatch[1]);
             if (!bot) return json(res, { error: 'Bot nicht gefunden' }, 404);
             const envPath = path.resolve(__dirname, '..', 'bots', bot.service, '.env');
@@ -1374,7 +1387,7 @@ const server = http.createServer(async (req, res) => {
         const dockerActionMatch = p.match(/^\/api\/docker\/containers\/([\w]+)\/(start|stop|restart)$/);
         if (method === 'POST' && dockerActionMatch) {
             const me = getSessionUser(req);
-            if (!me) return json(res, { error: 'Nicht authentifiziert' }, 401);
+            if (!me || me.role !== 'admin') return json(res, { error: 'Keine Berechtigung' }, 403);
             const containerId = dockerActionMatch[1];
             const dockerAction = dockerActionMatch[2];
             if (!/^[\w]+$/.test(containerId)) return json(res, { error: 'Ungueltige Container ID' }, 400);
@@ -1649,6 +1662,11 @@ const server = http.createServer(async (req, res) => {
     }
 });
 
+server.timeout = 30000;           // 30s max request time
+server.headersTimeout = 10000;    // 10s for headers
+server.requestTimeout = 30000;    // 30s total request timeout
+server.keepAliveTimeout = 5000;   // 5s keep-alive
+
 server.listen(PORT, () => console.log(`Dashboard laeuft auf Port ${PORT}`));
 
 // ── WebSocket SSH Terminal ───────────────────────────────────────
@@ -1665,6 +1683,13 @@ wss.on('connection', (ws, req) => {
     const session = sessions.get(sessionMatch[1]);
     if (!session || session.pending2FA) {
         ws.close(4001, 'Ungueltige Session');
+        return;
+    }
+
+    // Only admins may open SSH terminals
+    const sessionUser = findUserById(session.userId);
+    if (!sessionUser || sessionUser.role !== 'admin') {
+        ws.close(4003, 'Keine Berechtigung');
         return;
     }
 

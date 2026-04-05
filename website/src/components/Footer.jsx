@@ -1,48 +1,76 @@
-import { Box, Typography, Link as MuiLink, Stack } from '@mui/material';
+import { Box, Typography, Link as MuiLink, Stack, Container } from '@mui/material';
 import { Link } from 'react-router-dom';
+
+const columns = [
+    {
+        title: 'Product',
+        links: [
+            { label: 'BeatByte', path: '/bots/music-bot' },
+            { label: 'EarTastic', path: '/bots/soundboard-bot' },
+            { label: 'Commands', path: '/commands' },
+        ],
+    },
+    {
+        title: 'Resources',
+        links: [
+            { label: 'Documentation', path: '/guide' },
+            { label: 'Status', path: '/status' },
+            { label: 'Changelog', path: '/changelog' },
+        ],
+    },
+    {
+        title: 'Legal',
+        links: [
+            { label: 'Impressum', path: '/impressum' },
+            { label: 'Datenschutz', path: '/datenschutz' },
+        ],
+    },
+];
 
 export default function Footer() {
     return (
-        <Box
-            component="footer"
-            sx={{
-                py: 5, px: 3, mt: 'auto',
-                borderTop: '1px solid', borderColor: 'divider',
-            }}
-        >
-            <Stack
-                direction={{ xs: 'column', sm: 'row' }}
-                justifyContent="space-between"
-                alignItems={{ xs: 'center', sm: 'flex-start' }}
-                spacing={3}
-                sx={{ maxWidth: 1200, mx: 'auto' }}
-            >
-                <Typography variant="body2" color="text.disabled">
-                    &copy; {new Date().getFullYear()} ByteBots
-                </Typography>
-                <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
-                    <MuiLink component={Link} to="/" color="text.disabled" underline="hover" variant="body2"
-                        sx={{ '&:hover': { color: 'text.secondary' } }}>
-                        Home
-                    </MuiLink>
-                    <MuiLink component={Link} to="/bots/music-bot" color="text.disabled" underline="hover" variant="body2"
-                        sx={{ '&:hover': { color: 'text.secondary' } }}>
-                        BeatByte
-                    </MuiLink>
-                    <MuiLink component={Link} to="/bots/soundboard-bot" color="text.disabled" underline="hover" variant="body2"
-                        sx={{ '&:hover': { color: 'text.secondary' } }}>
-                        Soundboard
-                    </MuiLink>
-                    <MuiLink component={Link} to="/impressum" color="text.disabled" underline="hover" variant="body2"
-                        sx={{ '&:hover': { color: 'text.secondary' } }}>
-                        Impressum
-                    </MuiLink>
-                    <MuiLink component={Link} to="/datenschutz" color="text.disabled" underline="hover" variant="body2"
-                        sx={{ '&:hover': { color: 'text.secondary' } }}>
-                        Datenschutz
-                    </MuiLink>
+        <Box component="footer" sx={{ borderTop: '1px solid rgba(255,255,255,0.06)', mt: 'auto' }}>
+            <Container maxWidth="lg" sx={{ py: 8 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 5, sm: 8 }}>
+                    {/* Brand */}
+                    <Box sx={{ minWidth: 160 }}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                            <Box component="img" src="/logo.png" alt="" sx={{ width: 24, height: 24, objectFit: 'contain' }} />
+                            <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>ByteBots</Typography>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                            Professionelle Discord Bots.
+                        </Typography>
+                    </Box>
+
+                    {/* Link Columns */}
+                    {columns.map((col) => (
+                        <Box key={col.title}>
+                            <Typography variant="caption" sx={{
+                                color: '#fafafa', fontWeight: 600, fontSize: '0.75rem',
+                                textTransform: 'uppercase', letterSpacing: 1, mb: 2, display: 'block',
+                            }}>
+                                {col.title}
+                            </Typography>
+                            <Stack spacing={1}>
+                                {col.links.map((link) => (
+                                    <MuiLink key={link.label} component={Link} to={link.path}
+                                        color="text.secondary" underline="none" variant="body2"
+                                        sx={{ fontSize: '0.85rem', '&:hover': { color: '#c084fc' }, transition: 'color 0.15s' }}>
+                                        {link.label}
+                                    </MuiLink>
+                                ))}
+                            </Stack>
+                        </Box>
+                    ))}
                 </Stack>
-            </Stack>
+
+                <Box sx={{ mt: 6, pt: 4, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.75rem' }}>
+                        &copy; {new Date().getFullYear()} ByteBots. Alle Rechte vorbehalten.
+                    </Typography>
+                </Box>
+            </Container>
         </Box>
     );
 }

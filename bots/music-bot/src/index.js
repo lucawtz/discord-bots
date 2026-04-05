@@ -3,6 +3,7 @@ const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSta
 const { spawn, execFileSync } = require('child_process'); // execFileSync für yt-dlp detection
 
 
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
@@ -132,7 +133,6 @@ async function getSpotifyToken() {
     if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
         throw new Error('Spotify ist nicht konfiguriert (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET fehlen)');
     }
-    const https = require('https');
     const auth = Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64');
     return new Promise((resolve, reject) => {
         const body = 'grant_type=client_credentials';
@@ -165,7 +165,6 @@ async function getSpotifyToken() {
 }
 
 function spotifyFetch(endpoint) {
-    const https = require('https');
     return getSpotifyToken().then(token => new Promise((resolve, reject) => {
         const req = https.get(`https://api.spotify.com/v1${endpoint}`, {
             headers: { 'Authorization': `Bearer ${token}` },
@@ -298,7 +297,6 @@ function parseAppleMusicUrl(url) {
 }
 
 function appleMusicFetch(endpoint) {
-    const https = require('https');
     return new Promise((resolve, reject) => {
         const req = https.get(`https://api.music.apple.com/v1${endpoint}`, {
             headers: {
@@ -405,7 +403,6 @@ const PIPED_INSTANCES = [
 let pipedInstanceIndex = 0;
 
 function pipedFetchSingle(instance, endpoint) {
-    const https = require('https');
     return new Promise((resolve, reject) => {
         const url = `${instance}${endpoint}`;
         const req = https.get(url, { timeout: 4000 }, (res) => {
@@ -458,7 +455,9 @@ function pipedToTrack(item) {
         title: item.title || 'Unbekannter Titel',
         url: `https://www.youtube.com${item.url}`,
         duration: formatDuration(item.duration),
+        durationSec: item.duration || 0,
         thumbnail: item.thumbnail || null,
+        artist: item.uploaderName || item.uploader || null,
     };
 }
 
@@ -506,6 +505,118 @@ async function searchTracks(query, limit = 5) {
     }
 }
 
+// ── Enhanced Search (kategorisiert + Spotify-Metadaten) ─────────
+
+async function searchEnhanced(query) {
+    const isUrl = query.startsWith('http://') || query.startsWith('https://');
+    if (isUrl) {
+        const track = await searchTrack(query);
+        return { tracks: [track], artists: [], albums: [] };
+    }
+
+    // Parallel: YouTube/Piped tracks + Spotify search (artist, tracks, albums)
+    const [ytTracks, spotifyResult] = await Promise.allSettled([
+        searchTracks(query, 10),
+        searchSpotifyEnhanced(query),
+    ]);
+
+    const tracks = ytTracks.status === 'fulfilled' ? ytTracks.value : [];
+    const spotify = spotifyResult.status === 'fulfilled' ? spotifyResult.value : { artists: [], albums: [], tracks: [] };
+
+    // Merge: enrich YouTube tracks with Spotify artist data
+    const enrichedTracks = tracks.map(t => {
+        // Try matching with Spotify track for better metadata
+        const spMatch = spotify.tracks.find(st =>
+            normalizeForMatch(st.name).includes(normalizeForMatch(t.title)) ||
+            normalizeForMatch(t.title).includes(normalizeForMatch(st.name))
+        );
+        if (spMatch && !t.artist) {
+            t.artist = spMatch.artists?.map(a => a.name).join(', ') || t.artist;
+        }
+        return t;
+    });
+
+    // Score and sort tracks by relevance
+    const queryLower = normalizeForMatch(query);
+    const scoredTracks = enrichedTracks.map(t => {
+        let score = 0;
+        const titleLower = normalizeForMatch(t.title);
+        const artistLower = normalizeForMatch(t.artist || '');
+        // Exact title match
+        if (titleLower === queryLower) score += 100;
+        // Title contains query
+        else if (titleLower.includes(queryLower)) score += 50;
+        // Query words in title
+        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 1);
+        const matchedWords = queryWords.filter(w => titleLower.includes(w) || artistLower.includes(w));
+        score += (matchedWords.length / Math.max(queryWords.length, 1)) * 40;
+        // Artist match bonus
+        if (artistLower && queryLower.includes(artistLower)) score += 30;
+        return { ...t, _score: score };
+    });
+
+    scoredTracks.sort((a, b) => b._score - a._score);
+
+    // Filter artists: only include if name is reasonably related to query
+    const relevantArtists = spotify.artists.filter(a => {
+        const nameNorm = normalizeForMatch(a.name);
+        return queryLower.includes(nameNorm) || nameNorm.includes(queryLower) ||
+            fuzzyMatch(queryLower, nameNorm) > 0.5;
+    });
+
+    return {
+        tracks: scoredTracks.map(({ _score, ...t }) => t),
+        artists: relevantArtists.map(a => ({
+            id: a.id,
+            name: a.name,
+            image: a.images?.[1]?.url || a.images?.[0]?.url || null,
+            genres: a.genres?.slice(0, 3) || [],
+            followers: a.followers?.total || 0,
+        })),
+        albums: spotify.albums.map(a => ({
+            id: a.id,
+            name: a.name,
+            artist: a.artists?.map(ar => ar.name).join(', ') || '',
+            image: a.images?.[1]?.url || a.images?.[0]?.url || null,
+            releaseDate: a.release_date || null,
+            totalTracks: a.total_tracks || 0,
+        })),
+    };
+}
+
+async function searchSpotifyEnhanced(query) {
+    try {
+        const data = await spotifyFetch(
+            `/search?q=${encodeURIComponent(query)}&type=artist,track,album&limit=5&market=DE`
+        );
+        return {
+            artists: data.artists?.items || [],
+            tracks: data.tracks?.items || [],
+            albums: data.albums?.items || [],
+        };
+    } catch {
+        return { artists: [], tracks: [], albums: [] };
+    }
+}
+
+function normalizeForMatch(str) {
+    return (str || '').toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function fuzzyMatch(a, b) {
+    if (!a || !b) return 0;
+    const aWords = a.split(/\s+/);
+    const bWords = b.split(/\s+/);
+    let matches = 0;
+    for (const aw of aWords) {
+        if (bWords.some(bw => bw.includes(aw) || aw.includes(bw))) matches++;
+    }
+    return matches / Math.max(aWords.length, 1);
+}
+
 // ── yt-dlp Fallback-Suche ────────────────────────────────────────
 function searchTrackYtdlp(searchQuery) {
     return new Promise((resolve, reject) => {
@@ -529,6 +640,7 @@ function searchTrackYtdlp(searchQuery) {
                     title: info.title || 'Unbekannter Titel',
                     url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
                     duration: formatDuration(info.duration),
+                    durationSec: info.duration || 0,
                     thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
                     artist: info.artist || info.creator || info.channel || info.uploader || null,
                     album: info.album || null,
@@ -563,6 +675,7 @@ function searchTracksYtdlp(query, limit = 5) {
                     title: info.title || 'Unbekannter Titel',
                     url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
                     duration: formatDuration(info.duration),
+                    durationSec: info.duration || 0,
                     thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
                     artist: info.artist || info.creator || info.channel || info.uploader || null,
                     album: info.album || null,
@@ -980,6 +1093,17 @@ async function playNext(guildId) {
         queue._playbackStart = Date.now();
         queue._seekOffset = 0;
 
+        // Reset Auto-DJ counter when user manually queued a track
+        if (track.requestedBy && track.requestedBy !== '\uD83E\uDD16 Auto-DJ') {
+            queue._djConsecutive = 0;
+        }
+
+        // Track listening history (use requestedBy userId if available, fallback to guild)
+        try {
+            const historyUserId = track._requestedById || `guild_${guildId}`;
+            db.addToHistory(historyUserId, guildId, track);
+        } catch { /* non-critical */ }
+
         const stream = createStream(track.url, queue, (err) => {
             if (!track._retried) {
                 track._retried = true;
@@ -1047,7 +1171,7 @@ for (const file of commandFiles) {
 
 // ── Context-Objekt für Commands ───────────────────────────────────
 const ctx = {
-    db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchPlaylist, isPlaylistUrl,
+    db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, spotifyFetch, searchPlaylist, isPlaylistUrl,
     playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
@@ -1196,6 +1320,19 @@ client.on('voiceStateUpdate', (oldState, newState) => {
         autoDelete(queue.channel?.send('▶️ Fortgesetzt — willkommen zurück!'), DELETE_SHORT_MS);
     }
 });
+
+// ── Graceful Shutdown: Prozesse beenden + DB flushen ────────────
+function gracefulShutdown() {
+    for (const [guildId, queue] of queues) {
+        for (const proc of queue.processes) {
+            if (!proc.killed) proc.kill();
+        }
+        queue.processes.clear();
+    }
+    try { db.saveNow(); } catch {}
+}
+process.once('SIGTERM', gracefulShutdown);
+process.once('SIGINT', gracefulShutdown);
 
 // ── Unhandled Errors abfangen (verhindert Crashes) ──────────────
 process.on('unhandledRejection', (err) => {
