@@ -11,11 +11,15 @@ module.exports = {
 
         if (!requirePlaying(interaction, queue)) return;
 
-        // DJ-Rolle oder Song-Requester → sofort skippen
-        const isDJ = interaction.member.roles.cache.some(r => r.name.toLowerCase() === 'dj');
+        // DJ-Rolle, Admin, Moderator oder Song-Requester → sofort skippen
+        const settings = ctx.db.getGuildSettings(interaction.guildId);
+        const djRoleId = settings.dj_role_id;
+        const isDJ = djRoleId && interaction.member.roles.cache.has(djRoleId);
+        const isAdmin = interaction.member.permissions.has('Administrator');
+        const isModerator = interaction.member.permissions.has('ModerateMembers');
         const isRequester = queue.current.requestedBy === interaction.user.toString();
 
-        if (!isDJ && !isRequester) {
+        if (!isDJ && !isAdmin && !isModerator && !isRequester) {
             // Vote-Skip
             const voiceChannel = interaction.member.voice.channel;
             if (!voiceChannel) return interaction.reply({ content: '❌ Du musst im Voice Channel sein!', ephemeral: true });

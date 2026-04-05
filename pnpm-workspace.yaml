@@ -1,0 +1,5 @@
+packages:
+  - "bots/*"
+  - "bots/music-bot/app"
+  - "dashboard"
+  - "website"

@@ -4,104 +4,12 @@ import {
     ListItemText, ListItemIcon, Drawer, IconButton, useMediaQuery, useTheme,
 } from '@mui/material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
-import DownloadIcon from '@mui/icons-material/Download';
 import SettingsIcon from '@mui/icons-material/Settings';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import HelpIcon from '@mui/icons-material/Help';
 import MenuIcon from '@mui/icons-material/Menu';
-
-const sections = [
-    {
-        id: 'getting-started',
-        label: 'Getting Started',
-        icon: <MenuBookIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Getting Started',
-            body: [
-                { type: 'text', value: 'Willkommen bei ByteBots! Hier erfaehrst du, wie du unsere Bots auf deinem Discord Server einrichtest.' },
-                { type: 'heading', value: '1. Bot einladen' },
-                { type: 'text', value: 'Klicke auf "Add to Server" auf der jeweiligen Bot-Seite. Du wirst zu Discord weitergeleitet, wo du den Server auswaehlen kannst.' },
-                { type: 'heading', value: '2. Berechtigungen' },
-                { type: 'text', value: 'Der Bot benoetigt Berechtigungen fuer Voice Channels (Verbinden, Sprechen) und Text Channels (Nachrichten senden, Slash Commands). Diese werden automatisch angefragt.' },
-                { type: 'heading', value: '3. Loslegen' },
-                { type: 'text', value: 'Nach dem Einladen kannst du sofort Slash Commands nutzen. Tippe / in einen Text Channel um alle verfuegbaren Commands zu sehen.' },
-            ],
-        },
-    },
-    {
-        id: 'setup',
-        label: 'Setup & Config',
-        icon: <SettingsIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Setup & Konfiguration',
-            body: [
-                { type: 'heading', value: 'DJ-Rolle (BeatByte)' },
-                { type: 'text', value: 'Erstelle eine Rolle namens "DJ" auf deinem Server. User mit dieser Rolle koennen Songs direkt skippen, ohne Vote-Skip.' },
-                { type: 'heading', value: 'Web Player Zugang' },
-                { type: 'text', value: 'Nutze /app in Discord um einen Zugangscode fuer den Web Player zu erhalten. Der Code ist 7 Tage gueltig.' },
-                { type: 'heading', value: 'Soundboard Dashboard' },
-                { type: 'text', value: 'Nutze /dashboard um einen Link zum Web-Dashboard zu erhalten. Dort kannst du Sounds hochladen, organisieren und verwalten.' },
-            ],
-        },
-    },
-    {
-        id: 'music-commands',
-        label: 'Music Commands',
-        icon: <MusicNoteIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'BeatByte Commands',
-            body: [
-                { type: 'text', value: 'BeatByte bietet 16 Slash Commands fuer volle Musiksteuerung:' },
-                { type: 'command', name: '/play <query>', desc: 'Song oder Playlist abspielen. Unterstuetzt YouTube-URLs und Suchbegriffe.' },
-                { type: 'command', name: '/playnow <query>', desc: 'Sofort abspielen, Queue ueberspringen.' },
-                { type: 'command', name: '/skip', desc: 'Aktuellen Song ueberspringen (Vote-Skip oder DJ-Rolle).' },
-                { type: 'command', name: '/pause', desc: 'Wiedergabe pausieren oder fortsetzen.' },
-                { type: 'command', name: '/stop', desc: 'Stoppen und Queue leeren.' },
-                { type: 'command', name: '/queue', desc: 'Aktuelle Warteschlange anzeigen.' },
-                { type: 'command', name: '/shuffle', desc: 'Queue zufaellig mischen.' },
-                { type: 'command', name: '/loop [modus]', desc: 'Loop-Modus setzen: off, song oder queue.' },
-                { type: 'command', name: '/volume [%]', desc: 'Lautstaerke aendern (0-200%).' },
-                { type: 'command', name: '/seek <zeit>', desc: 'Zu Position springen (z.B. 1:30).' },
-                { type: 'command', name: '/app', desc: 'Web Player mit Zugangscode oeffnen.' },
-            ],
-        },
-    },
-    {
-        id: 'soundboard-commands',
-        label: 'Soundboard Commands',
-        icon: <GraphicEqIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Soundboard Commands',
-            body: [
-                { type: 'text', value: 'Der Soundboard Bot hat 5 Commands:' },
-                { type: 'command', name: '/sound <name>', desc: 'Sound suchen und abspielen. Autocomplete fuer Soundnamen.' },
-                { type: 'command', name: '/favorite <name>', desc: 'Sound als Favorit markieren oder entfernen.' },
-                { type: 'command', name: '/soundboard', desc: 'Interaktives Panel mit Buttons und Menues oeffnen.' },
-                { type: 'command', name: '/dashboard', desc: 'Web-Dashboard zum Verwalten und Hochladen.' },
-                { type: 'command', name: '/volume <prozent>', desc: 'Persoenliche Lautstaerke setzen (0-200%).' },
-            ],
-        },
-    },
-    {
-        id: 'troubleshooting',
-        label: 'Troubleshooting',
-        icon: <HelpIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Troubleshooting',
-            body: [
-                { type: 'heading', value: 'Bot reagiert nicht' },
-                { type: 'text', value: 'Stelle sicher, dass der Bot die noetigen Berechtigungen hat und online ist. Pruefe ob Slash Commands fuer den Channel aktiviert sind.' },
-                { type: 'heading', value: 'Kein Sound' },
-                { type: 'text', value: 'Der Bot muss Berechtigungen zum Verbinden und Sprechen im Voice Channel haben. Pruefe auch ob der Bot nicht stumm geschaltet ist.' },
-                { type: 'heading', value: 'Web Player verbindet nicht' },
-                { type: 'text', value: 'Stelle sicher, dass der Zugangscode aktuell ist (max. 7 Tage). Nutze /app fuer einen neuen Code.' },
-                { type: 'heading', value: 'Sound Upload schlaegt fehl' },
-                { type: 'text', value: 'Erlaubte Formate: MP3, WAV, OGG, WebM. Maximale Dateigroesse: 5 MB.' },
-            ],
-        },
-    },
-];
+import { useLanguage } from '../i18n/LanguageContext';
 
 function ContentRenderer({ items }) {
     return (
@@ -134,10 +42,103 @@ function ContentRenderer({ items }) {
 }
 
 export default function Guide() {
+    const { t } = useLanguage();
     const [activeSection, setActiveSection] = useState('getting-started');
     const [mobileOpen, setMobileOpen] = useState(false);
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+    const sections = [
+        {
+            id: 'getting-started',
+            label: t('guide.gettingStarted'),
+            icon: <MenuBookIcon sx={{ fontSize: 18 }} />,
+            content: {
+                title: t('guide.gettingStartedTitle'),
+                body: [
+                    { type: 'text', value: t('guide.gettingStartedIntro') },
+                    { type: 'heading', value: t('guide.inviteBot') },
+                    { type: 'text', value: t('guide.inviteBotText') },
+                    { type: 'heading', value: t('guide.permissions') },
+                    { type: 'text', value: t('guide.permissionsText') },
+                    { type: 'heading', value: t('guide.getStarted') },
+                    { type: 'text', value: t('guide.getStartedText') },
+                ],
+            },
+        },
+        {
+            id: 'setup',
+            label: t('guide.setupConfig'),
+            icon: <SettingsIcon sx={{ fontSize: 18 }} />,
+            content: {
+                title: t('guide.setupConfigTitle'),
+                body: [
+                    { type: 'heading', value: t('guide.djRole') },
+                    { type: 'text', value: t('guide.djRoleText') },
+                    { type: 'heading', value: t('guide.webPlayerAccess') },
+                    { type: 'text', value: t('guide.webPlayerAccessText') },
+                    { type: 'heading', value: t('guide.soundboardDashboard') },
+                    { type: 'text', value: t('guide.soundboardDashboardText') },
+                ],
+            },
+        },
+        {
+            id: 'music-commands',
+            label: t('guide.musicCommands'),
+            icon: <MusicNoteIcon sx={{ fontSize: 18 }} />,
+            content: {
+                title: t('guide.musicCommandsTitle'),
+                body: [
+                    { type: 'text', value: t('guide.musicCommandsIntro') },
+                    { type: 'command', name: '/play <query>', desc: t('commands.beatbyte.play') },
+                    { type: 'command', name: '/playnow <query>', desc: t('commands.beatbyte.playnow') },
+                    { type: 'command', name: '/skip', desc: t('commands.beatbyte.skip') },
+                    { type: 'command', name: '/pause', desc: t('commands.beatbyte.pause') },
+                    { type: 'command', name: '/stop', desc: t('commands.beatbyte.stop') },
+                    { type: 'command', name: '/queue', desc: t('commands.beatbyte.queue') },
+                    { type: 'command', name: '/shuffle', desc: t('commands.beatbyte.shuffle') },
+                    { type: 'command', name: '/loop [modus]', desc: t('commands.beatbyte.loop') },
+                    { type: 'command', name: '/volume [%]', desc: t('commands.beatbyte.volume') },
+                    { type: 'command', name: '/seek <zeit>', desc: t('commands.beatbyte.seek') },
+                    { type: 'command', name: '/app', desc: t('commands.beatbyte.app') },
+                ],
+            },
+        },
+        {
+            id: 'soundboard-commands',
+            label: t('guide.soundboardCommands'),
+            icon: <GraphicEqIcon sx={{ fontSize: 18 }} />,
+            content: {
+                title: t('guide.soundboardCommandsTitle'),
+                body: [
+                    { type: 'text', value: t('guide.soundboardCommandsIntro') },
+                    { type: 'command', name: '/sound <name>', desc: t('commands.eartastic.sound') },
+                    { type: 'command', name: '/favorite <name>', desc: t('commands.eartastic.favorite') },
+                    { type: 'command', name: '/soundboard', desc: t('commands.eartastic.soundboard') },
+                    { type: 'command', name: '/dashboard', desc: t('commands.eartastic.dashboard') },
+                    { type: 'command', name: '/volume <prozent>', desc: t('commands.eartastic.volume') },
+                ],
+            },
+        },
+        {
+            id: 'troubleshooting',
+            label: t('guide.troubleshooting'),
+            icon: <HelpIcon sx={{ fontSize: 18 }} />,
+            content: {
+                title: t('guide.troubleshootingTitle'),
+                body: [
+                    { type: 'heading', value: t('guide.botNotResponding') },
+                    { type: 'text', value: t('guide.botNotRespondingText') },
+                    { type: 'heading', value: t('guide.noSound') },
+                    { type: 'text', value: t('guide.noSoundText') },
+                    { type: 'heading', value: t('guide.webPlayerNotConnecting') },
+                    { type: 'text', value: t('guide.webPlayerNotConnectingText') },
+                    { type: 'heading', value: t('guide.uploadFails') },
+                    { type: 'text', value: t('guide.uploadFailsText') },
+                ],
+            },
+        },
+    ];
 
     const current = sections.find(s => s.id === activeSection);
 

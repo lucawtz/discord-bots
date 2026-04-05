@@ -10,42 +10,12 @@ import AddIcon from '@mui/icons-material/Add';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import { BEATBYTE_INVITE, SOUNDBOARD_INVITE } from '../config';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const fadeIn = keyframes`
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
 `;
-
-// Discord CDN avatar URLs
-// Format: https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png?size=128
-const bots = [
-    {
-        name: 'BeatByte', subtitle: 'Music Bot', commands: 16, status: 'online',
-        description: 'YouTube-Streaming mit Queue-Management, Playlists, Auto-DJ, Lyrics und einem Web Player im Spotify-Style. Auch als Desktop App verfuegbar.',
-        discordId: '1489420168957394984',
-        avatarHash: null, // Noch kein Avatar gesetzt
-        fallbackIcon: <MusicNoteIcon sx={{ fontSize: 22 }} />,
-        highlights: ['16 Commands', 'Web Player', 'Auto-DJ', 'Playlists', 'Desktop App'],
-        path: '/bots/music-bot', inviteUrl: BEATBYTE_INVITE,
-    },
-    {
-        name: 'EarTastic', subtitle: 'Soundboard Bot', commands: 5, status: 'online',
-        description: 'Custom Sounds, Memes und Effekte per Knopfdruck. Mit Web-Dashboard, Sound-Upload, Favoriten und 10 Kategorien.',
-        discordId: '1488966705488330932',
-        avatarHash: '96e1cfe3af1b12407f702d356d916038',
-        fallbackIcon: <GraphicEqIcon sx={{ fontSize: 22 }} />,
-        highlights: ['Custom Upload', 'Web Dashboard', '10 Kategorien', 'Favoriten'],
-        path: '/bots/soundboard-bot', inviteUrl: SOUNDBOARD_INVITE,
-    },
-    {
-        name: 'Mehr bald...', subtitle: 'In Entwicklung', commands: null, status: 'offline',
-        description: 'Weitere Bots fuer Moderation, Utility, Leveling und mehr sind in Planung.',
-        discordId: null, avatarHash: null,
-        fallbackIcon: <AutoAwesomeIcon sx={{ fontSize: 22 }} />,
-        highlights: [],
-        path: null, inviteUrl: null, comingSoon: true,
-    },
-];
 
 function BotAvatar({ bot, size = 48 }) {
     const avatarUrl = bot.avatarHash
@@ -76,15 +46,46 @@ function BotAvatar({ bot, size = 48 }) {
 }
 
 export default function Bots() {
+    const { t } = useLanguage();
+
+    const bots = [
+        {
+            name: 'BeatByte', subtitle: t('bots.beatbyte.subtitle'), commands: 16, status: 'online',
+            description: t('bots.beatbyte.description'),
+            discordId: '1488919318472298647',
+            avatarHash: 'f2829ad185e6a0fff4d7d064cdfdbb3e',
+            fallbackIcon: <MusicNoteIcon sx={{ fontSize: 22 }} />,
+            highlights: t('bots.beatbyte.highlights'),
+            path: '/bots/music-bot', inviteUrl: BEATBYTE_INVITE,
+        },
+        {
+            name: 'EarTastic', subtitle: t('bots.eartastic.subtitle'), commands: 5, status: 'online',
+            description: t('bots.eartastic.description'),
+            discordId: '1488966705488330932',
+            avatarHash: '96e1cfe3af1b12407f702d356d916038',
+            fallbackIcon: <GraphicEqIcon sx={{ fontSize: 22 }} />,
+            highlights: t('bots.eartastic.highlights'),
+            path: '/bots/soundboard-bot', inviteUrl: SOUNDBOARD_INVITE,
+        },
+        {
+            name: t('bots.comingSoonBot.name'), subtitle: t('bots.comingSoonBot.subtitle'), commands: null, status: 'offline',
+            description: t('bots.comingSoonBot.description'),
+            discordId: null, avatarHash: null,
+            fallbackIcon: <AutoAwesomeIcon sx={{ fontSize: 22 }} />,
+            highlights: [],
+            path: null, inviteUrl: null, comingSoon: true,
+        },
+    ];
+
     return (
         <Box sx={{ py: 10, px: 3 }}>
             <Container maxWidth="lg">
                 <Box sx={{ mb: 6, animation: `${fadeIn} 0.4s ease` }}>
                     <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.25rem' }, mb: 1 }}>
-                        Alle Bots
+                        {t('bots.title')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                        Waehle einen Bot um mehr zu erfahren oder lade ihn direkt auf deinen Server ein.
+                        {t('bots.subtitle')}
                     </Typography>
                 </Box>
 
@@ -139,7 +140,7 @@ export default function Bots() {
                                                     borderColor: 'rgba(255,255,255,0.1)', color: '#fafafa', px: 2,
                                                     '&:hover': { borderColor: 'rgba(255,255,255,0.2)' },
                                                 }}>
-                                                Details
+                                                {t('bots.details')}
                                             </Button>
                                             <Button size="small" variant="contained" href={bot.inviteUrl} target="_blank"
                                                 startIcon={<AddIcon sx={{ fontSize: 14 }} />}
@@ -147,11 +148,11 @@ export default function Bots() {
                                                     background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff', px: 2,
                                                     '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)' },
                                                 }}>
-                                                Einladen
+                                                {t('bots.invite')}
                                             </Button>
                                         </Stack>
                                     ) : (
-                                        <Chip label="Coming Soon" size="small" sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: '#52525b' }} />
+                                        <Chip label={t('bots.comingSoon')} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: '#52525b' }} />
                                     )}
                                 </Stack>
                             </CardContent>

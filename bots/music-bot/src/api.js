@@ -230,6 +230,7 @@ function startAPI(ctx, client) {
             const discordClientId = process.env.CLIENT_ID;
             const discordClientSecret = process.env.DISCORD_CLIENT_SECRET;
             const oauthRedirectUri = process.env.OAUTH_REDIRECT_URI || `http://localhost:${port}/api/auth/discord/callback`;
+            const frontendUrl = process.env.FRONTEND_URL || ''; // empty = relative redirect (same origin)
 
             // GET /api/auth/discord — Redirect to Discord OAuth2
             if (method === 'GET' && urlPath === '/api/auth/discord') {
@@ -255,14 +256,14 @@ function startAPI(ctx, client) {
                 const errorParam = url.searchParams.get('error');
 
                 if (errorParam || !code) {
-                    res.writeHead(302, { Location: '/?error=discord_denied' });
+                    res.writeHead(302, { Location: `${frontendUrl}/?error=discord_denied` });
                     return res.end();
                 }
 
                 // Validate CSRF state
                 const stateKey = `oauth_state_${state}`;
                 if (!state || !sessions.has(stateKey)) {
-                    res.writeHead(302, { Location: '/?error=invalid_state' });
+                    res.writeHead(302, { Location: `${frontendUrl}/?error=invalid_state` });
                     return res.end();
                 }
                 sessions.delete(stateKey);
@@ -306,7 +307,7 @@ function startAPI(ctx, client) {
                         });
 
                     if (sharedGuilds.length === 0) {
-                        res.writeHead(302, { Location: '/?error=no_shared_guilds' });
+                        res.writeHead(302, { Location: `${frontendUrl}/?error=no_shared_guilds` });
                         return res.end();
                     }
 
@@ -319,11 +320,11 @@ function startAPI(ctx, client) {
                     });
 
                     // Redirect with token as query param (CSP-safe, no inline script)
-                    res.writeHead(302, { Location: `/?discord_token=${oauthToken}` });
+                    res.writeHead(302, { Location: `${frontendUrl}/?discord_token=${oauthToken}` });
                     return res.end();
                 } catch (err) {
                     console.error('OAuth error:', err.message);
-                    res.writeHead(302, { Location: '/?error=oauth_failed' });
+                    res.writeHead(302, { Location: `${frontendUrl}/?error=oauth_failed` });
                     return res.end();
                 }
             }

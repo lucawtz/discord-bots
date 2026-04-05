@@ -394,6 +394,121 @@ async function searchAppleMusicPlaylist(url) {
     return { title, tracks };
 }
 
+// ── Deezer (öffentliche API, keine Auth nötig) ───────────────────
+function isDeezerUrl(url) {
+    return url.includes('deezer.com/') || url.includes('deezer.page.link/');
+}
+
+function parseDeezerUrl(url) {
+    // Unterstützt: deezer.com/track/ID, /album/ID, /playlist/ID (mit optionalem Storefront wie /de/)
+    const match = url.match(/deezer\.com\/(?:[a-z]{2}\/)?(track|album|playlist)\/(\d+)/);
+    if (!match) return null;
+    return { type: match[1], id: match[2] };
+}
+
+function deezerFetch(endpoint) {
+    return new Promise((resolve, reject) => {
+        const req = https.get(`https://api.deezer.com${endpoint}`, { timeout: 8000 }, (res) => {
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.error) return reject(new Error(json.error.message || `Deezer API Fehler`));
+                    resolve(json);
+                } catch { reject(new Error('Deezer API: Ungültige Antwort')); }
+            });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Deezer API: Timeout')); });
+    });
+}
+
+function deezerTrackToSearch(track) {
+    const artists = track.artist?.name || '';
+    const albumArt = track.album?.cover_medium || track.album?.cover || null;
+    return {
+        searchQuery: `${track.title} ${artists}`,
+        title: artists ? `${artists} – ${track.title}` : track.title,
+        duration: formatDuration(track.duration || 0),
+        artist: artists || null,
+        albumArt,
+    };
+}
+
+async function searchDeezerTrack(url) {
+    const parsed = parseDeezerUrl(url);
+    if (!parsed || parsed.type !== 'track') throw new Error('Ungültige Deezer-Track-URL');
+    const data = await deezerFetch(`/track/${parsed.id}`);
+    const info = deezerTrackToSearch(data);
+    const ytTrack = await searchTrack(info.searchQuery);
+    ytTrack.title = info.title;
+    if (info.artist) ytTrack.artist = info.artist;
+    if (info.albumArt) ytTrack.albumArt = info.albumArt;
+    return ytTrack;
+}
+
+async function searchDeezerPlaylist(url) {
+    const parsed = parseDeezerUrl(url);
+    if (!parsed) throw new Error('Ungültige Deezer-URL');
+
+    let title = 'Deezer Playlist';
+    let allTracks = [];
+
+    if (parsed.type === 'playlist') {
+        const data = await deezerFetch(`/playlist/${parsed.id}`);
+        title = data.title || title;
+        allTracks = data.tracks?.data || [];
+    } else if (parsed.type === 'album') {
+        const data = await deezerFetch(`/album/${parsed.id}`);
+        title = `${data.artist?.name || ''} – ${data.title || 'Album'}`.trim();
+        // Album-Tracks haben kein album-Objekt, also manuell setzen
+        const albumArt = data.cover_medium || data.cover || null;
+        allTracks = (data.tracks?.data || []).map(t => ({
+            ...t,
+            album: { cover_medium: albumArt, cover: albumArt },
+            artist: t.artist || data.artist,
+        }));
+    }
+
+    if (allTracks.length === 0) throw new Error('Leere Deezer Playlist/Album');
+
+    const tracks = [];
+    const batchSize = 5;
+    for (let i = 0; i < allTracks.length; i += batchSize) {
+        const batch = allTracks.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+            batch.map(async (t) => {
+                const info = deezerTrackToSearch(t);
+                const ytTrack = await searchTrack(info.searchQuery);
+                ytTrack.title = info.title;
+                if (info.artist) ytTrack.artist = info.artist;
+                if (info.albumArt) ytTrack.albumArt = info.albumArt;
+                return ytTrack;
+            })
+        );
+        for (const r of results) {
+            if (r.status === 'fulfilled') tracks.push(r.value);
+        }
+    }
+
+    if (tracks.length === 0) throw new Error('Konnte keine Songs von Deezer auf YouTube finden');
+    console.log(`Deezer: ${tracks.length}/${allTracks.length} Songs gefunden für "${title}"`);
+    return { title, tracks };
+}
+
+// ── Amazon Music (kein öffentliches API — Fallback über yt-dlp) ──
+function isAmazonMusicUrl(url) {
+    return /music\.amazon\.(com|de|co\.uk|fr|it|es|co\.jp|in|com\.br|com\.mx|com\.au)\//.test(url);
+}
+
+function parseAmazonMusicUrl(url) {
+    const match = url.match(/music\.amazon\.[^/]+\/(playlists|albums|tracks)\/([A-Za-z0-9]+)/);
+    if (!match) return null;
+    const typeMap = { playlists: 'playlist', albums: 'album', tracks: 'track' };
+    return { type: typeMap[match[1]] || match[1], id: match[2] };
+}
+
 // ── Piped API (schnelle Suche mit Instance-Rotation) ────────────
 const PIPED_INSTANCES = [
     'https://pipedapi.kavin.rocks',
@@ -475,7 +590,12 @@ async function searchTrack(query) {
         return searchAppleMusicTrack(query);
     }
 
-    // URLs direkt über yt-dlp auflösen
+    // Deezer Track-URL erkennen
+    if (isUrl && isDeezerUrl(query)) {
+        return searchDeezerTrack(query);
+    }
+
+    // URLs direkt über yt-dlp auflösen (inkl. Amazon Music)
     if (isUrl) return searchTrackYtdlp(query);
 
     // Piped API für Textsuche
@@ -696,6 +816,10 @@ async function searchPlaylist(url) {
     // Apple Music Playlists/Alben
     if (isAppleMusicUrl(url)) return searchAppleMusicPlaylist(url);
 
+    // Deezer Playlists/Alben
+    if (isDeezerUrl(url)) return searchDeezerPlaylist(url);
+
+    // Amazon Music & alles andere über yt-dlp
     return new Promise((resolve, reject) => {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
@@ -737,6 +861,14 @@ function isPlaylistUrl(url) {
     }
     if (isAppleMusicUrl(url)) {
         const parsed = parseAppleMusicUrl(url);
+        return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
+    }
+    if (isDeezerUrl(url)) {
+        const parsed = parseDeezerUrl(url);
+        return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
+    }
+    if (isAmazonMusicUrl(url)) {
+        const parsed = parseAmazonMusicUrl(url);
         return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
     }
     return url.includes('list=') || url.includes('/playlist') || url.includes('/album');

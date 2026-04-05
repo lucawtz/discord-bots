@@ -4,50 +4,53 @@ import {
 } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const fadeIn = keyframes`
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const botCommands = [
-    {
-        bot: 'BeatByte',
-        icon: <MusicNoteIcon sx={{ fontSize: 18 }} />,
-        commands: [
-            { name: '/play <query>', desc: 'Song oder Playlist abspielen. YouTube-URLs und Suchbegriffe.' },
-            { name: '/playnow <query>', desc: 'Sofort abspielen, Queue ueberspringen.' },
-            { name: '/skip', desc: 'Aktuellen Song ueberspringen.' },
-            { name: '/pause', desc: 'Wiedergabe pausieren oder fortsetzen.' },
-            { name: '/stop', desc: 'Stoppen und Queue leeren.' },
-            { name: '/queue', desc: 'Aktuelle Warteschlange anzeigen.' },
-            { name: '/nowplaying', desc: 'Details zum aktuellen Song.' },
-            { name: '/clear', desc: 'Queue leeren, aktuellen Song behalten.' },
-            { name: '/remove <pos>', desc: 'Song nach Position entfernen.' },
-            { name: '/shuffle', desc: 'Queue zufaellig mischen.' },
-            { name: '/loop [modus]', desc: 'Loop-Modus: off, song oder queue.' },
-            { name: '/seek <zeit>', desc: 'Zu Position springen (z.B. 1:30).' },
-            { name: '/volume [%]', desc: 'Lautstaerke aendern (0-200%).' },
-            { name: '/join', desc: 'Voice Channel beitreten.' },
-            { name: '/lyrics [query]', desc: 'Songtexte suchen.' },
-            { name: '/app', desc: 'Web Player mit Zugangscode oeffnen.' },
-        ],
-    },
-    {
-        bot: 'EarTastic',
-        icon: <GraphicEqIcon sx={{ fontSize: 18 }} />,
-        commands: [
-            { name: '/sound <name>', desc: 'Sound suchen und abspielen. Autocomplete fuer Namen.' },
-            { name: '/favorite <name>', desc: 'Sound als Favorit markieren oder entfernen.' },
-            { name: '/soundboard', desc: 'Interaktives Soundboard-Panel mit Buttons.' },
-            { name: '/dashboard', desc: 'Web-Dashboard zum Verwalten und Hochladen.' },
-            { name: '/volume <prozent>', desc: 'Persoenliche Lautstaerke setzen (0-200%).' },
-        ],
-    },
-];
-
 export default function Commands() {
+    const { t } = useLanguage();
     const [tab, setTab] = useState(0);
+
+    const botCommands = [
+        {
+            bot: 'BeatByte',
+            icon: <MusicNoteIcon sx={{ fontSize: 18 }} />,
+            commands: [
+                { name: '/play <query>', desc: t('commands.beatbyte.play') },
+                { name: '/playnow <query>', desc: t('commands.beatbyte.playnow') },
+                { name: '/skip', desc: t('commands.beatbyte.skip') },
+                { name: '/pause', desc: t('commands.beatbyte.pause') },
+                { name: '/stop', desc: t('commands.beatbyte.stop') },
+                { name: '/queue', desc: t('commands.beatbyte.queue') },
+                { name: '/nowplaying', desc: t('commands.beatbyte.nowplaying') },
+                { name: '/clear', desc: t('commands.beatbyte.clear') },
+                { name: '/remove <pos>', desc: t('commands.beatbyte.remove') },
+                { name: '/shuffle', desc: t('commands.beatbyte.shuffle') },
+                { name: '/loop [modus]', desc: t('commands.beatbyte.loop') },
+                { name: '/seek <zeit>', desc: t('commands.beatbyte.seek') },
+                { name: '/volume [%]', desc: t('commands.beatbyte.volume') },
+                { name: '/join', desc: t('commands.beatbyte.join') },
+                { name: '/lyrics [query]', desc: t('commands.beatbyte.lyrics') },
+                { name: '/app', desc: t('commands.beatbyte.app') },
+            ],
+        },
+        {
+            bot: 'EarTastic',
+            icon: <GraphicEqIcon sx={{ fontSize: 18 }} />,
+            commands: [
+                { name: '/sound <name>', desc: t('commands.eartastic.sound') },
+                { name: '/favorite <name>', desc: t('commands.eartastic.favorite') },
+                { name: '/soundboard', desc: t('commands.eartastic.soundboard') },
+                { name: '/dashboard', desc: t('commands.eartastic.dashboard') },
+                { name: '/volume <prozent>', desc: t('commands.eartastic.volume') },
+            ],
+        },
+    ];
+
     const current = botCommands[tab];
 
     return (
@@ -55,10 +58,10 @@ export default function Commands() {
             <Container maxWidth="md">
                 <Box sx={{ mb: 5 }}>
                     <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.25rem' }, mb: 1 }}>
-                        Commands
+                        {t('commands.title')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                        Alle Slash-Commands unserer Bots auf einen Blick.
+                        {t('commands.subtitle')}
                     </Typography>
                 </Box>
 

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
     Box, Typography, Button, Card, CardContent,
-    Chip, Stack, Container, keyframes,
+    Chip, Stack, Container, Avatar, keyframes,
 } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
@@ -15,49 +15,57 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import PeopleIcon from '@mui/icons-material/People';
 import UpdateIcon from '@mui/icons-material/Update';
 import { BEATBYTE_INVITE, SOUNDBOARD_INVITE } from '../config';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const fadeIn = keyframes`
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const bots = [
-    {
-        name: 'BeatByte', subtitle: 'Music Bot', commands: 16,
-        description: 'YouTube-Streaming mit Queue-Management, Playlists, Auto-DJ, Lyrics und einem Web Player im Spotify-Style. Auch als Desktop App.',
-        icon: <MusicNoteIcon sx={{ fontSize: 22 }} />,
-        tags: ['Music', 'Streaming', 'Web App', 'Desktop App'],
-        highlights: ['16 Commands', 'Web Player', 'Auto-DJ', 'Playlists'],
-        path: '/bots/music-bot', inviteUrl: BEATBYTE_INVITE,
-    },
-    {
-        name: 'EarTastic', subtitle: 'Soundboard Bot', commands: 5,
-        description: 'Custom Sounds, Memes und Effekte per Knopfdruck. Mit Web-Dashboard, Sound-Upload, Favoriten und 10 Kategorien.',
-        icon: <GraphicEqIcon sx={{ fontSize: 22 }} />,
-        tags: ['Fun', 'Sounds', 'Dashboard'],
-        highlights: ['Custom Upload', 'Web Dashboard', '10 Kategorien', 'Favoriten'],
-        path: '/bots/soundboard-bot', inviteUrl: SOUNDBOARD_INVITE,
-    },
-    {
-        name: 'Mehr bald...', subtitle: 'In Entwicklung', commands: null,
-        description: 'Weitere Bots fuer Moderation, Utility, Leveling und mehr sind in Planung.',
-        icon: <AutoAwesomeIcon sx={{ fontSize: 22 }} />,
-        tags: ['Moderation', 'Utility'],
-        highlights: [],
-        path: null, inviteUrl: null, comingSoon: true,
-    },
-];
-
-const whyUs = [
-    { icon: <WebIcon />, title: 'Web Apps', text: 'Jeden Bot ueber den Browser steuern.' },
-    { icon: <DesktopWindowsIcon />, title: 'Desktop Apps', text: 'Native Apps fuer Windows und Mac.' },
-    { icon: <SecurityIcon />, title: 'Self-Hosted', text: 'Deine Daten auf deinem Server.' },
-    { icon: <SpeedIcon />, title: '24/7 Uptime', text: 'Automatischer Neustart, stabile Performance.' },
-    { icon: <PeopleIcon />, title: 'Einfach zu nutzen', text: 'Setup in 30 Sekunden, keine Config noetig.' },
-    { icon: <UpdateIcon />, title: 'Regelmaessige Updates', text: 'Neue Features und Bugfixes laufend.' },
-];
-
 export default function Home() {
+    const { t } = useLanguage();
+
+    const bots = [
+        {
+            name: 'BeatByte', subtitle: 'Music Bot', commands: 16,
+            description: t('bots.beatbyte.description'),
+            icon: <MusicNoteIcon sx={{ fontSize: 22 }} />,
+            discordId: '1488919318472298647',
+            avatarHash: 'f2829ad185e6a0fff4d7d064cdfdbb3e',
+            tags: ['Music', 'Streaming', 'Web App', 'Desktop App'],
+            highlights: ['16 Commands', 'Web Player', 'Auto-DJ', 'Playlists'],
+            path: '/bots/music-bot', inviteUrl: BEATBYTE_INVITE,
+        },
+        {
+            name: 'EarTastic', subtitle: 'Soundboard Bot', commands: 5,
+            description: t('bots.eartastic.description'),
+            icon: <GraphicEqIcon sx={{ fontSize: 22 }} />,
+            discordId: '1488966705488330932',
+            avatarHash: '96e1cfe3af1b12407f702d356d916038',
+            tags: ['Fun', 'Sounds', 'Dashboard'],
+            highlights: ['Custom Upload', 'Web Dashboard', '10 Kategorien', 'Favoriten'],
+            path: '/bots/soundboard-bot', inviteUrl: SOUNDBOARD_INVITE,
+        },
+        {
+            name: t('bots.comingSoonBot.name'), subtitle: t('home.inDevelopment'), commands: null,
+            description: t('bots.comingSoonBot.description'),
+            icon: <AutoAwesomeIcon sx={{ fontSize: 22 }} />,
+            discordId: null, avatarHash: null,
+            tags: ['Moderation', 'Utility'],
+            highlights: [],
+            path: null, inviteUrl: null, comingSoon: true,
+        },
+    ];
+
+    const whyUs = [
+        { icon: <WebIcon />, title: t('home.whyUs.webApps'), text: t('home.whyUs.webAppsText') },
+        { icon: <DesktopWindowsIcon />, title: t('home.whyUs.desktopApps'), text: t('home.whyUs.desktopAppsText') },
+        { icon: <SecurityIcon />, title: t('home.whyUs.selfHosted'), text: t('home.whyUs.selfHostedText') },
+        { icon: <SpeedIcon />, title: t('home.whyUs.uptime'), text: t('home.whyUs.uptimeText') },
+        { icon: <PeopleIcon />, title: t('home.whyUs.easyToUse'), text: t('home.whyUs.easyToUseText') },
+        { icon: <UpdateIcon />, title: t('home.whyUs.updates'), text: t('home.whyUs.updatesText') },
+    ];
+
     return (
         <Box>
             {/* ──── Hero ──── */}
@@ -85,20 +93,19 @@ export default function Home() {
                         lineHeight: 1.15, mb: 2.5,
                         animation: `${fadeIn} 0.5s ease 0.05s both`,
                     }}>
-                        Professionelle{' '}
+                        {t('home.heroTitle1')}{' '}
                         <Box component="span" sx={{
                             background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
                             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                         }}>
-                            Discord Bots
+                            {t('home.heroTitle2')}
                         </Box>
                     </Typography>
                     <Typography color="text.secondary" sx={{
                         mb: 5, maxWidth: 400, mx: 'auto', lineHeight: 1.8,
                         animation: `${fadeIn} 0.5s ease 0.1s both`,
                     }}>
-                        Musik, Sounds und mehr fuer deinen Server.
-                        Mit Web Apps, Desktop Apps und modernen Slash Commands.
+                        {t('home.heroSubtitle')}
                     </Typography>
                     <Stack direction="row" spacing={1.5} justifyContent="center"
                         sx={{ animation: `${fadeIn} 0.5s ease 0.15s both` }}>
@@ -109,7 +116,7 @@ export default function Home() {
                                 px: 3.5, py: 1.2,
                                 '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)' },
                             }}>
-                            Bots entdecken
+                            {t('home.discoverBots')}
                         </Button>
                         <Button variant="outlined" component={Link} to="/guide"
                             sx={{
@@ -117,7 +124,7 @@ export default function Home() {
                                 px: 3.5, py: 1.2,
                                 '&:hover': { borderColor: 'rgba(255,255,255,0.25)', color: '#fafafa', bgcolor: 'rgba(255,255,255,0.03)' },
                             }}>
-                            Dokumentation
+                            {t('home.documentation')}
                         </Button>
                     </Stack>
                 </Container>
@@ -128,13 +135,13 @@ export default function Home() {
                 <Container maxWidth="lg">
                     <Box sx={{ textAlign: 'center', mb: 8 }}>
                         <Typography variant="overline" sx={{ color: '#a855f7', letterSpacing: 3, fontSize: '0.7rem', mb: 1.5, display: 'block' }}>
-                            UNSERE BOTS
+                            {t('home.ourBots')}
                         </Typography>
                         <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.25rem' }, mb: 1.5 }}>
-                            Waehle deinen Bot
+                            {t('home.chooseBotTitle')}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420, mx: 'auto' }}>
-                            Jeder Bot ist ein eigenstaendiges Produkt mit eigener Web App und vollem Feature-Set.
+                            {t('home.chooseBotSubtitle')}
                         </Typography>
                     </Box>
 
@@ -157,13 +164,17 @@ export default function Home() {
                                 <CardContent sx={{ p: 3.5, display: 'flex', flexDirection: 'column', height: '100%' }}>
                                     {/* Header */}
                                     <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2.5 }}>
-                                        <Box sx={{
-                                            width: 42, height: 42, borderRadius: 2,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff',
-                                        }}>
-                                            {bot.icon}
-                                        </Box>
+                                        <Avatar
+                                            src={bot.avatarHash ? `https://cdn.discordapp.com/avatars/${bot.discordId}/${bot.avatarHash}.png?size=128` : undefined}
+                                            sx={{
+                                                width: 42, height: 42, borderRadius: 2,
+                                                bgcolor: bot.avatarHash ? 'transparent' : undefined,
+                                                background: bot.avatarHash ? undefined : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                                                color: '#fff',
+                                            }}
+                                        >
+                                            {!bot.avatarHash && bot.icon}
+                                        </Avatar>
                                         <Box>
                                             <Typography sx={{ fontWeight: 700, fontSize: '1.05rem', lineHeight: 1.2 }}>{bot.name}</Typography>
                                             <Typography variant="caption" color="text.disabled">{bot.subtitle}</Typography>
@@ -193,8 +204,8 @@ export default function Home() {
 
                                     {/* Tags */}
                                     <Stack direction="row" spacing={0.75} sx={{ mb: 3 }}>
-                                        {bot.tags.map((t) => (
-                                            <Chip key={t} label={t} size="small"
+                                        {bot.tags.map((tag) => (
+                                            <Chip key={tag} label={tag} size="small"
                                                 sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: '#71717a', fontSize: '0.65rem', height: 22, borderRadius: 1 }} />
                                         ))}
                                     </Stack>
@@ -204,7 +215,7 @@ export default function Home() {
                                         <Stack direction="row" spacing={1.5} alignItems="center">
                                             <Button component={Link} to={bot.path} size="small" endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
                                                 sx={{ color: '#a855f7', fontSize: '0.8rem', fontWeight: 600, px: 0, '&:hover': { bgcolor: 'transparent', color: '#c084fc' } }}>
-                                                Mehr erfahren
+                                                {t('home.learnMore')}
                                             </Button>
                                             <Button size="small" variant="contained" href={bot.inviteUrl} target="_blank"
                                                 startIcon={<AddIcon sx={{ fontSize: 14 }} />}
@@ -213,11 +224,11 @@ export default function Home() {
                                                     background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff',
                                                     '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)' },
                                                 }}>
-                                                Einladen
+                                                {t('home.invite')}
                                             </Button>
                                         </Stack>
                                     ) : (
-                                        <Typography variant="caption" color="text.disabled" sx={{ fontStyle: 'italic' }}>In Entwicklung</Typography>
+                                        <Typography variant="caption" color="text.disabled" sx={{ fontStyle: 'italic' }}>{t('home.inDevelopment')}</Typography>
                                     )}
                                 </CardContent>
                             </Card>
@@ -231,10 +242,10 @@ export default function Home() {
                 <Container maxWidth="lg">
                     <Box sx={{ textAlign: 'center', mb: 8 }}>
                         <Typography variant="overline" sx={{ color: '#a855f7', letterSpacing: 3, fontSize: '0.7rem', mb: 1.5, display: 'block' }}>
-                            WARUM BYTEBOTS
+                            {t('home.whyBytebots')}
                         </Typography>
                         <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.25rem' } }}>
-                            Was uns unterscheidet
+                            {t('home.whatSetsUsApart')}
                         </Typography>
                     </Box>
 
@@ -279,9 +290,9 @@ export default function Home() {
                     filter: 'blur(60px)', pointerEvents: 'none',
                 }} />
                 <Container maxWidth="sm" sx={{ position: 'relative' }}>
-                    <Typography variant="h4" sx={{ mb: 2 }}>Bereit?</Typography>
+                    <Typography variant="h4" sx={{ mb: 2 }}>{t('home.readyTitle')}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-                        Waehle einen Bot, lade ihn ein und starte in 30 Sekunden.
+                        {t('home.readySubtitle')}
                     </Typography>
                     <Stack direction="row" spacing={1.5} justifyContent="center">
                         <Button variant="contained" href="#bots"
@@ -290,12 +301,12 @@ export default function Home() {
                                 background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff', px: 3.5,
                                 '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)' },
                             }}>
-                            Bots ansehen
+                            {t('home.viewBots')}
                         </Button>
                         <Button variant="outlined" component={Link} to="/guide"
                             sx={{ borderColor: 'rgba(255,255,255,0.12)', color: '#a1a1aa', px: 3.5,
                                 '&:hover': { borderColor: 'rgba(255,255,255,0.25)', color: '#fafafa' } }}>
-                            Dokumentation
+                            {t('home.documentation')}
                         </Button>
                     </Stack>
                 </Container>

@@ -46,7 +46,8 @@ async function init() {
     CREATE TABLE IF NOT EXISTS guild_settings (
       guild_id TEXT PRIMARY KEY,
       auto_dj INTEGER DEFAULT 0,
-      default_volume INTEGER DEFAULT 100
+      default_volume INTEGER DEFAULT 100,
+      dj_role_id TEXT DEFAULT NULL
     )
   `);
 
@@ -99,6 +100,11 @@ async function init() {
   db.run(`CREATE INDEX IF NOT EXISTS idx_history_user ON listening_history(user_id, guild_id, played_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_likes_user ON liked_tracks(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_followed_user ON followed_artists(user_id)`);
+
+  // ── Migrations ──────────────────────────────────────────────────
+  try {
+    db.run(`ALTER TABLE guild_settings ADD COLUMN dj_role_id TEXT DEFAULT NULL`);
+  } catch (_) { /* column already exists */ }
 
   db.run("PRAGMA foreign_keys = ON");
 
@@ -252,11 +258,11 @@ function searchPlaylists(guildId, userId, query) {
 
 function getGuildSettings(guildId) {
   const row = getOne(`SELECT * FROM guild_settings WHERE guild_id = :guildId`, { ':guildId': guildId });
-  return row || { guild_id: guildId, auto_dj: 0, default_volume: 100 };
+  return row || { guild_id: guildId, auto_dj: 0, default_volume: 100, dj_role_id: null };
 }
 
 function setGuildSetting(guildId, key, value) {
-  const allowedColumns = { auto_dj: 'auto_dj', default_volume: 'default_volume' };
+  const allowedColumns = { auto_dj: 'auto_dj', default_volume: 'default_volume', dj_role_id: 'dj_role_id' };
   const column = allowedColumns[key];
   if (!column) return;
 

@@ -1,5 +1,6 @@
 import { Box, Typography, Container, Stack, Chip } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const services = [
     { name: 'BeatByte', subtitle: 'Music Bot', status: 'operational' },
@@ -10,19 +11,26 @@ const services = [
 ];
 
 const statusColors = { operational: '#34d399', degraded: '#fbbf24', down: '#f87171' };
-const statusLabels = { operational: 'Operational', degraded: 'Degraded', down: 'Down' };
 
 export default function Status() {
+    const { t } = useLanguage();
+
+    const statusLabels = {
+        operational: t('status.operational'),
+        degraded: t('status.degraded'),
+        down: t('status.down'),
+    };
+
     return (
         <Box sx={{ py: 10, px: 3 }}>
             <Container maxWidth="md">
                 <Box sx={{ mb: 6 }}>
                     <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.25rem' }, mb: 1 }}>
-                        Status
+                        {t('status.title')}
                     </Typography>
                     <Stack direction="row" alignItems="center" spacing={1}>
                         <FiberManualRecordIcon sx={{ fontSize: 12, color: '#34d399' }} />
-                        <Typography variant="body2" color="text.secondary">Alle Systeme laufen normal</Typography>
+                        <Typography variant="body2" color="text.secondary">{t('status.allOperational')}</Typography>
                     </Stack>
                 </Box>
 

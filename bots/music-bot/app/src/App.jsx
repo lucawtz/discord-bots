@@ -44,6 +44,13 @@ const Icons = {
   dj: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>,
   dots: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>,
   playSmall: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>,
+  user: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>,
+  settings: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>,
+  logoutIcon: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>,
+  chevronDown: <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>,
+  fire: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>,
+  sparkle: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2z"/></svg>,
+  refresh: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>,
 };
 
 function App() {
@@ -73,8 +80,19 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeView, setActiveView] = useState('home');
   const [oauthGuilds, setOauthGuilds] = useState(null);
-  const [oauthUser, setOauthUser] = useState(null);
+  const [oauthUser, setOauthUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('discordUser')); } catch { return null; }
+  });
   const [oauthToken, setOauthToken] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
+
+  // Dynamic homepage content
+  const [trendingTracks, setTrendingTracks] = useState([]);
+  const [newReleases, setNewReleases] = useState([]);
+  const [recommendedTracks, setRecommendedTracks] = useState([]);
+  const [popularArtists, setPopularArtists] = useState([]);
+  const [homeLoading, setHomeLoading] = useState(false);
   const [likedSongs, setLikedSongs] = useState(() => {
     try { return JSON.parse(localStorage.getItem('likedSongs') || '[]'); } catch { return []; }
   });
@@ -170,6 +188,7 @@ function App() {
           if (!res.ok) throw new Error(data.error);
           setOauthToken(discordToken);
           setOauthUser(data.user);
+          localStorage.setItem('discordUser', JSON.stringify(data.user));
           setOauthGuilds(data.guilds);
           // If only one guild, auto-select
           if (data.guilds.length === 1) {
@@ -213,7 +232,7 @@ function App() {
       setGuild(data.guild);
       setConnected(true);
       setOauthGuilds(null);
-      setOauthUser(null);
+      // Keep oauthUser for profile display
       setOauthToken(null);
       localStorage.setItem('botUrl', botUrl);
       localStorage.setItem('authToken', data.token);
@@ -227,7 +246,7 @@ function App() {
 
   const connectWebSocket = (authToken) => {
     wsRef.current?.close();
-    const wsUrl = botUrl.replace(/^http/, 'ws');
+    const wsUrl = botUrl.replace(/^http/, 'ws') + '/api/ws';
     const ws = new WebSocket(wsUrl);
     ws.onopen = () => {
       ws.send(JSON.stringify({ type: 'auth', token: authToken }));
@@ -272,8 +291,10 @@ function App() {
     setToken('');
     setGuild(null);
     setAccessCode('');
+    setOauthUser(null);
     setState({ current: null, tracks: [], paused: false, connected: false, loopMode: 'off', volume: 100, elapsed: 0 });
     localStorage.removeItem('authToken');
+    localStorage.removeItem('discordUser');
   };
 
   useEffect(() => {
@@ -402,6 +423,52 @@ function App() {
       fetchState(guild.id);
     } catch {}
   };
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => { if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Fetch dynamic homepage content
+  const fetchHomepageContent = useCallback(async () => {
+    if (!connected || !guild || homeLoading) return;
+    setHomeLoading(true);
+    const fetchCategory = async (query) => {
+      try {
+        const res = await fetch(`${botUrl}/api/search?q=${encodeURIComponent(query)}&limit=10`, { headers: getHeaders() });
+        if (res.ok) return await res.json();
+      } catch {}
+      return [];
+    };
+
+    const [trending, newRel, recommended] = await Promise.all([
+      fetchCategory('trending music 2025'),
+      fetchCategory('new music releases 2025'),
+      fetchCategory(likedSongs.length > 0 ? `${likedSongs[0]?.artist || 'music'} mix` : 'top hits mix'),
+    ]);
+
+    setTrendingTracks(trending.slice(0, 8));
+    setNewReleases(newRel.slice(0, 8));
+    setRecommendedTracks(recommended.slice(0, 8));
+
+    // Extract unique artists from all results
+    const artistMap = {};
+    [...trending, ...newRel, ...recommended, ...recentlyPlayed, ...likedSongs].forEach(t => {
+      if (t.artist && !artistMap[t.artist]) {
+        artistMap[t.artist] = { name: t.artist, thumbnail: t.thumbnail };
+      }
+    });
+    setPopularArtists(Object.values(artistMap).slice(0, 8));
+    setHomeLoading(false);
+  }, [connected, guild, botUrl, getHeaders, likedSongs, recentlyPlayed, homeLoading]);
+
+  useEffect(() => {
+    if (connected && guild && trendingTracks.length === 0 && !homeLoading) {
+      fetchHomepageContent();
+    }
+  }, [connected, guild]);
 
   const totalDuration = state.current ? parseDuration(state.current.duration) : 0;
   const progress = totalDuration > 0 ? Math.min((localElapsed / totalDuration) * 100, 100) : 0;
@@ -580,6 +647,16 @@ function App() {
     return tracks;
   })();
 
+  // ── Artist Card for homepage ──────────────────────────────────
+  const ArtistCard = ({ artist }) => (
+    <div className="artist-bubble" onClick={() => searchGenre(artist.name)}>
+      <div className="artist-bubble-img">
+        {artist.thumbnail ? <img src={artist.thumbnail} alt="" /> : <div className="artist-bubble-placeholder">{artist.name[0]}</div>}
+      </div>
+      <span className="artist-bubble-name">{artist.name}</span>
+    </div>
+  );
+
   // ── Render Views ───────────────────────────────────────────────
   const renderHome = () => (
     <>
@@ -595,28 +672,6 @@ function App() {
                 <span className="channel-join">{joiningChannel === ch.id ? '...' : 'Beitreten'}</span>
               </button>
             ))}
-          </div>
-        </section>
-      )}
-
-      {/* Genre Quick Search */}
-      <section className="content-section">
-        <div className="genre-bar">
-          <h3 className="genre-bar-title">Choose a genre to get started</h3>
-          <p className="genre-bar-sub">Your playlist will evolve based on what you like or skip.</p>
-          <div className="genre-chips">
-            {genres.map(g => (
-              <button key={g.name} className="genre-chip" onClick={() => searchGenre(g.query)}>{g.name}</button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Featured Song Cards */}
-      {featuredTracks.length > 0 && (
-        <section className="content-section">
-          <div className="featured-grid">
-            {featuredTracks.slice(0, 3).map((track, i) => <FeaturedCard key={i} track={track} />)}
           </div>
         </section>
       )}
@@ -651,10 +706,77 @@ function App() {
         </section>
       )}
 
-      {/* Discover / Recently Played as track list */}
+      {/* Genre Quick Search */}
+      <section className="content-section">
+        <div className="genre-bar">
+          <h3 className="genre-bar-title">Waehle ein Genre</h3>
+          <p className="genre-bar-sub">Deine Playlist entwickelt sich basierend auf dem, was du magst.</p>
+          <div className="genre-chips">
+            {genres.map(g => (
+              <button key={g.name} className="genre-chip" onClick={() => searchGenre(g.query)}>{g.name}</button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Trending Now */}
+      {trendingTracks.length > 0 && (
+        <section className="content-section">
+          <div className="section-header">
+            <h2 className="section-title">{Icons.fire} Trending Now</h2>
+            <button className="btn-refresh" onClick={fetchHomepageContent} title="Aktualisieren">{Icons.refresh}</button>
+          </div>
+          <div className="card-scroll">
+            {trendingTracks.map((track, i) => <TrackCard key={i} track={track} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Featured Song Cards */}
+      {featuredTracks.length > 0 && (
+        <section className="content-section">
+          <div className="featured-grid">
+            {featuredTracks.slice(0, 3).map((track, i) => <FeaturedCard key={i} track={track} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Fuer dich empfohlen */}
+      {recommendedTracks.length > 0 && (
+        <section className="content-section">
+          <h2 className="section-title">{Icons.sparkle} Fuer dich empfohlen</h2>
+          <div className="track-list">
+            {recommendedTracks.slice(0, 6).map((track, i) => (
+              <TrackRow key={i} track={track} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Neu erschienen */}
+      {newReleases.length > 0 && (
+        <section className="content-section">
+          <h2 className="section-title">Neu erschienen</h2>
+          <div className="card-scroll">
+            {newReleases.map((track, i) => <TrackCard key={i} track={track} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Beliebte Artists */}
+      {popularArtists.length > 0 && (
+        <section className="content-section">
+          <h2 className="section-title">Beliebte Artists</h2>
+          <div className="artist-scroll">
+            {popularArtists.map((artist, i) => <ArtistCard key={i} artist={artist} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Zuletzt gehoert */}
       {recentlyPlayed.length > 0 && (
         <section className="content-section">
-          <h2 className="section-title">Discover new music</h2>
+          <h2 className="section-title">Zuletzt gehoert</h2>
           <div className="track-list">
             {recentlyPlayed.slice(0, 8).map((track, i) => (
               <TrackRow key={i} track={track} index={i} />
@@ -673,10 +795,10 @@ function App() {
         </section>
       )}
 
-      {/* Playlists */}
+      {/* Deine Playlists */}
       {playlists.length > 0 && (
         <section className="content-section">
-          <h2 className="section-title">Your Playlists</h2>
+          <h2 className="section-title">Deine Playlists</h2>
           <div className="card-grid">
             {playlists.map(p => (
               <div key={p.id} className="playlist-card" onClick={() => loadPlaylist(p.id)}>
@@ -692,7 +814,15 @@ function App() {
         </section>
       )}
 
-      {!state.current && state.tracks.length === 0 && recentlyPlayed.length === 0 && playlists.length === 0 && channels.length === 0 && (
+      {/* Loading indicator for homepage content */}
+      {homeLoading && trendingTracks.length === 0 && (
+        <div className="home-loading">
+          <span className="adding-spinner large" />
+          <p>Inhalte werden geladen...</p>
+        </div>
+      )}
+
+      {!state.current && state.tracks.length === 0 && recentlyPlayed.length === 0 && playlists.length === 0 && channels.length === 0 && trendingTracks.length === 0 && !homeLoading && (
         <div className="empty-state">
           {Icons.music}
           <p>Willkommen bei BeatByte</p>
@@ -897,6 +1027,50 @@ function App() {
             {Icons.search}
             <input className="search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="Search songs or artists..." disabled={searching} />
             {searchQuery && <button className="search-clear" onClick={() => { setSearchQuery(''); setSearchResults([]); if (activeView === 'search') setActiveView('home'); }}>{Icons.close}</button>}
+          </div>
+          <div className="profile-area" ref={profileRef}>
+            {oauthUser ? (
+              <>
+                <button className="profile-btn" onClick={() => setProfileOpen(!profileOpen)}>
+                  <img
+                    src={oauthUser.avatar
+                      ? `https://cdn.discordapp.com/avatars/${oauthUser.id}/${oauthUser.avatar}.png?size=64`
+                      : `https://cdn.discordapp.com/embed/avatars/${(parseInt(oauthUser.id) >> 22) % 6}.png`}
+                    alt="" className="profile-avatar"
+                  />
+                  <span className="profile-name">{oauthUser.global_name || oauthUser.username}</span>
+                  {Icons.chevronDown}
+                </button>
+                {profileOpen && (
+                  <div className="profile-dropdown">
+                    <div className="profile-dropdown-header">
+                      <img
+                        src={oauthUser.avatar
+                          ? `https://cdn.discordapp.com/avatars/${oauthUser.id}/${oauthUser.avatar}.png?size=128`
+                          : `https://cdn.discordapp.com/embed/avatars/${(parseInt(oauthUser.id) >> 22) % 6}.png`}
+                        alt="" className="profile-dropdown-avatar"
+                      />
+                      <div className="profile-dropdown-info">
+                        <span className="profile-dropdown-name">{oauthUser.global_name || oauthUser.username}</span>
+                        <span className="profile-dropdown-tag">@{oauthUser.username}</span>
+                      </div>
+                    </div>
+                    <div className="profile-dropdown-divider" />
+                    <button className="profile-dropdown-item" onClick={() => { setProfileOpen(false); }}>
+                      {Icons.settings}<span>Einstellungen</span>
+                    </button>
+                    <button className="profile-dropdown-item logout" onClick={() => { setProfileOpen(false); logout(); }}>
+                      {Icons.logoutIcon}<span>Logout</span>
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <button className="profile-btn guest" onClick={loginWithDiscord}>
+                <span className="profile-guest-icon">{Icons.user}</span>
+                <span className="profile-name">Guest</span>
+              </button>
+            )}
           </div>
         </header>
 
