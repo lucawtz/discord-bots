@@ -11,7 +11,6 @@ const { createRateLimiter } = require('../../../libs/rateLimiter');
 function startAPI(ctx, client) {
     const port = process.env.API_PORT || 3001;
     const apiKey = process.env.API_KEY || '';
-    const webappUrl = process.env.WEBAPP_URL || process.env.APP_URL || `http://localhost:${port}`;
 
     // ── Rate Limiting ────────────────────────────────────────────
     const isApiLimited = createRateLimiter(100, 60_000);
@@ -256,14 +255,14 @@ function startAPI(ctx, client) {
                 const errorParam = url.searchParams.get('error');
 
                 if (errorParam || !code) {
-                    res.writeHead(302, { Location: `${webappUrl}/app?error=discord_denied` });
+                    res.writeHead(302, { Location: '/?error=discord_denied' });
                     return res.end();
                 }
 
                 // Validate CSRF state
                 const stateKey = `oauth_state_${state}`;
                 if (!state || !sessions.has(stateKey)) {
-                    res.writeHead(302, { Location: `${webappUrl}/app?error=invalid_state` });
+                    res.writeHead(302, { Location: '/?error=invalid_state' });
                     return res.end();
                 }
                 sessions.delete(stateKey);
@@ -307,7 +306,7 @@ function startAPI(ctx, client) {
                         });
 
                     if (sharedGuilds.length === 0) {
-                        res.writeHead(302, { Location: `${webappUrl}/app?error=no_shared_guilds` });
+                        res.writeHead(302, { Location: '/?error=no_shared_guilds' });
                         return res.end();
                     }
 
@@ -319,13 +318,12 @@ function startAPI(ctx, client) {
                         createdAt: Date.now(),
                     });
 
-                    // Post token to app via sessionStorage, then redirect to webapp
-                    const appTarget = `${webappUrl}/app`;
-                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                    return res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><script>sessionStorage.setItem('discord_oauth_token','${oauthToken}');window.location.replace('${appTarget}');</script></body></html>`);
+                    // Redirect with token as query param (CSP-safe, no inline script)
+                    res.writeHead(302, { Location: `/?discord_token=${oauthToken}` });
+                    return res.end();
                 } catch (err) {
                     console.error('OAuth error:', err.message);
-                    res.writeHead(302, { Location: `${webappUrl}/app?error=oauth_failed` });
+                    res.writeHead(302, { Location: '/?error=oauth_failed' });
                     return res.end();
                 }
             }
@@ -903,44 +901,32 @@ function startAPI(ctx, client) {
                 return json(res, { error: 'Not found' }, 404);
             }
 
-            // ── Webapp (statische Dateien aus website/dist) ─────────
-            const distDir = path.join(__dirname, '..', '..', '..', 'website', 'dist');
+            // ── Web App (statische Dateien aus app/dist) ──────────
+            const distDir = path.join(__dirname, '..', 'app', 'dist');
             const mimeTypes = {
                 '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
                 '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
                 '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
             };
-
-            // Redirect root to /app
-            if (urlPath === '/') {
-                res.writeHead(302, { Location: '/app' });
-                return res.end();
-            }
-
-            // Serve static assets (JS, CSS, images)
-            let filePath = path.join(distDir, urlPath);
+            let filePath = path.join(distDir, urlPath === '/' ? 'index.html' : urlPath);
             const resolvedDist = path.resolve(distDir);
             if (!path.resolve(filePath).startsWith(resolvedDist + path.sep) && path.resolve(filePath) !== resolvedDist) {
                 return json(res, { error: 'Not found' }, 404);
             }
-
             try {
                 const stat = await fsp.stat(filePath);
-                if (!stat.isFile()) throw new Error('not a file');
+                if (stat.isDirectory()) filePath = path.join(distDir, 'index.html');
+            } catch {
+                filePath = path.join(distDir, 'index.html');
+            }
+            try {
                 const content = await fsp.readFile(filePath);
                 const ext = path.extname(filePath);
                 res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
                 return res.end(content);
-            } catch {
-                // SPA fallback: serve index.html for all non-file routes (React Router)
-                try {
-                    const indexHtml = await fsp.readFile(path.join(distDir, 'index.html'));
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    return res.end(indexHtml);
-                } catch {
-                    json(res, { error: 'Not found' }, 404);
-                }
-            }
+            } catch { /* dist nicht vorhanden, weiter zu 404 */ }
+
+            json(res, { error: 'Not found' }, 404);
         } catch (err) {
             console.error('API-Fehler:', err);
             json(res, { error: 'Interner Serverfehler' }, 500);
