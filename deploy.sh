@@ -34,6 +34,10 @@ echo ">> Dashboard: npm install..."
 cd "$REPO_DIR/dashboard"
 npm install --production
 
+echo ">> Website: npm install..."
+cd "$REPO_DIR/website"
+npm install --production
+
 # ── 3. Music Web App bauen ───────────────────────────────────
 echo ">> Music App: npm install + build..."
 cd "$REPO_DIR/bots/music-bot/app"
@@ -67,6 +71,7 @@ echo ">> Systemd Services installieren..."
 sudo cp "$REPO_DIR/services/discord-bot.service" /etc/systemd/system/discord-bot.service
 sudo cp "$REPO_DIR/services/soundboard-bot.service" /etc/systemd/system/soundboard-bot.service
 sudo cp "$REPO_DIR/services/dashboard.service" /etc/systemd/system/dashboard.service
+sudo cp "$REPO_DIR/services/website.service" /etc/systemd/system/website.service
 sudo systemctl daemon-reload
 
 # ── 5b. Nginx Config installieren ───────────────────────────
@@ -90,10 +95,12 @@ echo ">> Services neu starten..."
 sudo systemctl restart discord-bot
 sudo systemctl restart soundboard-bot
 sudo systemctl restart dashboard
+sudo systemctl restart website
 
 sudo systemctl enable discord-bot
 sudo systemctl enable soundboard-bot
 sudo systemctl enable dashboard
+sudo systemctl enable website
 
 # ── 8. Status pruefen ────────────────────────────────────────
 echo ""
@@ -103,5 +110,7 @@ echo "---"
 sudo systemctl status soundboard-bot --no-pager -l | head -5
 echo "---"
 sudo systemctl status dashboard --no-pager -l | head -5
+echo "---"
+sudo systemctl status website --no-pager -l | head -5
 echo ""
 echo "=== Deploy abgeschlossen ==="
