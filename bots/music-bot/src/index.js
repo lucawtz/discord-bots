@@ -211,14 +211,68 @@ function spotifyTrackToSearch(track) {
 async function searchSpotifyTrack(url) {
     const parsed = parseSpotifyUrl(url);
     if (!parsed || parsed.type !== 'track') throw new Error('Ungültige Spotify-Track-URL');
-    const data = await spotifyFetch(`/tracks/${parsed.id}`);
-    const info = spotifyTrackToSearch(data);
-    // Auf YouTube suchen
+
+    let info;
+    try {
+        const data = await spotifyFetch(`/tracks/${parsed.id}`);
+        info = spotifyTrackToSearch(data);
+    } catch {
+        // Embed-Fallback wenn API fehlschlägt
+        const entity = await fetchSpotifyEmbed('track', parsed.id);
+        const trackData = entity.trackList?.[0] || entity;
+        info = {
+            searchQuery: `${trackData.title || entity.name} ${trackData.subtitle || ''}`.trim(),
+            title: trackData.subtitle ? `${trackData.subtitle} – ${trackData.title || entity.name}` : (trackData.title || entity.name),
+            duration: formatDuration(Math.floor((trackData.duration || 0) / 1000)),
+            artist: trackData.subtitle || null,
+            albumArt: entity.coverArt?.sources?.[0]?.url || null,
+        };
+    }
+
     const ytTrack = await searchTrack(info.searchQuery);
-    ytTrack.title = info.title; // Spotify-Titel verwenden (genauer)
+    ytTrack.title = info.title;
     if (info.artist) ytTrack.artist = info.artist;
     if (info.albumArt) ytTrack.albumArt = info.albumArt;
     return ytTrack;
+}
+
+// Spotify Embed-Seite parsen (kein API-Key nötig, funktioniert immer)
+function fetchSpotifyEmbed(type, id) {
+    return new Promise((resolve, reject) => {
+        const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
+        const req = https.get(embedUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            timeout: 10000,
+        }, (res) => {
+            // Redirects folgen
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                https.get(res.headers.location, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 }, (res2) => {
+                    let data = '';
+                    res2.on('data', (d) => data += d);
+                    res2.on('end', () => resolveEmbed(data, resolve, reject));
+                }).on('error', reject);
+                return;
+            }
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => resolveEmbed(data, resolve, reject));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Spotify Embed: Timeout')); });
+    });
+}
+
+function resolveEmbed(html, resolve, reject) {
+    const match = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+    if (!match) return reject(new Error('Spotify Embed: Keine Daten gefunden'));
+    try {
+        const data = JSON.parse(match[1]);
+        const entity = data.props?.pageProps?.state?.data?.entity;
+        if (!entity) return reject(new Error('Spotify Embed: Keine Entity-Daten'));
+        resolve(entity);
+    } catch { reject(new Error('Spotify Embed: Ungültige Daten')); }
 }
 
 async function searchSpotifyPlaylist(url) {
@@ -228,31 +282,48 @@ async function searchSpotifyPlaylist(url) {
     let title = 'Spotify Playlist';
     let allTracks = [];
 
-    if (parsed.type === 'playlist') {
-        const data = await spotifyFetch(`/playlists/${parsed.id}?fields=name,tracks.items(track(name,artists,duration_ms)),tracks.next,tracks.total`);
-        title = data.name || title;
-        allTracks = (data.tracks?.items || []).filter(i => i.track).map(i => i.track);
-
-        // Weitere Seiten laden (Spotify paginiert bei 100)
-        let next = data.tracks?.next;
-        while (next) {
-            const endpoint = next.replace('https://api.spotify.com/v1', '');
-            const page = await spotifyFetch(endpoint);
-            allTracks.push(...(page.items || []).filter(i => i.track).map(i => i.track));
-            next = page.next;
+    // Zuerst mit App-Credentials versuchen
+    try {
+        if (parsed.type === 'playlist') {
+            const data = await spotifyFetch(`/playlists/${parsed.id}?market=DE`);
+            title = data.name || title;
+            if (data.tracks?.items) {
+                allTracks = data.tracks.items.filter(i => i.track && !i.track.is_local).map(i => i.track);
+                let next = data.tracks?.next;
+                while (next) {
+                    const page = await spotifyFetch(next.replace('https://api.spotify.com/v1', ''));
+                    allTracks.push(...(page.items || []).filter(i => i.track && !i.track.is_local).map(i => i.track));
+                    next = page.next;
+                }
+            }
+        } else if (parsed.type === 'album') {
+            const data = await spotifyFetch(`/albums/${parsed.id}?market=DE`);
+            title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
+            allTracks = data.tracks?.items || [];
         }
-    } else if (parsed.type === 'album') {
-        const data = await spotifyFetch(`/albums/${parsed.id}`);
-        title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
-        allTracks = data.tracks?.items || [];
-        // Album-Tracks haben keine Thumbnail, aber das ist ok — YouTube hat welche
+    } catch (e) {
+        console.log('Spotify API Fehler:', e.message);
+    }
+
+    // Fallback: Embed-Seite scrapen wenn keine Tracks gefunden
+    if (allTracks.length === 0) {
+        console.log('Spotify: Nutze Embed-Seite als Fallback...');
+        const entity = await fetchSpotifyEmbed(parsed.type, parsed.id);
+        title = entity.name || entity.title || title;
+
+        allTracks = (entity.trackList || []).filter(t => t.uri && t.isPlayable !== false).map(t => ({
+            name: t.title,
+            artists: [{ name: t.subtitle || '' }],
+            duration_ms: t.duration || 0,
+            album: { images: entity.coverArt?.sources || [] },
+        }));
     }
 
     if (allTracks.length === 0) throw new Error('Leere Spotify-Playlist/Album');
 
-    // Alle Spotify-Tracks parallel auf YouTube suchen (max 5 gleichzeitig)
+    // Alle Spotify-Tracks parallel auf YouTube suchen
     const tracks = [];
-    const batchSize = 5;
+    const batchSize = 10;
     for (let i = 0; i < allTracks.length; i += batchSize) {
         const batch = allTracks.slice(i, i + batchSize);
         const results = await Promise.allSettled(
@@ -371,7 +442,7 @@ async function searchAppleMusicPlaylist(url) {
     if (allTracks.length === 0) throw new Error('Leere Apple Music Playlist/Album');
 
     const tracks = [];
-    const batchSize = 5;
+    const batchSize = 10;
     for (let i = 0; i < allTracks.length; i += batchSize) {
         const batch = allTracks.slice(i, i + batchSize);
         const results = await Promise.allSettled(
@@ -474,7 +545,7 @@ async function searchDeezerPlaylist(url) {
     if (allTracks.length === 0) throw new Error('Leere Deezer Playlist/Album');
 
     const tracks = [];
-    const batchSize = 5;
+    const batchSize = 10;
     for (let i = 0; i < allTracks.length; i += batchSize) {
         const batch = allTracks.slice(i, i + batchSize);
         const results = await Promise.allSettled(
@@ -509,18 +580,21 @@ function parseAmazonMusicUrl(url) {
     return { type: typeMap[match[1]] || match[1], id: match[2] };
 }
 
-// ── Piped API (schnelle Suche mit Instance-Rotation) ────────────
+// ── Piped API (schnelle Suche mit Instance-Rotation + Circuit Breaker) ──
 const PIPED_INSTANCES = [
     'https://pipedapi.kavin.rocks',
     'https://pipedapi.adminforge.de',
     'https://pipedapi.in.projectsegfau.lt',
 ];
 let pipedInstanceIndex = 0;
+let pipedDownUntil = 0;          // Circuit Breaker: Timestamp bis wann Piped übersprungen wird
+let pipedConsecutiveFails = 0;   // Zähler für aufeinanderfolgende Ausfälle
+const PIPED_COOLDOWN_MS = 5 * 60_000; // 5 Minuten Cooldown wenn alle Instanzen tot
 
 function pipedFetchSingle(instance, endpoint) {
     return new Promise((resolve, reject) => {
         const url = `${instance}${endpoint}`;
-        const req = https.get(url, { timeout: 4000 }, (res) => {
+        const req = https.get(url, { timeout: 2000 }, (res) => {
             if (res.statusCode >= 400) {
                 res.resume();
                 return reject(new Error(`Piped ${res.statusCode}`));
@@ -538,25 +612,44 @@ function pipedFetchSingle(instance, endpoint) {
 }
 
 async function pipedFetch(endpoint) {
-    // Alle Instanzen durchprobieren, beginnend bei der zuletzt erfolgreichen
+    // Circuit Breaker: Piped komplett überspringen wenn kürzlich alle Instanzen ausgefallen
+    if (Date.now() < pipedDownUntil) {
+        throw new Error('Piped API: Circuit Breaker aktiv');
+    }
+
     for (let i = 0; i < PIPED_INSTANCES.length; i++) {
         const idx = (pipedInstanceIndex + i) % PIPED_INSTANCES.length;
         try {
             const result = await pipedFetchSingle(PIPED_INSTANCES[idx], endpoint);
-            pipedInstanceIndex = idx; // Erfolgreiche Instanz merken
+            pipedInstanceIndex = idx;
+            pipedConsecutiveFails = 0; // Reset bei Erfolg
+            pipedDownUntil = 0;
             return result;
         } catch (err) {
-            console.log(`Piped ${PIPED_INSTANCES[idx]} fehlgeschlagen: ${err.message}`);
-            if (i === PIPED_INSTANCES.length - 1) throw err; // Alle fehlgeschlagen
+            if (i === PIPED_INSTANCES.length - 1) {
+                pipedConsecutiveFails++;
+                // Sofort Circuit Breaker aktivieren wenn alle Instanzen tot
+                if (pipedConsecutiveFails >= 1) {
+                    pipedDownUntil = Date.now() + PIPED_COOLDOWN_MS;
+                    console.log(`Piped: Alle Instanzen ausgefallen, überspringe für ${PIPED_COOLDOWN_MS / 60000} Minuten`);
+                }
+                throw err;
+            }
         }
     }
 }
 
 async function pipedSearch(query, limit = 5) {
-    const data = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=music_songs`);
+    let data;
+    try {
+        data = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=music_songs`);
+    } catch (err) {
+        // Bei Verbindungsfehlern nicht nochmal versuchen (Circuit Breaker ist aktiv)
+        throw err;
+    }
     const items = (data.items || []).filter(i => i.url && i.type === 'stream').slice(0, limit);
     if (items.length === 0) {
-        // Fallback: ohne Filter suchen
+        // Nur Fallback auf videos-Filter wenn Piped erreichbar war aber keine Ergebnisse hatte
         const data2 = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=videos`);
         const items2 = (data2.items || []).filter(i => i.url && i.type === 'stream').slice(0, limit);
         if (items2.length === 0) throw new Error('Keine Ergebnisse');
@@ -598,12 +691,11 @@ async function searchTrack(query) {
     // URLs direkt über yt-dlp auflösen (inkl. Amazon Music)
     if (isUrl) return searchTrackYtdlp(query);
 
-    // Piped API für Textsuche
+    // Piped API für Textsuche (mit yt-dlp Fallback)
     try {
         const items = await pipedSearch(query, 1);
         return pipedToTrack(items[0]);
-    } catch (err) {
-        console.log('Piped-Suche fehlgeschlagen, Fallback auf yt-dlp:', err.message);
+    } catch {
         return searchTrackYtdlp(`ytsearch1:${query}`);
     }
 }
@@ -615,12 +707,11 @@ async function searchTracks(query, limit = 5) {
         return [track];
     }
 
-    // Piped API für Textsuche
+    // Piped API für Textsuche (mit yt-dlp Fallback)
     try {
         const items = await pipedSearch(query, limit);
         return items.map(pipedToTrack);
-    } catch (err) {
-        console.log('Piped-Suche fehlgeschlagen, Fallback auf yt-dlp:', err.message);
+    } catch {
         return searchTracksYtdlp(query, limit);
     }
 }
@@ -807,6 +898,144 @@ function searchTracksYtdlp(query, limit = 5) {
         });
         proc.on('error', (e) => reject(new Error(`yt-dlp konnte nicht gestartet werden: ${e.message}`)));
     });
+}
+
+// ── Progressives Playlist-Loading ────────────────────────────────
+// Holt nur die Metadaten (Titel, Artist, Duration) ohne YouTube-Auflösung
+async function fetchPlaylistMeta(url) {
+    if (isSpotifyUrl(url)) {
+        const parsed = parseSpotifyUrl(url);
+        if (!parsed || parsed.type === 'track') return null;
+
+        let title = 'Spotify Playlist';
+        let rawTracks = [];
+
+        // API versuchen
+        try {
+            if (parsed.type === 'playlist') {
+                const data = await spotifyFetch(`/playlists/${parsed.id}?market=DE`);
+                title = data.name || title;
+                if (data.tracks?.items) {
+                    rawTracks = data.tracks.items
+                        .filter(i => i.track && !i.track.is_local)
+                        .map(i => spotifyTrackToSearch(i.track));
+                }
+            } else if (parsed.type === 'album') {
+                const data = await spotifyFetch(`/albums/${parsed.id}?market=DE`);
+                title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
+                rawTracks = (data.tracks?.items || []).map(t => spotifyTrackToSearch(t));
+            }
+        } catch {}
+
+        // Embed-Fallback
+        if (rawTracks.length === 0) {
+            const entity = await fetchSpotifyEmbed(parsed.type, parsed.id);
+            title = entity.name || entity.title || title;
+            rawTracks = (entity.trackList || [])
+                .filter(t => t.uri && t.isPlayable !== false)
+                .map(t => spotifyTrackToSearch({
+                    name: t.title,
+                    artists: [{ name: t.subtitle || '' }],
+                    duration_ms: t.duration || 0,
+                    album: { images: entity.coverArt?.sources || [] },
+                }));
+        }
+
+        return rawTracks.length > 0 ? { title, rawTracks } : null;
+    }
+
+    if (isAppleMusicUrl(url)) {
+        const parsed = parseAppleMusicUrl(url);
+        if (!parsed || parsed.type === 'track') return null;
+
+        let title = 'Apple Music Playlist';
+        let allTracks = [];
+
+        if (parsed.type === 'album') {
+            const data = await appleMusicFetch(`/catalog/${parsed.storefront}/albums/${parsed.id}`);
+            const album = data.data?.[0];
+            if (!album) return null;
+            const attrs = album.attributes || {};
+            title = `${attrs.artistName || ''} – ${attrs.name || 'Album'}`.trim();
+            allTracks = album.relationships?.tracks?.data || [];
+        } else if (parsed.type === 'playlist') {
+            const data = await appleMusicFetch(`/catalog/${parsed.storefront}/playlists/${parsed.id}`);
+            const playlist = data.data?.[0];
+            if (!playlist) return null;
+            title = playlist.attributes?.name || title;
+            allTracks = playlist.relationships?.tracks?.data || [];
+        }
+
+        const rawTracks = allTracks.map(t => appleMusicTrackToSearch(t));
+        return rawTracks.length > 0 ? { title, rawTracks } : null;
+    }
+
+    if (isDeezerUrl(url)) {
+        const parsed = parseDeezerUrl(url);
+        if (!parsed || parsed.type === 'track') return null;
+
+        let title = 'Deezer Playlist';
+        let allTracks = [];
+
+        if (parsed.type === 'playlist') {
+            const data = await deezerFetch(`/playlist/${parsed.id}`);
+            title = data.title || title;
+            allTracks = data.tracks?.data || [];
+        } else if (parsed.type === 'album') {
+            const data = await deezerFetch(`/album/${parsed.id}`);
+            title = `${data.artist?.name || ''} – ${data.title || 'Album'}`.trim();
+            const albumArt = data.cover_medium || data.cover || null;
+            allTracks = (data.tracks?.data || []).map(t => ({
+                ...t,
+                album: { cover_medium: albumArt, cover: albumArt },
+                artist: t.artist || data.artist,
+            }));
+        }
+
+        const rawTracks = allTracks.map(t => deezerTrackToSearch(t));
+        return rawTracks.length > 0 ? { title, rawTracks } : null;
+    }
+
+    // YouTube/Amazon Music: kein progressives Loading möglich
+    return null;
+}
+
+// Löst Tracks im Hintergrund auf und fügt sie zur Queue hinzu
+function resolvePlaylistInBackground(guildId, rawTracks, user) {
+    const batchSize = 10;
+    let resolved = 0;
+
+    (async () => {
+        for (let i = 0; i < rawTracks.length; i += batchSize) {
+            // Abbrechen wenn Queue nicht mehr existiert (z.B. /stop, /disconnect)
+            const queue = queues.get(guildId);
+            if (!queue) break;
+
+            const batch = rawTracks.slice(i, i + batchSize);
+            const results = await Promise.allSettled(
+                batch.map(async (info) => {
+                    const ytTrack = await searchTrack(info.searchQuery);
+                    ytTrack.title = info.title;
+                    if (info.artist) ytTrack.artist = info.artist;
+                    if (info.albumArt) ytTrack.albumArt = info.albumArt;
+                    ytTrack.requestedBy = user.toString();
+                    ytTrack._requestedById = user.id;
+                    return ytTrack;
+                })
+            );
+            for (const r of results) {
+                if (r.status === 'fulfilled') {
+                    queue.tracks.push(r.value);
+                    resolved++;
+                }
+            }
+            // Falls nichts spielt und Tracks da sind, starten
+            if (queue.connection && !queue.current && queue.tracks.length > 0) {
+                playNext(guildId);
+            }
+        }
+        if (resolved > 0) console.log(`Playlist: ${resolved}/${rawTracks.length} Tracks im Hintergrund geladen`);
+    })().catch(err => console.error('Hintergrund-Playlist-Fehler:', err.message));
 }
 
 async function searchPlaylist(url) {
@@ -1303,7 +1532,7 @@ for (const file of commandFiles) {
 
 // ── Context-Objekt für Commands ───────────────────────────────────
 const ctx = {
-    db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, spotifyFetch, searchPlaylist, isPlaylistUrl,
+    db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, spotifyFetch, searchPlaylist, isPlaylistUrl, fetchPlaylistMeta, resolvePlaylistInBackground,
     playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
