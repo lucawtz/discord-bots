@@ -7,7 +7,6 @@ import QueueMusicIcon from '@mui/icons-material/QueueMusic';
 import RepeatIcon from '@mui/icons-material/Repeat';
 import TuneIcon from '@mui/icons-material/Tune';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
-import SearchIcon from '@mui/icons-material/Search';
 import WebIcon from '@mui/icons-material/Web';
 import LyricsIcon from '@mui/icons-material/Lyrics';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -31,7 +30,7 @@ export default function MusicBot() {
     const { t } = useLanguage();
 
     const features = [
-        { icon: <PlayCircleOutlineIcon />, title: t('musicBot.features.youtube'), text: t('musicBot.features.youtubeText') },
+        { icon: <PlayCircleOutlineIcon />, title: t('musicBot.features.streaming'), text: t('musicBot.features.streamingText') },
         { icon: <QueueMusicIcon />, title: t('musicBot.features.queue'), text: t('musicBot.features.queueText') },
         { icon: <RepeatIcon />, title: t('musicBot.features.loop'), text: t('musicBot.features.loopText') },
         { icon: <TuneIcon />, title: t('musicBot.features.volume'), text: t('musicBot.features.volumeText') },
@@ -39,6 +38,7 @@ export default function MusicBot() {
         { icon: <AutoAwesomeIcon />, title: t('musicBot.features.autoDj'), text: t('musicBot.features.autoDjText') },
         { icon: <WebIcon />, title: t('musicBot.features.webPlayer'), text: t('musicBot.features.webPlayerText') },
         { icon: <LyricsIcon />, title: t('musicBot.features.lyrics'), text: t('musicBot.features.lyricsText') },
+        { icon: <TuneIcon />, title: t('musicBot.features.filters'), text: t('musicBot.features.filtersText') },
     ];
 
     const commands = [
@@ -58,6 +58,13 @@ export default function MusicBot() {
         { name: '/join', description: t('musicBot.commands.join') },
         { name: '/lyrics [query]', description: t('musicBot.commands.lyrics') },
         { name: '/app', description: t('musicBot.commands.app') },
+        { name: '/autodj', description: t('musicBot.commands.autodj') },
+        { name: '/disconnect', description: t('musicBot.commands.disconnect') },
+        { name: '/filter <filter>', description: t('musicBot.commands.filter') },
+        { name: '/move <von> <nach>', description: t('musicBot.commands.move') },
+        { name: '/playlist <action>', description: t('musicBot.commands.playlist') },
+        { name: '/replay', description: t('musicBot.commands.replay') },
+        { name: '/setrole [rolle]', description: t('musicBot.commands.setrole') },
     ];
 
     return (
@@ -97,15 +104,6 @@ export default function MusicBot() {
                             <Chip label="Soon" size="small" sx={{ ml: 1, height: 18, fontSize: '0.6rem', bgcolor: 'rgba(168,85,247,0.15)', color: '#c084fc' }} />
                         </Button>
                     </Stack>
-                </Container>
-            </Box>
-
-            {/* Player */}
-            <Box sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 10, px: 3 }}>
-                <Container maxWidth="sm">
-                    <Chip label={t('musicBot.previewLabel')} size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
-                    <Typography variant="h4" sx={{ mb: 4, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>{t('musicBot.playerTitle')}</Typography>
-                    <MusicPlayer />
                 </Container>
             </Box>
 
@@ -171,25 +169,15 @@ export default function MusicBot() {
                 </Container>
             </Box>
 
-            {/* Screenshots */}
+            {/* Web Player Preview */}
             <Box sx={{ borderTop: '1px solid rgba(168,85,247,0.06)', py: 10, px: 3 }}>
-                <Container maxWidth="lg">
-                    <Chip label={t('musicBot.screenshotsLabel')} size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
-                    <Typography variant="h4" sx={{ mb: 6, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>{t('musicBot.screenshotsTitle')}</Typography>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
-                        {[t('musicPlayer.nowPlaying', 'Now Playing'), t('musicPlayer.queue', 'Queue'), t('musicBot.webApp'), t('musicBot.desktopApp')].map((l, i) => (
-                            <Box key={i} sx={{
-                                aspectRatio: '16/9', borderRadius: 4, bgcolor: '#18181b',
-                                border: '1px solid rgba(168,85,247,0.06)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                                <Stack alignItems="center" spacing={0.5}>
-                                    <SearchIcon sx={{ fontSize: 28, opacity: 0.12 }} />
-                                    <Typography variant="caption" color="text.disabled">{l}</Typography>
-                                </Stack>
-                            </Box>
-                        ))}
-                    </Box>
+                <Container maxWidth="md">
+                    <Chip label="Web Player" size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
+                    <Typography variant="h4" sx={{ mb: 1.5, fontSize: { xs: '1.4rem', md: '1.75rem' } }}>{t('musicBot.screenshotsTitle')}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                        app.bytebots.de
+                    </Typography>
+                    <MusicPlayer />
                 </Container>
             </Box>
 

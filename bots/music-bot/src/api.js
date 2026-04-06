@@ -141,6 +141,7 @@ function startAPI(ctx, client) {
             volume: Math.round((queue.volume || 1) * 100),
             elapsed,
             autoDj: !!queue.autoDj,
+            filter: queue.filter || 'off',
         };
     }
 
@@ -314,7 +315,7 @@ function startAPI(ctx, client) {
                     // Store OAuth data temporarily for guild selection
                     const oauthToken = crypto.randomBytes(32).toString('hex');
                     sessions.set(`oauth_pending_${oauthToken}`, {
-                        user: { id: user.id, username: user.username, avatar: user.avatar },
+                        user: { id: user.id, username: user.username, global_name: user.global_name || user.username, avatar: user.avatar },
                         guilds: sharedGuilds,
                         createdAt: Date.now(),
                     });
@@ -334,19 +335,19 @@ function startAPI(ctx, client) {
                 const { oauthToken } = await parseBody(req);
                 if (!oauthToken) return json(res, { error: 'Token fehlt' }, 400);
                 const pending = sessions.get(`oauth_pending_${oauthToken}`);
-                if (!pending) return json(res, { error: 'Ungueltiger oder abgelaufener Token' }, 401);
+                if (!pending) return json(res, { error: 'Ungültiger oder abgelaufener Token' }, 401);
                 return json(res, { user: pending.user, guilds: pending.guilds });
             }
 
             // POST /api/auth/discord/select — Select guild from OAuth
             if (method === 'POST' && urlPath === '/api/auth/discord/select') {
                 const { oauthToken, guildId } = await parseBody(req);
-                if (!oauthToken || !guildId) return json(res, { error: 'Token und guildId benoetigt' }, 400);
+                if (!oauthToken || !guildId) return json(res, { error: 'Token und guildId benötigt' }, 400);
                 const pendingKey = `oauth_pending_${oauthToken}`;
                 const pending = sessions.get(pendingKey);
-                if (!pending) return json(res, { error: 'Ungueltiger oder abgelaufener Token' }, 401);
+                if (!pending) return json(res, { error: 'Ungültiger oder abgelaufener Token' }, 401);
                 const selectedGuild = pending.guilds.find(g => g.id === guildId);
-                if (!selectedGuild) return json(res, { error: 'Server nicht verfuegbar' }, 403);
+                if (!selectedGuild) return json(res, { error: 'Server nicht verfügbar' }, 403);
                 sessions.delete(pendingKey);
                 const sessionToken = createSession(guildId, { ...pending.user, authType: 'discord' });
                 return json(res, { token: sessionToken, user: pending.user, guild: selectedGuild });
@@ -366,6 +367,7 @@ function startAPI(ctx, client) {
                     valid: true,
                     userId: userData?.id || null,
                     username: userData?.username || null,
+                    global_name: userData?.global_name || userData?.username || null,
                     avatar: userData?.avatar || null,
                     authType: userData?.authType || 'code',
                     guild: guild ? { id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) } : null,
@@ -408,120 +410,128 @@ function startAPI(ctx, client) {
                     if (!q) return json(res, { error: 'Query fehlt' }, 400);
                     // Enhanced search returns categorized results (artists, tracks, albums)
                     if (url.searchParams.get('enhanced') === '1') {
-                        return json(res, await ctx.searchEnhanced(q));
+                        const results = await ctx.searchEnhanced(q);
+                        // Pre-resolve top 3 YouTube URLs in background for instant playback
+                        (results.tracks || []).slice(0, 3).forEach(t => ctx.preResolveTrack(t.url));
+                        return json(res, results);
                     }
                     return json(res, await ctx.searchTracks(q));
                 }
 
                 // ── Discover Endpoints ─────────────────────────────
 
-                // GET /api/discover/trending — Trending songs via Spotify search
+                // GET /api/discover/trending — Real charts from Deezer (no API key needed)
                 if (method === 'GET' && urlPath === '/api/discover/trending') {
                     const genreFilter = url.searchParams.get('genre') || 'all';
-                    const langFilter = url.searchParams.get('lang') || 'all';
-
-                    const allArtists = {
-                        pop: ['Sabrina Carpenter', 'Billie Eilish', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande', 'Olivia Rodrigo', 'Charli XCX', 'Tyla', 'Chappell Roan'],
-                        hiphop: ['Kendrick Lamar', 'Travis Scott', 'Drake', 'Future', 'Metro Boomin', 'Central Cee', 'Lil Baby', 'Playboi Carti', 'Don Toliver'],
-                        rnb: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean', 'Daniel Caesar', 'Brent Faiyaz'],
-                        rock: ['Maneskin', 'Linkin Park', 'Imagine Dragons', 'Arctic Monkeys', 'Twenty One Pilots', 'Green Day'],
-                        electronic: ['Fred again..', 'Calvin Harris', 'David Guetta', 'Peggy Gou', 'Tiesto', 'Robin Schulz'],
-                        latin: ['Bad Bunny', 'Peso Pluma', 'Feid', 'Rauw Alejandro', 'Karol G', 'Ozuna'],
-                        kpop: ['BLACKPINK', 'BTS', 'Stray Kids', 'NewJeans', 'aespa', 'TWICE', 'IVE'],
-                    };
-
-                    // Language-specific artist pools
-                    const langArtists = {
-                        de: ['Apache 207', 'Luciano', 'Pashanim', 'Shirin David', 'Nina Chuba', 'Capital Bra', 'Cro', 'RIN', 'Ufo361', 'Kontra K'],
-                        en: ['Sabrina Carpenter', 'Billie Eilish', 'The Weeknd', 'Drake', 'Kendrick Lamar', 'Dua Lipa', 'SZA', 'Post Malone'],
-                        es: ['Bad Bunny', 'Peso Pluma', 'Feid', 'Rauw Alejandro', 'Karol G', 'Ozuna', 'Maluma', 'J Balvin'],
-                        fr: ['Aya Nakamura', 'Ninho', 'Jul', 'Stromae', 'Indila', 'Angele'],
-                        ko: ['BLACKPINK', 'BTS', 'Stray Kids', 'NewJeans', 'aespa', 'TWICE', 'IVE', 'ENHYPEN'],
-                        tr: ['Tarkan', 'Mero', 'Enes Batur', 'Murda', 'Ezhel', 'Sagopa Kajmer', 'Ben Fero'],
-                    };
-
-                    // Build artist list based on filters
-                    let pool;
-                    if (langFilter !== 'all' && langArtists[langFilter]) {
-                        pool = langArtists[langFilter];
-                    } else if (genreFilter !== 'all' && allArtists[genreFilter]) {
-                        pool = allArtists[genreFilter];
-                    } else {
-                        // Mix from all genres
-                        const seed = Date.now() / 3600000 | 0;
-                        pool = Object.values(allArtists).map((artists, gi) => artists[(seed + gi * 7) % artists.length]);
-                    }
-
-                    // Pick up to 8 artists
-                    const seed = Date.now() / 3600000 | 0;
-                    const picks = [...pool].sort((a, b) => Math.sin(seed + a.length) - Math.sin(seed + b.length)).slice(0, 8);
 
                     try {
-                        const results = await Promise.allSettled(
-                            picks.map(artist =>
-                                ctx.spotifyFetch(`/search?q=${encodeURIComponent(artist)}&type=track&limit=4&market=DE`)
-                            )
-                        );
+                        // Deezer Chart API — real, daily-updated global charts
+                        const chartData = await new Promise((resolve, reject) => {
+                            const chartUrl = 'https://api.deezer.com/chart/0/tracks?limit=20';
+                            require('https').get(chartUrl, { timeout: 8000 }, (res) => {
+                                let data = '';
+                                res.on('data', d => data += d);
+                                res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Deezer parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Deezer timeout')); });
+                        });
 
-                        const seen = new Set();
-                        const tracks = [];
-                        for (const r of results) {
-                            if (r.status !== 'fulfilled') continue;
-                            for (const t of (r.value.tracks?.items || [])) {
-                                if (seen.has(t.id)) continue;
-                                seen.add(t.id);
-                                tracks.push({
-                                    title: t.name,
-                                    artist: t.artists?.map(a => a.name).join(', ') || '',
-                                    thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
-                                    duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
-                                    url: `${t.artists?.[0]?.name || ''} ${t.name}`,
-                                    popularity: t.popularity,
-                                    source: 'spotify',
-                                });
+                        let tracks = (chartData.data || []).map((t, i) => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                            position: t.position || i + 1,
+                            source: 'deezer-charts',
+                        }));
+
+                        // Genre filter: enrich with Spotify search if specific genre selected
+                        if (genreFilter !== 'all') {
+                            const genreQueries = {
+                                pop: 'pop hits', hiphop: 'hip hop rap', rnb: 'rnb soul',
+                                rock: 'rock', electronic: 'electronic dance', latin: 'latin reggaeton', kpop: 'kpop',
+                            };
+                            const q = genreQueries[genreFilter];
+                            if (q) {
+                                try {
+                                    const data = await ctx.spotifyFetch(`/search?q=${encodeURIComponent(q)}&type=track&limit=15&market=DE`);
+                                    tracks = (data.tracks?.items || []).map(t => ({
+                                        title: t.name,
+                                        artist: t.artists?.map(a => a.name).join(', ') || '',
+                                        thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
+                                        duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
+                                        url: `${t.artists?.[0]?.name || ''} ${t.name}`,
+                                        source: 'spotify',
+                                    }));
+                                } catch {}
                             }
                         }
-                        // Sort by popularity (most popular first)
-                        tracks.sort((a, b) => b.popularity - a.popularity);
-                        if (tracks.length > 0) return json(res, tracks.slice(0, 15));
-                        throw new Error('No popular tracks found');
+
+                        if (tracks.length > 0) return json(res, tracks);
+                        throw new Error('No chart data');
                     } catch (err) {
-                        console.error('Spotify trending failed:', err.message);
+                        console.error('Charts failed:', err.message);
                         try {
-                            const results = await Promise.allSettled(
-                                picks.slice(0, 4).map(a => ctx.searchTracks(a, 3))
-                            );
+                            const artists = ['Sabrina Carpenter', 'Billie Eilish', 'The Weeknd', 'Kendrick Lamar'];
+                            const results = await Promise.allSettled(artists.map(a => ctx.searchTracks(a, 3)));
                             return json(res, results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).slice(0, 12));
                         } catch { return json(res, []); }
                     }
                 }
 
+                // GET /api/discover/local-charts — Country-specific charts via Deezer
+                if (method === 'GET' && urlPath === '/api/discover/local-charts') {
+                    const country = (url.searchParams.get('country') || 'DE').toUpperCase();
+                    // Deezer editorial IDs per country
+                    const editorialIds = { DE: 116, AT: 116, CH: 116, US: 0, GB: 0, FR: 52, ES: 81, IT: 80, TR: 109, BR: 36, NL: 71, SE: 60, PL: 83, KR: 0, JP: 105, MX: 131 };
+                    const editorialId = editorialIds[country] ?? 0;
+
+                    try {
+                        const chartUrl = editorialId > 0
+                            ? `https://api.deezer.com/editorial/${editorialId}/charts`
+                            : 'https://api.deezer.com/chart/0/tracks?limit=15';
+
+                        const chartData = await new Promise((resolve, reject) => {
+                            require('https').get(chartUrl, { timeout: 8000 }, (res) => {
+                                let data = '';
+                                res.on('data', d => data += d);
+                                res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+
+                        const rawTracks = editorialId > 0 ? (chartData.tracks?.data || []) : (chartData.data || []);
+                        const tracks = rawTracks.slice(0, 15).map((t, i) => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                            position: t.position || i + 1,
+                            source: 'deezer-charts',
+                        }));
+
+                        return json(res, tracks);
+                    } catch { return json(res, []); }
+                }
+
                 // GET /api/discover/sections — Genre/mood sections like Spotify home
                 if (method === 'GET' && urlPath === '/api/discover/sections') {
                     const genreFilter = url.searchParams.get('genre') || 'all';
-                    const langFilter = url.searchParams.get('lang') || 'all';
 
                     const allSections = [
                         { title: 'Pop Hits', query: 'pop hits 2025', genre: 'pop' },
                         { title: 'Hip-Hop', query: 'hip hop rap trending', genre: 'hiphop' },
                         { title: 'Chill Vibes', query: 'chill lofi relaxing', genre: 'electronic' },
-                        { title: 'Deutsch Rap', query: 'deutsch rap neue songs', lang: 'de' },
                         { title: 'Party', query: 'party dance hits', genre: 'electronic' },
                         { title: 'R&B & Soul', query: 'rnb soul smooth', genre: 'rnb' },
                         { title: 'Rock & Indie', query: 'rock indie alternative', genre: 'rock' },
                         { title: 'Latin Hits', query: 'reggaeton latin hits', genre: 'latin' },
                         { title: 'K-Pop', query: 'kpop korean pop hits', genre: 'kpop' },
-                        { title: 'Deutsche Hits', query: 'deutsche pop hits', lang: 'de' },
-                        { title: 'Tuerkische Hits', query: 'turkish pop hits muzik', lang: 'tr' },
-                        { title: 'French Pop', query: 'french pop hits chanson', lang: 'fr' },
-                        { title: 'Reggaeton', query: 'reggaeton perreo nuevo', lang: 'es' },
                     ];
 
-                    // Filter sections by active genre/lang
                     let sections = allSections;
                     if (genreFilter !== 'all') sections = sections.filter(s => s.genre === genreFilter);
-                    if (langFilter !== 'all') sections = sections.filter(s => s.lang === langFilter || (!s.lang && langFilter === 'en'));
-                    if (sections.length === 0) sections = allSections; // fallback
+                    if (sections.length === 0) sections = allSections;
 
                     // Pick 4 sections
                     const hour = new Date().getHours();
@@ -532,70 +542,64 @@ function startAPI(ctx, client) {
                     try {
                         const results = await Promise.allSettled(
                             picked.map(s =>
-                                ctx.spotifyFetch(`/search?q=${encodeURIComponent(s.query)}&type=track&limit=6&market=DE`)
-                                    .then(data => ({
-                                        title: s.title,
-                                        icon: s.icon,
-                                        tracks: (data.tracks?.items || []).map(t => ({
-                                            title: t.name,
-                                            artist: t.artists?.map(a => a.name).join(', ') || '',
-                                            thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
-                                            duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
-                                            url: `${t.artists?.[0]?.name || ''} ${t.name}`,
-                                        })),
-                                    }))
+                                ctx.searchTracks(s.query, 6).then(tracks => ({
+                                    title: s.title,
+                                    tracks: tracks || [],
+                                }))
                             )
                         );
                         return json(res, results.filter(r => r.status === 'fulfilled').map(r => r.value).filter(s => s.tracks.length > 0));
                     } catch { return json(res, []); }
                 }
 
-                // GET /api/discover/new-releases — New songs via Spotify search (sorted by recent)
+                // GET /api/discover/new-releases — New songs via Deezer editorial charts
                 if (method === 'GET' && urlPath === '/api/discover/new-releases') {
                     try {
-                        const langFilter = url.searchParams.get('lang') || 'all';
-                        const genreFilter = url.searchParams.get('genre') || 'all';
-                        const year = new Date().getFullYear();
-                        const langKeywords = { de: ' deutsch german', es: ' spanish latin', fr: ' french', ko: ' korean kpop', tr: ' turkish' };
-                        const genreKeywords = { pop: ' pop', hiphop: ' hip hop rap', rnb: ' rnb', rock: ' rock', electronic: ' electronic dance', latin: ' latin reggaeton', kpop: ' kpop korean' };
-                        const extra = (langKeywords[langFilter] || '') + (genreKeywords[genreFilter] || '');
-                        const data = await ctx.spotifyFetch(`/search?q=${encodeURIComponent(`tag:new year:${year}${extra}`)}&type=track&limit=12&market=DE`);
-                        const tracks = (data.tracks?.items || [])
-                            .filter(t => (t.popularity || 0) >= 40)
-                            .map(t => ({
-                                id: t.id,
-                                name: t.name,
+                        // Deezer editorial "new releases" chart
+                        const data = await new Promise((resolve, reject) => {
+                            require('https').get('https://api.deezer.com/editorial/0/releases?limit=12', { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+                        const albums = (data.data || []).map(a => ({
+                            id: a.id,
+                            name: a.title || '',
+                            artist: a.artist?.name || '',
+                            image: a.cover_medium || a.cover || null,
+                            url: `${a.artist?.name || ''} ${a.title || ''}`,
+                        }));
+                        if (albums.length > 0) return json(res, albums);
+                        throw new Error('No releases');
+                    } catch {
+                        // Fallback: Spotify search
+                        try {
+                            const year = new Date().getFullYear();
+                            const data = await ctx.spotifyFetch(`/search?q=year%3A${year}&type=track&limit=12&market=DE`);
+                            return json(res, (data.tracks?.items || []).map(t => ({
+                                id: t.id, name: t.name,
                                 artist: t.artists?.map(a => a.name).join(', ') || '',
-                                image: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
-                                releaseDate: t.album?.release_date || null,
+                                image: t.album?.images?.[1]?.url || null,
                                 url: `${t.artists?.[0]?.name || ''} ${t.name}`,
-                            }));
-                        return json(res, tracks);
-                    } catch { return json(res, []); }
+                            })));
+                        } catch { return json(res, []); }
+                    }
                 }
 
-                // GET /api/discover/popular-artists — Popular artists via Spotify search
+                // GET /api/discover/popular-artists — Artists from Deezer charts
                 if (method === 'GET' && urlPath === '/api/discover/popular-artists') {
                     try {
-                        const artistNames = ['Sabrina Carpenter', 'Billie Eilish', 'The Weeknd', 'Bad Bunny', 'SZA', 'Kendrick Lamar', 'Dua Lipa', 'Travis Scott', 'Taylor Swift', 'Drake', 'Apache 207', 'Central Cee'];
-                        const seed = (Date.now() / 3600000 | 0);
-                        const picked = artistNames.sort((a, b) => Math.sin(seed + a.length) - Math.sin(seed + b.length)).slice(0, 8);
-
-                        const results = await Promise.allSettled(
-                            picked.map(name => ctx.spotifyFetch(`/search?q=${encodeURIComponent(name)}&type=artist&limit=1`))
-                        );
-
-                        const artists = results
-                            .filter(r => r.status === 'fulfilled')
-                            .map(r => r.value.artists?.items?.[0])
-                            .filter(Boolean)
-                            .map(a => ({
-                                id: a.id,
-                                name: a.name,
-                                image: a.images?.[1]?.url || a.images?.[0]?.url || null,
-                                genres: a.genres?.slice(0, 2) || [],
-                            }));
-
+                        const data = await new Promise((resolve, reject) => {
+                            require('https').get('https://api.deezer.com/chart/0/artists?limit=8', { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+                        const artists = (data.data || []).map(a => ({
+                            id: String(a.id),
+                            name: a.name || '',
+                            image: a.picture_medium || a.picture || null,
+                        }));
                         return json(res, artists);
                     } catch { return json(res, []); }
                 }
@@ -752,17 +756,28 @@ function startAPI(ctx, client) {
                 // POST /api/guild/:id/play
                 const playMatch = urlPath.match(/^\/api\/guild\/(\d+)\/play$/);
                 if (method === 'POST' && playMatch) {
-                    const { query } = await parseBody(req);
+                    const { query, immediate } = await parseBody(req);
                     if (!query) return json(res, { error: 'Query fehlt' }, 400);
-                    const queue = ctx.queues.get(playMatch[1]);
+                    const guildId = playMatch[1];
+                    const queue = ctx.queues.get(guildId);
                     if (!queue || !queue.connection) return json(res, { error: 'Bot ist nicht verbunden. Nutze /play in Discord.' }, 400);
                     const track = await ctx.searchTrack(query);
                     track.requestedBy = 'Web App';
                     track._requestedById = getUserId();
-                    queue.tracks.push(track);
-                    if (!queue.current) ctx.playNext(playMatch[1]);
-                    broadcast('stateUpdate', getGuildState(playMatch[1]));
-                    return json(res, { track, position: queue.tracks.length });
+
+                    if (immediate && queue.current) {
+                        // Play now: put at front of queue and skip current
+                        queue.tracks.unshift(track);
+                        for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
+                        queue.processes.clear();
+                        queue.player.stop();
+                    } else {
+                        queue.tracks.push(track);
+                        if (!queue.current) ctx.playNext(guildId);
+                    }
+
+                    broadcast('stateUpdate', getGuildState(guildId));
+                    return json(res, { track, position: immediate ? 0 : queue.tracks.length });
                 }
 
                 // POST /api/guild/:id/skip
@@ -857,6 +872,28 @@ function startAPI(ctx, client) {
                     return json(res, { volume: vol });
                 }
 
+                // POST /api/guild/:id/filter — Set audio filter (restarts current song)
+                const filterMatch = urlPath.match(/^\/api\/guild\/(\d+)\/filter$/);
+                if (method === 'POST' && filterMatch) {
+                    const { filter, eqBands } = await parseBody(req);
+                    const guildId = filterMatch[1];
+                    const validFilters = ['off', 'bassboost', 'nightcore', 'slowed', 'custom'];
+                    if (!validFilters.includes(filter)) return json(res, { error: 'Ungültiger Filter' }, 400);
+                    const queue = ctx.getQueue(guildId);
+                    queue.filter = filter;
+                    if (filter === 'custom' && Array.isArray(eqBands) && eqBands.length === 7) {
+                        queue.eqBands = eqBands.map(v => Math.max(-12, Math.min(12, parseInt(v) || 0)));
+                    }
+                    broadcast('stateUpdate', getGuildState(guildId));
+                    return json(res, { ok: true, filter, eqBands: queue.eqBands });
+                }
+
+                // GET /api/guild/:id/filter — Get current filter
+                if (method === 'GET' && urlPath.match(/^\/api\/guild\/(\d+)\/filter$/)) {
+                    const queue = ctx.queues.get(urlPath.match(/^\/api\/guild\/(\d+)\/filter$/)[1]);
+                    return json(res, { filter: queue?.filter || 'off' });
+                }
+
                 // ── Playlist Endpoints ────────────────────────────────
 
                 // GET /api/guild/:id/playlists
@@ -904,6 +941,82 @@ function startAPI(ctx, client) {
                     const deleted = ctx.db.deletePlaylist(parseInt(playlistDetailMatch[2]), null);
                     if (!deleted) return json(res, { error: 'Nicht gefunden' }, 404);
                     return json(res, { ok: true });
+                }
+
+                // POST /api/guild/:id/playlists/import — Import playlist from Spotify/YouTube/etc URL
+                const playlistImportMatch = urlPath.match(/^\/api\/guild\/(\d+)\/playlists\/import$/);
+                if (method === 'POST' && playlistImportMatch) {
+                    const guildId = playlistImportMatch[1];
+                    const { url: playlistUrl, name: customName } = await parseBody(req);
+                    if (!playlistUrl) return json(res, { error: 'URL fehlt' }, 400);
+
+                    try {
+                        // Fast import: extract metadata only, no YouTube search
+                        let title = 'Importierte Playlist';
+                        let rawTracks = [];
+
+                        if (ctx.isPlaylistUrl(playlistUrl) && playlistUrl.includes('spotify.com')) {
+                            // Spotify: use embed scraping (fast, no API needed)
+                            const parsed = playlistUrl.match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/);
+                            if (!parsed) throw new Error('Ungültige Spotify-URL');
+                            const { fetchSpotifyEmbed } = ctx;
+
+                            // Try API first, then embed fallback
+                            try {
+                                if (parsed[1] === 'playlist') {
+                                    const data = await ctx.spotifyFetch(`/playlists/${parsed[2]}?market=DE`);
+                                    title = data.name || title;
+                                    rawTracks = (data.tracks?.items || []).filter(i => i.track).map(i => ({
+                                        title: i.track.name,
+                                        url: `${i.track.artists?.[0]?.name || ''} ${i.track.name}`,
+                                        artist: i.track.artists?.map(a => a.name).join(', ') || '',
+                                        thumbnail: i.track.album?.images?.[1]?.url || null,
+                                        duration: `${Math.floor((i.track.duration_ms||0)/60000)}:${String(Math.floor(((i.track.duration_ms||0)%60000)/1000)).padStart(2,'0')}`,
+                                    }));
+                                } else if (parsed[1] === 'album') {
+                                    const data = await ctx.spotifyFetch(`/albums/${parsed[2]}?market=DE`);
+                                    title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
+                                    rawTracks = (data.tracks?.items || []).map(t => ({
+                                        title: t.name,
+                                        url: `${t.artists?.[0]?.name || ''} ${t.name}`,
+                                        artist: t.artists?.map(a => a.name).join(', ') || '',
+                                        thumbnail: data.images?.[1]?.url || null,
+                                        duration: `${Math.floor((t.duration_ms||0)/60000)}:${String(Math.floor(((t.duration_ms||0)%60000)/1000)).padStart(2,'0')}`,
+                                    }));
+                                }
+                            } catch {}
+
+                            // Embed fallback if API fails
+                            if (rawTracks.length === 0) {
+                                const entity = await ctx.fetchSpotifyEmbed(parsed[1], parsed[2]);
+                                title = entity.name || title;
+                                const coverArt = entity.coverArt?.sources?.[0]?.url || null;
+                                rawTracks = (entity.trackList || []).filter(t => t.title).map(t => ({
+                                    title: t.title,
+                                    url: `${t.subtitle || ''} ${t.title}`.trim(),
+                                    artist: t.subtitle || '',
+                                    thumbnail: coverArt,
+                                    duration: t.duration ? `${Math.floor(t.duration/60000)}:${String(Math.floor((t.duration%60000)/1000)).padStart(2,'0')}` : null,
+                                }));
+                            }
+                        } else {
+                            // YouTube/Deezer/Apple Music: use existing searchPlaylist (already has URLs)
+                            const result = await ctx.searchPlaylist(playlistUrl);
+                            title = result.title || title;
+                            rawTracks = result.tracks || [];
+                        }
+
+                        const name = customName?.trim() || title;
+                        const tracks = rawTracks.slice(0, 500);
+                        if (tracks.length === 0) throw new Error('Playlist ist leer');
+
+                        const userId = getUserId() || 'dashboard';
+                        const playlistId = ctx.db.createPlaylist(guildId, userId, name, tracks);
+
+                        return json(res, { ok: true, id: playlistId, name, trackCount: tracks.length, limited: rawTracks.length > tracks.length });
+                    } catch (err) {
+                        return json(res, { error: err.message || 'Import fehlgeschlagen' }, 400);
+                    }
                 }
 
                 // POST /api/guild/:id/playlists/:pid/load
@@ -1002,6 +1115,60 @@ function startAPI(ctx, client) {
                     return sess?.user?.id || `guest_${sess?.guildId}`;
                 }
 
+                // GET /api/user/settings
+                if (method === 'GET' && urlPath === '/api/user/settings') {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    return json(res, ctx.db.getUserSettings(uid));
+                }
+
+                // PUT /api/user/settings
+                if (method === 'PUT' && urlPath === '/api/user/settings') {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    const body = await parseBody(req);
+                    ctx.db.saveUserSettings(uid, body);
+                    return json(res, { ok: true });
+                }
+
+                // POST /api/user/profile — public profile data (verified via Discord token)
+                if (method === 'POST' && urlPath === '/api/user/profile') {
+                    const body = await parseBody(req);
+                    if (!body.discordToken) return json(res, { error: 'Discord Token benötigt' }, 400);
+                    try {
+                        const discordRes = await fetch('https://discord.com/api/v10/users/@me', {
+                            headers: { Authorization: `Bearer ${body.discordToken}` },
+                        });
+                        if (!discordRes.ok) return json(res, { error: 'Ungültiger Discord Token' }, 401);
+                        const discordUser = await discordRes.json();
+                        const uid = discordUser.id;
+
+                        const likes = ctx.db.getLikedTracks(uid);
+                        const settings = ctx.db.getUserSettings(uid);
+                        const followedArtists = ctx.db.getFollowedArtists(uid);
+                        const topArtists = ctx.db.getTopArtistsGlobal(uid, 90, 10);
+                        const totalLikeSeconds = likes.reduce((sum, t) => {
+                            if (!t.duration) return sum;
+                            const parts = t.duration.split(':').map(Number);
+                            return sum + (parts.length === 2 ? parts[0] * 60 + parts[1] : parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : 0);
+                        }, 0);
+
+                        return json(res, {
+                            user: { id: uid, username: discordUser.global_name || discordUser.username, avatar: discordUser.avatar },
+                            stats: {
+                                likedCount: likes.length,
+                                followedArtists: followedArtists.length,
+                                totalLikeMinutes: Math.round(totalLikeSeconds / 60),
+                            },
+                            topArtists,
+                            likedTracks: likes.slice(0, 12),
+                            settings,
+                        });
+                    } catch (err) {
+                        return json(res, { error: 'Profil konnte nicht geladen werden' }, 500);
+                    }
+                }
+
                 // GET /api/guild/:id/likes
                 const likesGetMatch = urlPath.match(/^\/api\/guild\/(\d+)\/likes$/);
                 if (method === 'GET' && likesGetMatch) {
@@ -1015,7 +1182,7 @@ function startAPI(ctx, client) {
                     const uid = getUserId();
                     if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
                     const track = await parseBody(req);
-                    if (!track.title || !track.url) return json(res, { error: 'title und url benoetigt' }, 400);
+                    if (!track.title || !track.url) return json(res, { error: 'title und url benötigt' }, 400);
                     ctx.db.likeTrack(uid, likesGetMatch[1], track);
                     return json(res, { ok: true }, 201);
                 }

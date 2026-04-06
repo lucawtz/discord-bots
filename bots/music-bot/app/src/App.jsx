@@ -60,6 +60,7 @@ function App() {
   const [guild, setGuild] = useState(null);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [initializing, setInitializing] = useState(!!localStorage.getItem('authToken'));
   const [state, setState] = useState({ current: null, tracks: [], paused: false, connected: false, loopMode: 'off', volume: 100, elapsed: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -67,12 +68,24 @@ function App() {
   const [adding, setAdding] = useState(null);
   const [channels, setChannels] = useState([]);
   const [joiningChannel, setJoiningChannel] = useState(null);
+  const [showChannelPicker, setShowChannelPicker] = useState(false);
+  const [pendingTrack, setPendingTrack] = useState(null);
   const [error, setError] = useState('');
   const [localElapsed, setLocalElapsed] = useState(0);
+  const [localVolume, setLocalVolume] = useState(100);
+  const volumeTimerRef = useRef(null);
   const [playlists, setPlaylists] = useState([]);
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [playlistName, setPlaylistName] = useState('');
   const [savingPlaylist, setSavingPlaylist] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importName, setImportName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('overview');
+  const [eqValues, setEqValues] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('eqValues')) || [0,0,0,0,0,0,0]; } catch { return [0,0,0,0,0,0,0]; }
+  });
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
@@ -95,9 +108,24 @@ function App() {
   const [globalPopular, setGlobalPopular] = useState([]);
   const [popularArtists, setPopularArtists] = useState([]);
   const [genreSections, setGenreSections] = useState([]);
+  const [localTracks, setLocalTracks] = useState([]);
   const [homeLoading, setHomeLoading] = useState(false);
   const [activeGenre, setActiveGenre] = useState('all');
-  const [activeLang, setActiveLang] = useState('all');
+
+  // Auto-detect country from browser for local trends
+  const detectedCountry = (() => {
+    const locale = navigator.language || '';
+    const country = locale.split('-')[1]?.toUpperCase() || locale.split('-')[0]?.toUpperCase();
+    const countries = {
+      DE: { code: 'DE', name: 'Deutschland' }, AT: { code: 'AT', name: 'Österreich' }, CH: { code: 'CH', name: 'Schweiz' },
+      US: { code: 'US', name: 'USA' }, GB: { code: 'GB', name: 'UK' }, FR: { code: 'FR', name: 'Frankreich' },
+      ES: { code: 'ES', name: 'Spanien' }, IT: { code: 'IT', name: 'Italien' }, NL: { code: 'NL', name: 'Niederlande' },
+      TR: { code: 'TR', name: 'Türkei' }, PL: { code: 'PL', name: 'Polen' }, SE: { code: 'SE', name: 'Schweden' },
+      BR: { code: 'BR', name: 'Brasilien' }, MX: { code: 'MX', name: 'Mexiko' }, JP: { code: 'JP', name: 'Japan' },
+      KR: { code: 'KR', name: 'Südkorea' },
+    };
+    return countries[country] || countries.DE;
+  })();
 
   const filterGenres = [
     { id: 'all', label: 'Alle' },
@@ -109,22 +137,13 @@ function App() {
     { id: 'latin', label: 'Latin' },
     { id: 'kpop', label: 'K-Pop' },
   ];
-
-  const filterLangs = [
-    { id: 'all', label: 'Alle Sprachen' },
-    { id: 'de', label: 'Deutsch' },
-    { id: 'en', label: 'English' },
-    { id: 'es', label: 'Espanol' },
-    { id: 'fr', label: 'Francais' },
-    { id: 'ko', label: 'Korean' },
-    { id: 'tr', label: 'Tuerkisch' },
-  ];
   const [likedSongs, setLikedSongs] = useState(() => {
     try { return JSON.parse(localStorage.getItem('likedSongs') || '[]'); } catch { return []; }
   });
   const [recentlyPlayed, setRecentlyPlayed] = useState(() => {
     try { return JSON.parse(localStorage.getItem('recentlyPlayed') || '[]'); } catch { return []; }
   });
+  const likeSyncRef = useRef(false);
 
   const wsRef = useRef(null);
   const guildRef = useRef(null);
@@ -132,7 +151,74 @@ function App() {
 
   useEffect(() => { guildRef.current = guild; }, [guild]);
 
-  // Track recently played
+  // Sync liked songs & history from server when connected
+  useEffect(() => {
+    if (!connected || !guild || !token) return;
+    const h = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+    // Fetch server likes
+    (async () => {
+      try {
+        const res = await fetch(`${botUrl}/api/guild/${guild.id}/likes`, { headers: h });
+        if (res.ok) {
+          const serverLikes = await res.json();
+          const mapped = serverLikes.map(t => ({
+            title: t.track_title, url: t.track_url, artist: t.artist,
+            thumbnail: t.thumbnail, duration: t.duration, likedAt: new Date(t.liked_at).getTime(),
+          }));
+          // Merge: server is source of truth, but add any localStorage-only likes to server
+          const localLikes = JSON.parse(localStorage.getItem('likedSongs') || '[]');
+          const serverUrls = new Set(mapped.map(t => t.url));
+          const localOnly = localLikes.filter(t => !serverUrls.has(t.url));
+          // Upload local-only likes to server
+          for (const t of localOnly) {
+            try {
+              await fetch(`${botUrl}/api/guild/${guild.id}/likes`, {
+                method: 'POST', headers: h,
+                body: JSON.stringify({ title: t.title, url: t.url, artist: t.artist, thumbnail: t.thumbnail, duration: t.duration }),
+              });
+            } catch {}
+          }
+          const merged = [...mapped, ...localOnly];
+          merged.sort((a, b) => b.likedAt - a.likedAt);
+          setLikedSongs(merged);
+          localStorage.setItem('likedSongs', JSON.stringify(merged));
+          likeSyncRef.current = true;
+        }
+      } catch {}
+    })();
+    // Fetch server history
+    (async () => {
+      try {
+        const res = await fetch(`${botUrl}/api/guild/${guild.id}/history?limit=20`, { headers: h });
+        if (res.ok) {
+          const serverHistory = await res.json();
+          if (serverHistory.length > 0) {
+            const mapped = serverHistory.map(t => ({
+              title: t.track_title, url: t.track_url, artist: t.artist,
+              thumbnail: t.thumbnail, duration: t.duration, playedAt: new Date(t.played_at).getTime(),
+            }));
+            setRecentlyPlayed(mapped);
+            localStorage.setItem('recentlyPlayed', JSON.stringify(mapped));
+          }
+        }
+      } catch {}
+    })();
+    // Fetch user settings (EQ)
+    (async () => {
+      try {
+        const res = await fetch(`${botUrl}/api/user/settings`, { headers: h });
+        if (res.ok) {
+          const settings = await res.json();
+          if (settings.eq_values && Array.isArray(settings.eq_values)) {
+            setEqValues(settings.eq_values);
+            localStorage.setItem('eqValues', JSON.stringify(settings.eq_values));
+          }
+        }
+      } catch {}
+    })();
+  }, [connected, guild, token]);
+
+  // Track recently played — save to server too
   useEffect(() => {
     if (state.current && state.current.url !== prevTrackRef.current) {
       prevTrackRef.current = state.current.url;
@@ -145,17 +231,29 @@ function App() {
     }
   }, [state.current]);
 
-  // Persist liked songs
+  // Persist liked songs to localStorage
   useEffect(() => {
     localStorage.setItem('likedSongs', JSON.stringify(likedSongs));
   }, [likedSongs]);
 
   const toggleLike = (track) => {
+    const alreadyLiked = likedSongs.find(t => t.url === track.url);
     setLikedSongs(prev => {
-      const exists = prev.find(t => t.url === track.url);
-      if (exists) return prev.filter(t => t.url !== track.url);
+      if (alreadyLiked) return prev.filter(t => t.url !== track.url);
       return [...prev, { ...track, likedAt: Date.now() }];
     });
+    // Sync to server
+    if (guild && token) {
+      const h = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+      if (alreadyLiked) {
+        fetch(`${botUrl}/api/guild/${guild.id}/likes/${encodeURIComponent(track.url)}`, { method: 'DELETE', headers: h }).catch(() => {});
+      } else {
+        fetch(`${botUrl}/api/guild/${guild.id}/likes`, {
+          method: 'POST', headers: h,
+          body: JSON.stringify({ title: track.title, url: track.url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }),
+        }).catch(() => {});
+      }
+    }
   };
 
   const isLiked = (url) => likedSongs.some(t => t.url === url);
@@ -182,7 +280,11 @@ function App() {
     try {
       const res = await fetch(`${botUrl}/api/guild/${guildId}/state`, { headers: getHeaders() });
       if (res.status === 401) { logout(); return; }
-      if (res.ok) setState(await res.json());
+      if (res.ok) {
+        const s = await res.json();
+        setState(s);
+        if (!volumeTimerRef.current) setLocalVolume(s.volume ?? 100);
+      }
     } catch {}
   }, [botUrl, getHeaders]);
 
@@ -194,7 +296,7 @@ function App() {
     const oauthError = params.get('error');
 
     if (oauthError) {
-      const msgs = { discord_denied: 'Discord Login abgebrochen.', no_shared_guilds: 'Kein gemeinsamer Server mit dem Bot gefunden.', invalid_state: 'Ungueltiger Login-Versuch.', oauth_failed: 'Discord Login fehlgeschlagen.' };
+      const msgs = { discord_denied: 'Discord Login abgebrochen.', no_shared_guilds: 'Kein gemeinsamer Server mit dem Bot gefunden.', invalid_state: 'Ungültiger Login-Versuch.', oauth_failed: 'Discord Login fehlgeschlagen.' };
       setError(msgs[oauthError] || 'Login fehlgeschlagen.');
       window.history.replaceState({}, '', window.location.pathname);
       return;
@@ -225,7 +327,7 @@ function App() {
       return;
     }
 
-    if (!token) return;
+    if (!token) { setInitializing(false); return; }
     const verify = async () => {
       try {
         const res = await fetch(`${botUrl}/api/auth/verify`, {
@@ -237,10 +339,16 @@ function App() {
           if (data.valid && data.guild) {
             setGuild(data.guild);
             setConnected(true);
+            if (data.userId) {
+              const user = { id: data.userId, username: data.username, global_name: data.global_name, avatar: data.avatar };
+              setOauthUser(user);
+              localStorage.setItem('discordUser', JSON.stringify(user));
+            }
             connectWebSocket(token);
           } else { logout(); }
         } else { logout(); }
       } catch { logout(); }
+      setInitializing(false);
     };
     verify();
   }, []);
@@ -332,50 +440,87 @@ function App() {
   }, [connected, guild, fetchState]);
 
   useEffect(() => {
-    if (!connected || !guild || state.connected) { setChannels([]); return; }
+    if (!connected || !guild) { setChannels([]); return; }
     (async () => {
       try {
         const res = await fetch(`${botUrl}/api/guild/${guild.id}/channels`, { headers: getHeaders() });
         if (res.ok) setChannels(await res.json());
       } catch {}
     })();
-  }, [connected, guild, state.connected, botUrl, getHeaders]);
+  }, [connected, guild, botUrl, getHeaders]);
 
-  const joinChannel = async (channelId) => {
-    if (!guild) return;
-    setJoiningChannel(channelId);
-    try {
-      const res = await fetch(`${botUrl}/api/guild/${guild.id}/join`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ channelId }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      fetchState(guild.id);
-    } catch (err) { setError(err.message); }
-    setJoiningChannel(null);
-  };
+  const [searchArtists, setSearchArtists] = useState([]);
+  const [searchAlbums, setSearchAlbums] = useState([]);
+  const searchTimerRef = useRef(null);
 
-  const search = async () => {
-    if (!searchQuery.trim()) return;
-    setSearching(true); setSearchResults([]); setError('');
+  const search = async (query) => {
+    const q = query !== undefined ? query : searchQuery;
+    if (!q.trim()) { setSearchResults([]); setSearchArtists([]); setSearchAlbums([]); return; }
+    setSearching(true); setError('');
     setActiveView('search');
     try {
-      const res = await fetch(`${botUrl}/api/search?q=${encodeURIComponent(searchQuery)}`, { headers: getHeaders() });
+      const res = await fetch(`${botUrl}/api/search?q=${encodeURIComponent(q)}&enhanced=1`, { headers: getHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSearchResults(data);
+      setSearchResults(data.tracks || []);
+      setSearchArtists(data.artists || []);
+      setSearchAlbums(data.albums || []);
     } catch (err) { setError(err.message); }
     setSearching(false);
   };
 
+  // Live search with debounce
+  const onSearchInput = (value) => {
+    setSearchQuery(value);
+    clearTimeout(searchTimerRef.current);
+    if (!value.trim()) {
+      setSearchResults([]); setSearchArtists([]); setSearchAlbums([]);
+      if (activeView === 'search') setActiveView('home');
+      return;
+    }
+    searchTimerRef.current = setTimeout(() => search(value), 400);
+  };
+
   const addToQueue = async (track) => {
     if (!guild) return;
+    // If bot not in a voice channel, show channel picker
+    if (!state.connected) {
+      setPendingTrack(track);
+      setShowChannelPicker(true);
+      return;
+    }
     setAdding(track.url);
     try {
-      const res = await fetch(`${botUrl}/api/guild/${guild.id}/play`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ query: track.url }) });
+      const res = await fetch(`${botUrl}/api/guild/${guild.id}/play`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ query: track.url, immediate: true }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       fetchState(guild.id);
     } catch (err) { setError(err.message); }
     setAdding(null);
+  };
+
+  const joinAndPlay = async (channelId) => {
+    setJoiningChannel(channelId);
+    try {
+      const res = await fetch(`${botUrl}/api/guild/${guild.id}/join`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ channelId }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await fetchState(guild.id);
+      setShowChannelPicker(false);
+      // Play the pending track after joining
+      if (pendingTrack) {
+        setAdding(pendingTrack.url);
+        try {
+          const playRes = await fetch(`${botUrl}/api/guild/${guild.id}/play`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ query: pendingTrack.url, immediate: true }) });
+          const playData = await playRes.json();
+          if (!playRes.ok) throw new Error(playData.error);
+          fetchState(guild.id);
+        } catch (err) { setError(err.message); }
+        setAdding(null);
+        setPendingTrack(null);
+      }
+    } catch (err) { setError(err.message); }
+    setJoiningChannel(null);
   };
 
   const apiAction = async (action, body) => {
@@ -462,12 +607,10 @@ function App() {
   const fetchHomepageContent = useCallback(async (force = false) => {
     if (!connected || !guild || homeLoading) return;
 
-    const filterParams = (activeGenre !== 'all' || activeLang !== 'all')
-      ? `${activeGenre !== 'all' ? `&genre=${activeGenre}` : ''}${activeLang !== 'all' ? `&lang=${activeLang}` : ''}`
-      : '';
+    const filterParams = activeGenre !== 'all' ? `&genre=${activeGenre}` : '';
 
     // Check sessionStorage cache (15 min TTL)
-    const cacheKey = `discover_${guild.id}_${activeGenre}_${activeLang}`;
+    const cacheKey = `discover_${guild.id}_${activeGenre}_${detectedCountry.code}`;
     if (!force) {
       try {
         const cached = JSON.parse(sessionStorage.getItem(cacheKey));
@@ -479,6 +622,7 @@ function App() {
           if (cached.globalPop) setGlobalPopular(cached.globalPop);
           if (cached.artists) setPopularArtists(cached.artists);
           if (cached.sections) setGenreSections(cached.sections);
+          if (cached.localTrending) setLocalTracks(cached.localTrending);
           return;
         }
       } catch {}
@@ -491,13 +635,15 @@ function App() {
     };
 
     // Fetch in two batches to not overwhelm the server
-    const [trending, releases, serverPop] = await Promise.all([
+    const [trending, localTrending, releases, serverPop] = await Promise.all([
       fetchJson(`${botUrl}/api/discover/trending?x=1${filterParams}`),
+      fetchJson(`${botUrl}/api/discover/local-charts?country=${detectedCountry.code}`),
       fetchJson(`${botUrl}/api/discover/new-releases?x=1${filterParams}`),
       fetchJson(`${botUrl}/api/guild/${guild.id}/discover/popular`),
     ]);
 
     if (trending) setTrendingTracks(trending);
+    if (localTrending) setLocalTracks(localTrending);
     if (releases) setNewReleases(releases);
     if (serverPop) setPopularOnServer(serverPop);
 
@@ -517,7 +663,7 @@ function App() {
     // Cache results
     try {
       sessionStorage.setItem(cacheKey, JSON.stringify({
-        ts: Date.now(), trending, releases, recs, serverPop, globalPop, artists, sections,
+        ts: Date.now(), trending, localTrending, releases, recs, serverPop, globalPop, artists, sections,
       }));
     } catch {}
 
@@ -526,16 +672,108 @@ function App() {
 
   useEffect(() => {
     if (!connected || !guild) return;
-    const isInitial = trendingTracks.length === 0;
-    const timer = setTimeout(() => fetchHomepageContent(true), isInitial ? 1500 : 100);
-    return () => clearTimeout(timer);
-  }, [connected, guild, activeGenre, activeLang]);
+    fetchHomepageContent(activeGenre !== 'all');
+  }, [connected, guild, activeGenre]);
 
   const totalDuration = state.current ? parseDuration(state.current.duration) : 0;
   const progress = totalDuration > 0 ? Math.min((localElapsed / totalDuration) * 100, 100) : 0;
   const loopIcons = { off: 'Off', song: 'Song', queue: 'Queue' };
 
+  // Audio filter helpers (must be before conditional returns)
+  const activeFilter = state.filter || 'off';
+  const eqTimerRef = useRef(null);
+  const eqSaveTimerRef = useRef(null);
+
+  // Save EQ to user settings on server (debounced)
+  const syncEqToServer = (values) => {
+    if (!token) return;
+    clearTimeout(eqSaveTimerRef.current);
+    eqSaveTimerRef.current = setTimeout(() => {
+      fetch(`${botUrl}/api/user/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ eq_values: values }),
+      }).catch(() => {});
+    }, 1000);
+  };
+
+  const sendEqToBackend = (bands) => {
+    if (!guild) return;
+    clearTimeout(eqTimerRef.current);
+    eqTimerRef.current = setTimeout(async () => {
+      try {
+        await fetch(`${botUrl}/api/guild/${guild.id}/filter`, {
+          method: 'POST', headers: getHeaders(),
+          body: JSON.stringify({ filter: 'custom', eqBands: bands }),
+        });
+        fetchState(guild.id);
+      } catch {}
+    }, 500);
+  };
+
+  const setFilter = async (filter) => {
+    if (!guild) return;
+    clearTimeout(eqTimerRef.current);
+    // Update EQ sliders to match preset
+    const preset = filterPresets.find(p => p.id === filter);
+    if (preset?.eq) {
+      setEqValues(preset.eq);
+      localStorage.setItem('eqValues', JSON.stringify(preset.eq));
+      syncEqToServer(preset.eq);
+    }
+    try {
+      await fetch(`${botUrl}/api/guild/${guild.id}/filter`, {
+        method: 'POST', headers: getHeaders(), body: JSON.stringify({ filter }),
+      });
+      fetchState(guild.id);
+    } catch {}
+  };
+  const filterPresets = [
+    { id: 'off', label: 'Aus', desc: 'Kein Filter', icon: '—', eq: [0,0,0,0,0,0,0] },
+    { id: 'bassboost', label: 'Bass Boost', desc: 'Verstärkter Bass', icon: '🔊', eq: [10,8,4,0,-2,-3,-2] },
+    { id: 'nightcore', label: 'Nightcore', desc: 'Schneller + höher', icon: '⚡', eq: [-2,0,2,4,6,5,3] },
+    { id: 'slowed', label: 'Slowed', desc: 'Langsamer + tiefer', icon: '🌙', eq: [4,3,1,-1,-3,-2,0] },
+  ];
+  const eqBands = [
+    { freq: '60', label: 'Sub' },
+    { freq: '150', label: 'Bass' },
+    { freq: '400', label: 'Low' },
+    { freq: '1k', label: 'Mid' },
+    { freq: '2.5k', label: 'High' },
+    { freq: '6k', label: 'Pres' },
+    { freq: '16k', label: 'Air' },
+  ];
+
   // ── Setup Screen ───────────────────────────────────────────────
+  // Skeleton while verifying existing token
+  if (initializing) {
+    return (
+      <div className="app">
+        <aside className="sidebar">
+          <div className="sidebar-top"><div className="sidebar-brand"><img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="brand-logo" /><span className="brand-text">BeatByte</span></div></div>
+          <nav className="sidebar-nav">
+            {[1,2,3,4].map(i => <div key={i} className="skeleton-line" style={{ height: 36, margin: '2px 8px', borderRadius: 8 }} />)}
+          </nav>
+        </aside>
+        <main className="main">
+          <header className="top-bar"><div className="skeleton-line" style={{ height: 42, borderRadius: 999, flex: 1 }} /></header>
+          <div className="content">
+            <div className="skeleton-line" style={{ height: 32, width: 200, borderRadius: 8, marginBottom: 20 }} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 28 }}>
+              {[1,2,3].map(i => <div key={i} className="skeleton-line" style={{ height: 48, borderRadius: 6 }} />)}
+            </div>
+            <div className="skeleton-line" style={{ height: 200, borderRadius: 12, marginBottom: 28 }} />
+            <div className="skeleton-line" style={{ height: 20, width: 150, borderRadius: 8, marginBottom: 12 }} />
+            <div style={{ display: 'flex', gap: 16 }}>
+              {[1,2,3,4,5].map(i => <div key={i} className="skeleton-line" style={{ width: 160, height: 200, borderRadius: 8, flexShrink: 0 }} />)}
+            </div>
+          </div>
+        </main>
+        <footer className="player-bar"><div className="player-empty" /></footer>
+      </div>
+    );
+  }
+
   if (!connected) {
     // Guild selection after Discord OAuth
     if (oauthGuilds && oauthGuilds.length > 1) {
@@ -543,9 +781,9 @@ function App() {
         <div className="setup">
           <div className="setup-card">
             <div className="setup-logo">
-              <div className="setup-logo-icon">{Icons.equalizer}</div>
+              <img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="setup-logo-icon" />
             </div>
-            <h1>Server waehlen</h1>
+            <h1>Server wählen</h1>
             {oauthUser && <p className="setup-subtitle">Eingeloggt als {oauthUser.username}</p>}
             <div className="guild-select-list">
               {oauthGuilds.map(g => (
@@ -568,7 +806,7 @@ function App() {
       <div className="setup">
         <div className="setup-card">
           <div className="setup-logo">
-            <div className="setup-logo-icon">{Icons.equalizer}</div>
+            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="setup-logo-icon" />
           </div>
           <h1>BeatByte</h1>
           <p className="setup-subtitle">Steuere deine Musik direkt im Browser</p>
@@ -653,18 +891,6 @@ function App() {
     { id: 'playlists', icon: Icons.playlist, label: 'Playlists' },
   ];
 
-  // ── Genre Quick Search ──────────────────────────────────────────
-  const genres = [
-    { name: 'Lofi', query: 'lofi hip hop' },
-    { name: 'Phonk', query: 'phonk music' },
-    { name: 'Pop', query: 'pop hits 2024' },
-    { name: 'Rap', query: 'rap hits deutsch' },
-    { name: 'Rock', query: 'rock classics' },
-    { name: 'R&B', query: 'rnb soul' },
-    { name: 'Techno', query: 'techno music' },
-    { name: 'Chill', query: 'chill vibes' },
-  ];
-
   const searchGenre = async (query) => {
     setSearchQuery(query);
     setSearching(true); setSearchResults([]); setError('');
@@ -679,35 +905,6 @@ function App() {
   };
 
   // ── Featured Cards Component ──────────────────────────────────
-  const FeaturedCard = ({ track }) => (
-    <div className="featured-card" onClick={() => addToQueue(track)}>
-      <div className="featured-card-bg">
-        {track.thumbnail && <img src={track.thumbnail} alt="" />}
-      </div>
-      <div className="featured-card-overlay" />
-      <div className="featured-card-content">
-        <span className="featured-card-title">{track.title}</span>
-        {track.artist && <span className="featured-card-artist">{track.artist}</span>}
-      </div>
-      <div className="featured-card-play">{Icons.playSmall}</div>
-    </div>
-  );
-
-  // Build featured tracks from recently played + queue
-  const featuredTracks = (() => {
-    const seen = new Set();
-    const tracks = [];
-    const sources = [...recentlyPlayed, ...state.tracks, ...likedSongs];
-    for (const t of sources) {
-      if (!seen.has(t.url) && t.thumbnail) {
-        seen.add(t.url);
-        tracks.push(t);
-      }
-      if (tracks.length >= 6) break;
-    }
-    return tracks;
-  })();
-
   // ── Artist Card for homepage ──────────────────────────────────
   const ArtistCard = ({ artist }) => (
     <div className="artist-bubble" onClick={() => searchGenre(artist.name)}>
@@ -719,28 +916,49 @@ function App() {
   );
 
   // ── Render Views ───────────────────────────────────────────────
+  // Time-based greeting
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 6) return 'Gute Nacht';
+    if (h < 12) return 'Guten Morgen';
+    if (h < 18) return 'Guten Tag';
+    return 'Guten Abend';
+  })();
+  const userName = oauthUser?.global_name || oauthUser?.username || null;
+
+  // Quick-access items
+  const quickAccess = (() => {
+    const items = [];
+    if (likedSongs.length > 0) items.push({ icon: Icons.heart, label: 'Liked Songs', color: 'var(--red)', onClick: () => { setActiveView('liked'); } });
+    if (recentlyPlayed.length > 0) items.push({ icon: Icons.headphones, label: 'Zuletzt gehört', color: 'var(--purple-hover)', onClick: () => {}, tracks: recentlyPlayed.slice(0, 1) });
+    playlists.slice(0, 4).forEach(p => items.push({ icon: Icons.playlist, label: p.name, color: 'var(--purple)', onClick: () => loadPlaylist(p.id) }));
+    if (state.tracks.length > 0) items.push({ icon: Icons.library, label: 'Queue', color: 'var(--green)', onClick: () => { setActiveView('library'); } });
+    return items.slice(0, 6);
+  })();
+
   const renderHome = () => (
     <>
-      {!state.connected && channels.length > 0 && (
+      {/* ── 1. Greeting + Quick Access ──────────────────── */}
+      <section className="content-section greeting-section">
+        <h1 className="greeting-title">{greeting}{userName ? `, ${userName}` : ''}</h1>
+      </section>
+
+      {quickAccess.length > 0 && (
         <section className="content-section">
-          <h2 className="section-title">Voice Channel beitreten</h2>
-          <div className="channel-list">
-            {channels.map(ch => (
-              <button key={ch.id} className="channel-item" onClick={() => joinChannel(ch.id)} disabled={joiningChannel === ch.id}>
-                {Icons.headphones}
-                <span className="channel-name">{ch.name}</span>
-                {ch.members > 0 && <span className="channel-members">{ch.members}</span>}
-                <span className="channel-join">{joiningChannel === ch.id ? '...' : 'Beitreten'}</span>
+          <div className="quick-grid">
+            {quickAccess.map((item, i) => (
+              <button key={i} className="quick-tile" onClick={item.onClick}>
+                <div className="quick-tile-icon" style={{ color: item.color }}>{item.icon}</div>
+                <span className="quick-tile-label">{item.label}</span>
               </button>
             ))}
           </div>
         </section>
       )}
 
-      {/* Now Playing Hero */}
+      {/* ── 2. Now Playing ──────────────────────────────── */}
       {state.current && (
         <section className="content-section">
-          <h2 className="section-title">Now Playing</h2>
           <div className="now-playing-hero">
             <div className="np-hero-art">
               {(state.current.albumArt || state.current.thumbnail) && <img src={state.current.albumArt || state.current.thumbnail} alt="" />}
@@ -767,20 +985,43 @@ function App() {
         </section>
       )}
 
-      {/* Genre Quick Search */}
-      <section className="content-section">
-        <div className="genre-bar">
-          <h3 className="genre-bar-title">Waehle ein Genre</h3>
-          <p className="genre-bar-sub">Deine Playlist entwickelt sich basierend auf dem, was du magst.</p>
-          <div className="genre-chips">
-            {genres.map(g => (
-              <button key={g.name} className="genre-chip" onClick={() => searchGenre(g.query)}>{g.name}</button>
-            ))}
+      {/* Up Next (compact, only if playing) */}
+      {state.current && state.tracks.length > 0 && (
+        <section className="content-section">
+          <h2 className="section-title">Up Next <span className="badge">{state.tracks.length}</span></h2>
+          <div className="card-scroll">
+            {state.tracks.slice(0, 8).map((track, i) => <TrackCard key={i} track={track} />)}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Filter Chips */}
+      {/* Loading — show while discover content loads */}
+      {homeLoading && trendingTracks.length === 0 && (
+        <div className="home-loading">
+          <span className="adding-spinner large" />
+        </div>
+      )}
+
+      {/* ── 3. Charts ───────────────────────────────────── */}
+      {/* Hero Banner — #1 Chart Song */}
+      {trendingTracks.length > 0 && (
+        <section className="content-section">
+          <div className="chart-hero" onClick={() => addToQueue(trendingTracks[0])}>
+            <div className="chart-hero-bg">
+              {trendingTracks[0].thumbnail && <img src={trendingTracks[0].thumbnail} alt="" />}
+            </div>
+            <div className="chart-hero-overlay" />
+            <div className="chart-hero-content">
+              <span className="chart-hero-badge">#1 Weltweit</span>
+              <span className="chart-hero-title">{trendingTracks[0].title}</span>
+              <span className="chart-hero-artist">{trendingTracks[0].artist}</span>
+            </div>
+            <div className="chart-hero-play">{Icons.play}</div>
+          </div>
+        </section>
+      )}
+
+      {/* Genre Filter */}
       <section className="content-section filter-section">
         <div className="filter-row">
           <div className="filter-group">
@@ -788,57 +1029,60 @@ function App() {
               <button key={g.id} className={`filter-chip${activeGenre === g.id ? ' active' : ''}`} onClick={() => setActiveGenre(g.id)}>{g.label}</button>
             ))}
           </div>
-          <div className="filter-divider" />
-          <div className="filter-group">
-            {filterLangs.map(l => (
-              <button key={l.id} className={`filter-chip lang${activeLang === l.id ? ' active' : ''}`} onClick={() => setActiveLang(l.id)}>{l.label}</button>
-            ))}
-          </div>
         </div>
       </section>
 
-      {/* Trending Now — Spotify + YouTube Mix */}
-      {trendingTracks.length > 0 && (
+      {/* Global Charts */}
+      {trendingTracks.length > 1 && (
         <section className="content-section">
           <div className="section-header">
-            <h2 className="section-title">{Icons.fire} Trending Now</h2>
+            <h2 className="section-title">{Icons.fire} Globale Charts</h2>
             <button className="btn-refresh" onClick={() => fetchHomepageContent(true)} title="Aktualisieren">{Icons.refresh}</button>
           </div>
-          <div className="card-scroll">
-            {trendingTracks.map((track, i) => (
-              <TrackCard key={i} track={{ ...track, title: track.title, artist: track.artist }} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Featured — from recently played / queue */}
-      {featuredTracks.length > 0 && (
-        <section className="content-section">
-          <div className="featured-grid">
-            {featuredTracks.slice(0, 3).map((track, i) => <FeaturedCard key={i} track={track} />)}
-          </div>
-        </section>
-      )}
-
-      {/* Fuer dich empfohlen — Spotify Recommendations */}
-      {recommendedData.forYou.length > 0 && (
-        <section className="content-section">
-          <h2 className="section-title">
-            {Icons.sparkle} Fuer dich empfohlen
-            {recommendedData.becauseYouListened && (
-              <span className="section-subtitle">Weil du {recommendedData.becauseYouListened} gehoert hast</span>
-            )}
-          </h2>
           <div className="track-list">
-            {recommendedData.forYou.slice(0, 6).map((track, i) => (
+            {trendingTracks.slice(1, 11).map((track, i) => (
               <TrackRow key={i} track={track} index={i} />
             ))}
           </div>
         </section>
       )}
 
-      {/* Neu erschienen — Spotify New Releases */}
+      {/* Local Charts */}
+      {localTracks.length > 0 && (
+        <section className="content-section">
+          <h2 className="section-title">Charts {detectedCountry.name}</h2>
+          <div className="card-scroll">
+            {localTracks.map((track, i) => <TrackCard key={i} track={track} />)}
+          </div>
+        </section>
+      )}
+
+      {/* ── 4. Für dich ────────────────────────────────── */}
+      {!homeLoading && (recommendedData.forYou.length > 0 || recentlyPlayed.length > 0) && (
+        <section className="content-section">
+          <h2 className="section-title">{Icons.sparkle} Für dich</h2>
+          {recommendedData.forYou.length > 0 && (
+            <>
+              {recommendedData.becauseYouListened && (
+                <p className="section-subtitle-block">Weil du {recommendedData.becauseYouListened} gehört hast</p>
+              )}
+              <div className="card-scroll" style={{ marginBottom: recentlyPlayed.length > 0 ? 20 : 0 }}>
+                {recommendedData.forYou.slice(0, 8).map((track, i) => <TrackCard key={i} track={track} />)}
+              </div>
+            </>
+          )}
+          {recentlyPlayed.length > 0 && (
+            <div className="track-list">
+              {recentlyPlayed.slice(0, 5).map((track, i) => (
+                <TrackRow key={i} track={track} index={i} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── 5. Entdecken ────────────────────────────────── */}
+      {/* New Releases */}
       {newReleases.length > 0 && (
         <section className="content-section">
           <h2 className="section-title">Neu erschienen</h2>
@@ -857,19 +1101,7 @@ function App() {
         </section>
       )}
 
-      {/* Beliebt auf deinem Server */}
-      {popularOnServer.length > 0 && (
-        <section className="content-section">
-          <h2 className="section-title">Beliebt auf {guild?.name || 'deinem Server'}</h2>
-          <div className="track-list">
-            {popularOnServer.slice(0, 6).map((track, i) => (
-              <TrackRow key={i} track={{ title: track.track_title, url: track.track_url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }} index={i} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Beliebte Artists — Spotify */}
+      {/* Popular Artists */}
       {popularArtists.length > 0 && (
         <section className="content-section">
           <h2 className="section-title">Beliebte Artists</h2>
@@ -881,84 +1113,48 @@ function App() {
         </section>
       )}
 
-      {/* Genre/Mood Sections — like Spotify home */}
+      {/* Genre Sections */}
       {genreSections.map((section, si) => (
         <section key={si} className="content-section">
           <h2 className="section-title">{section.title}</h2>
           <div className="card-scroll">
-            {section.tracks.map((track, i) => (
-              <TrackCard key={i} track={track} />
-            ))}
+            {section.tracks.map((track, i) => <TrackCard key={i} track={track} />)}
           </div>
         </section>
       ))}
 
-      {/* Global beliebt — BeatByte Community */}
-      {globalPopular.length > 0 && (
+      {/* ── 6. Community ────────────────────────────────── */}
+      {(popularOnServer.length > 0 || globalPopular.length > 0) && (
         <section className="content-section">
-          <h2 className="section-title">{Icons.equalizer} Beliebt auf BeatByte</h2>
-          <div className="card-scroll">
-            {globalPopular.map((track, i) => (
-              <TrackCard key={i} track={{ title: track.track_title, url: track.track_url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Zuletzt gehoert */}
-      {recentlyPlayed.length > 0 && (
-        <section className="content-section">
-          <h2 className="section-title">Zuletzt gehoert</h2>
-          <div className="track-list">
-            {recentlyPlayed.slice(0, 8).map((track, i) => (
-              <TrackRow key={i} track={track} index={i} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Up Next */}
-      {state.tracks.length > 0 && (
-        <section className="content-section">
-          <h2 className="section-title">Up Next <span className="badge">{state.tracks.length}</span></h2>
-          <div className="card-scroll">
-            {state.tracks.slice(0, 8).map((track, i) => <TrackCard key={i} track={track} />)}
-          </div>
-        </section>
-      )}
-
-      {/* Deine Playlists */}
-      {playlists.length > 0 && (
-        <section className="content-section">
-          <h2 className="section-title">Deine Playlists</h2>
-          <div className="card-grid">
-            {playlists.map(p => (
-              <div key={p.id} className="playlist-card" onClick={() => loadPlaylist(p.id)}>
-                <div className="playlist-card-icon">{Icons.playlist}</div>
-                <div className="playlist-card-info">
-                  <span className="playlist-card-name">{p.name}</span>
-                  <span className="playlist-card-count">{p.track_count} Songs</span>
-                </div>
-                <div className="playlist-card-play">{Icons.playSmall}</div>
+          <h2 className="section-title">{Icons.equalizer} Community</h2>
+          {popularOnServer.length > 0 && (
+            <>
+              <h3 className="subsection-title">Beliebt auf {guild?.name || 'deinem Server'}</h3>
+              <div className="track-list" style={{ marginBottom: globalPopular.length > 0 ? 20 : 0 }}>
+                {popularOnServer.slice(0, 5).map((track, i) => (
+                  <TrackRow key={i} track={{ title: track.track_title, url: track.track_url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }} index={i} />
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
+          {globalPopular.length > 0 && (
+            <>
+              <h3 className="subsection-title">Beliebt auf BeatByte</h3>
+              <div className="card-scroll">
+                {globalPopular.map((track, i) => (
+                  <TrackCard key={i} track={{ title: track.track_title, url: track.track_url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }} />
+                ))}
+              </div>
+            </>
+          )}
         </section>
       )}
 
-      {/* Loading */}
-      {homeLoading && trendingTracks.length === 0 && (
-        <div className="home-loading">
-          <span className="adding-spinner large" />
-          <p>Inhalte werden geladen...</p>
-        </div>
-      )}
-
-      {!state.current && state.tracks.length === 0 && recentlyPlayed.length === 0 && playlists.length === 0 && channels.length === 0 && trendingTracks.length === 0 && !homeLoading && (
+      {!state.current && trendingTracks.length === 0 && recentlyPlayed.length === 0 && !homeLoading && (
         <div className="empty-state">
           {Icons.music}
           <p>Willkommen bei BeatByte</p>
-          <p className="empty-hint">Waehle ein Genre oder suche nach Songs</p>
+          <p className="empty-hint">Suche nach Songs oder entdecke die Charts</p>
         </div>
       )}
     </>
@@ -1019,25 +1215,67 @@ function App() {
     </section>
   );
 
+  const importPlaylist = async () => {
+    if (!guild || !importUrl.trim()) return;
+    setImporting(true); setError('');
+    try {
+      const res = await fetch(`${botUrl}/api/guild/${guild.id}/playlists/import`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ url: importUrl.trim(), name: importName.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setImportUrl(''); setImportName(''); setShowImport(false);
+      fetchPlaylists();
+    } catch (err) { setError(err.message); }
+    setImporting(false);
+  };
+
   const renderPlaylists = () => (
     <section className="content-section">
       <div className="section-header">
         <h2 className="section-title">Playlists</h2>
-        <button className="btn-icon" onClick={() => setShowSaveInput(!showSaveInput)} title="Save current queue">{Icons.add}</button>
+        <div className="section-actions">
+          <button className="btn-save-queue" onClick={() => setShowImport(!showImport)}>Importieren</button>
+          <button className="btn-icon" onClick={() => setShowSaveInput(!showSaveInput)} title="Queue als Playlist speichern">{Icons.add}</button>
+        </div>
       </div>
+
+      {/* Import from URL */}
+      {showImport && (
+        <div className="import-form">
+          <div className="import-form-header">
+            <span className="import-form-title">Playlist importieren</span>
+            <div className="import-form-badges">
+              <span className="import-badge spotify">Spotify</span>
+              <span className="import-badge youtube">YouTube</span>
+              <span className="import-badge apple">Apple Music</span>
+              <span className="import-badge deezer">Deezer</span>
+            </div>
+          </div>
+          <input className="playlist-name-input" value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="Playlist-URL einfügen..." onKeyDown={e => e.key === 'Enter' && importPlaylist()} autoFocus />
+          <input className="playlist-name-input" value={importName} onChange={e => setImportName(e.target.value)} placeholder="Name (optional — wird automatisch erkannt)" maxLength={50} />
+          <button className="btn-connect" onClick={importPlaylist} disabled={importing || !importUrl.trim()} style={{ marginTop: 8 }}>
+            {importing ? 'Importiere...' : 'Importieren'}
+          </button>
+        </div>
+      )}
+
+      {/* Save queue as playlist */}
       {showSaveInput && (
         <div className="playlist-save-form">
           <input className="playlist-name-input" value={playlistName} onChange={e => setPlaylistName(e.target.value)} placeholder="Playlist-Name..." maxLength={50} onKeyDown={e => e.key === 'Enter' && savePlaylist()} autoFocus />
           <button className="btn-playlist-save" onClick={savePlaylist} disabled={savingPlaylist || !playlistName.trim()}>
-            {savingPlaylist ? '...' : 'Save'}
+            {savingPlaylist ? '...' : 'Speichern'}
           </button>
         </div>
       )}
-      {playlists.length === 0 ? (
+
+      {playlists.length === 0 && !showImport ? (
         <div className="empty-state">
           {Icons.playlist}
-          <p>No playlists yet</p>
-          <p className="empty-hint">Save your current queue as a playlist</p>
+          <p>Keine Playlists</p>
+          <p className="empty-hint">Importiere eine Playlist oder speichere deine Queue</p>
         </div>
       ) : (
         <div className="playlist-grid">
@@ -1059,50 +1297,449 @@ function App() {
     </section>
   );
 
-  const renderSearch = () => {
-    if (searching) return <div className="search-loading"><span className="adding-spinner large" /> Searching...</div>;
-    if (searchResults.length === 0) return null;
+  const renderSettings = () => (
+    <section className="content-section">
+      <div className="section-header">
+        <h2 className="section-title">{Icons.settings} Einstellungen</h2>
+        <button className="btn-close-results" onClick={() => setActiveView('home')}>Zurück</button>
+      </div>
 
-    // Group by artist
-    const artists = {};
-    searchResults.forEach(t => {
-      if (t.artist) {
-        if (!artists[t.artist]) artists[t.artist] = { name: t.artist, thumb: t.thumbnail, tracks: [] };
-        artists[t.artist].tracks.push(t);
-      }
-    });
-    const topArtist = Object.values(artists)[0];
+      {/* Tabs */}
+      <div className="settings-tabs">
+        <button className={`settings-tab${settingsTab === 'overview' ? ' active' : ''}`} onClick={() => setSettingsTab('overview')}>Übersicht</button>
+        <button className={`settings-tab${settingsTab === 'audio' ? ' active' : ''}`} onClick={() => setSettingsTab('audio')}>Audio</button>
+      </div>
+
+      {settingsTab === 'overview' ? (
+        <>
+          {/* Profil */}
+          <div className="settings-group">
+            <h3 className="settings-group-title">Profil</h3>
+            <div className="settings-card">
+              <div className="settings-profile">
+                {oauthUser ? (
+                  <>
+                    <img
+                      src={oauthUser.avatar
+                        ? `https://cdn.discordapp.com/avatars/${oauthUser.id}/${oauthUser.avatar}.png?size=128`
+                        : `https://cdn.discordapp.com/embed/avatars/${(parseInt(oauthUser.id) >> 22) % 6}.png`}
+                      alt="" className="settings-avatar"
+                    />
+                    <div className="settings-profile-info">
+                      <span className="settings-profile-name">{oauthUser.global_name || oauthUser.username}</span>
+                      <span className="settings-profile-tag">@{oauthUser.username}</span>
+                      <span className="settings-profile-badge">Discord verbunden</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="settings-profile-info">
+                    <span className="settings-profile-name">Gast</span>
+                    <span className="settings-profile-tag">Angemeldet mit Zugangs-Code</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Server */}
+          {guild && (
+            <div className="settings-group">
+              <h3 className="settings-group-title">Server</h3>
+              <div className="settings-card">
+                <div className="settings-row">
+                  <span className="settings-label">Verbundener Server</span>
+                  <div className="settings-value">
+                    {guild.icon && <img src={guild.icon} alt="" className="settings-guild-icon" />}
+                    <span>{guild.name}</span>
+                  </div>
+                </div>
+                <div className="settings-row">
+                  <span className="settings-label">Server URL</span>
+                  <span className="settings-value mono">{botUrl}</span>
+                </div>
+                <div className="settings-row">
+                  <span className="settings-label">Voice Status</span>
+                  <span className={`settings-value ${state.connected ? 'connected' : ''}`}>
+                    {state.connected ? 'Verbunden' : 'Nicht verbunden'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Daten */}
+          <div className="settings-group">
+            <h3 className="settings-group-title">Daten & Cache</h3>
+            <div className="settings-card">
+              <div className="settings-row">
+                <span className="settings-label">Liked Songs</span>
+                <span className="settings-value">{likedSongs.length} Songs</span>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">Zuletzt gehört</span>
+                <span className="settings-value">{recentlyPlayed.length} Songs</span>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">Discover-Cache</span>
+                <button className="settings-btn" onClick={() => { sessionStorage.clear(); fetchHomepageContent(true); }}>Cache leeren</button>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">Alle lokalen Daten</span>
+                <button className="settings-btn danger" onClick={() => { if (confirm('Alle lokalen Daten löschen?')) { localStorage.clear(); sessionStorage.clear(); window.location.reload(); } }}>Zurücksetzen</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Info */}
+          <div className="settings-group">
+            <h3 className="settings-group-title">Info</h3>
+            <div className="settings-card">
+              <div className="settings-row">
+                <span className="settings-label">App</span>
+                <span className="settings-value">BeatByte Web Player</span>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">Land</span>
+                <span className="settings-value">{detectedCountry.name}</span>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Filter Presets */}
+          <div className="settings-group">
+            <h3 className="settings-group-title">Audio-Filter</h3>
+            <div className="filter-presets">
+              {filterPresets.map(p => (
+                <button key={p.id} className={`filter-preset${activeFilter === p.id ? ' active' : ''}`} onClick={() => setFilter(p.id)}>
+                  <span className="filter-preset-icon">{p.icon}</span>
+                  <span className="filter-preset-label">{p.label}</span>
+                  <span className="filter-preset-desc">{p.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Equalizer */}
+          <div className="settings-group">
+            <h3 className="settings-group-title">Equalizer</h3>
+            <div className="settings-card eq-card">
+              <div className="eq-container">
+                {eqBands.map((band, i) => (
+                  <div key={i} className="eq-band">
+                    <span className="eq-value">{eqValues[i] > 0 ? `+${eqValues[i]}` : eqValues[i]}</span>
+                    <div className="eq-slider-wrap">
+                      <input type="range" className="eq-slider" min="-12" max="12" step="1" value={eqValues[i]}
+                        onChange={e => {
+                          const newVals = [...eqValues];
+                          newVals[i] = parseInt(e.target.value);
+                          setEqValues(newVals);
+                          localStorage.setItem('eqValues', JSON.stringify(newVals));
+                          sendEqToBackend(newVals);
+                          syncEqToServer(newVals);
+                        }}
+                      />
+                    </div>
+                    <span className="eq-freq">{band.freq}</span>
+                    <span className="eq-label">{band.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="eq-actions">
+                <button className="settings-btn" onClick={() => { const reset = [0,0,0,0,0,0,0]; setEqValues(reset); localStorage.setItem('eqValues', JSON.stringify(reset)); setFilter('off'); syncEqToServer(reset); }}>Zurücksetzen</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Wiedergabe */}
+          <div className="settings-group">
+            <h3 className="settings-group-title">Wiedergabe</h3>
+            <div className="settings-card">
+              <div className="settings-row">
+                <span className="settings-label">Lautstärke</span>
+                <div className="settings-value">
+                  <input type="range" className="volume-slider" min="0" max="200" value={localVolume} onChange={e => {
+                  const v = Number(e.target.value);
+                  setLocalVolume(v);
+                  clearTimeout(volumeTimerRef.current);
+                  volumeTimerRef.current = setTimeout(() => { apiAction('volume', { volume: v }); volumeTimerRef.current = null; }, 300);
+                }} style={{ width: 120 }} />
+                  <span>{localVolume}%</span>
+                </div>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">Loop-Modus</span>
+                <button className="settings-btn" onClick={() => apiAction('loop')}>{state.loopMode === 'off' ? 'Aus' : state.loopMode === 'song' ? 'Song' : 'Queue'}</button>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">Auto-DJ</span>
+                <button className={`settings-btn${state.autoDj ? ' active-btn' : ''}`} onClick={() => apiAction('autodj')}>{state.autoDj ? 'An' : 'Aus'}</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+
+  // ── Profile View ──────────────────────────────────────────────
+  const renderProfile = () => {
+    const user = oauthUser;
+    const avatarUrl = user?.avatar
+      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
+      : user ? `https://cdn.discordapp.com/embed/avatars/${(parseInt(user.id) >> 22) % 6}.png` : null;
+
+    // Stats from local data
+    const totalLikedSeconds = likedSongs.reduce((sum, t) => {
+      if (!t.duration) return sum;
+      const parts = t.duration.split(':').map(Number);
+      return sum + (parts.length === 2 ? parts[0] * 60 + parts[1] : parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : 0);
+    }, 0);
+    const totalHours = Math.floor(totalLikedSeconds / 3600);
+    const totalMins = Math.round((totalLikedSeconds % 3600) / 60);
+
+    // Top artists from liked songs
+    const artistCounts = {};
+    likedSongs.forEach(t => { if (t.artist) artistCounts[t.artist] = (artistCounts[t.artist] || 0) + 1; });
+    const topArtistsFromLikes = Object.entries(artistCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, count]) => ({ name, count }));
+    const maxCount = topArtistsFromLikes[0]?.count || 1;
+
+    return (
+      <section className="content-section">
+        <div className="section-header">
+          <h2 className="section-title">{Icons.user} Profil</h2>
+          <button className="btn-close-results" onClick={() => setActiveView('home')}>Zurück</button>
+        </div>
+
+        {/* Profile Hero */}
+        <div className="profile-hero">
+          <div className="profile-hero-avatar">
+            {avatarUrl && <img src={avatarUrl} alt="" />}
+          </div>
+          <div className="profile-hero-info">
+            <h1 className="profile-hero-name">{user?.global_name || user?.username || 'Guest'}</h1>
+            {user?.username && <span className="profile-hero-tag">@{user.username}</span>}
+            {guild && <span className="profile-hero-server">{guild.name}</span>}
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="profile-stats">
+          <div className="profile-stat">
+            <span className="profile-stat-value">{likedSongs.length}</span>
+            <span className="profile-stat-label">Liked Songs</span>
+          </div>
+          <div className="profile-stat">
+            <span className="profile-stat-value">{playlists.length}</span>
+            <span className="profile-stat-label">Playlists</span>
+          </div>
+          <div className="profile-stat">
+            <span className="profile-stat-value">{totalHours > 0 ? `${totalHours}h ${totalMins}m` : `${totalMins}m`}</span>
+            <span className="profile-stat-label">Liked Dauer</span>
+          </div>
+          <div className="profile-stat">
+            <span className="profile-stat-value">{recentlyPlayed.length}</span>
+            <span className="profile-stat-label">Zuletzt gehört</span>
+          </div>
+        </div>
+
+        {/* Content Grid */}
+        <div className="profile-grid">
+          {/* Top Artists from Likes */}
+          <div className="profile-card">
+            <h3 className="profile-card-title">{Icons.heartFilled} Top Artists</h3>
+            {topArtistsFromLikes.length > 0 ? (
+              <div className="profile-artist-list">
+                {topArtistsFromLikes.map((a, i) => (
+                  <div key={a.name} className="profile-artist-row" onClick={() => { setActiveView('search'); onSearchInput(a.name); }}>
+                    <span className="profile-artist-rank">{i + 1}</span>
+                    <span className="profile-artist-name">{a.name}</span>
+                    <div className="profile-artist-bar-wrap">
+                      <div className="profile-artist-bar" style={{ width: `${(a.count / maxCount) * 100}%` }} />
+                    </div>
+                    <span className="profile-artist-count">{a.count}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="profile-empty">Like Songs um deine Top Artists zu sehen</div>
+            )}
+          </div>
+
+          {/* Recently Played */}
+          <div className="profile-card">
+            <h3 className="profile-card-title">{Icons.headphones} Zuletzt gehört</h3>
+            {recentlyPlayed.length > 0 ? (
+              <div className="track-list compact">
+                {recentlyPlayed.slice(0, 8).map((track, i) => (
+                  <TrackRow key={i} track={track} index={i} showDuration />
+                ))}
+              </div>
+            ) : (
+              <div className="profile-empty">Noch keine Songs angehört</div>
+            )}
+          </div>
+        </div>
+
+        {/* Liked Songs Preview */}
+        {likedSongs.length > 0 && (
+          <>
+            <div className="profile-section-header">
+              <h3 className="subsection-title">{Icons.heartFilled} Deine Liked Songs</h3>
+              <button className="btn-save-queue" onClick={() => setActiveView('liked')}>Alle anzeigen</button>
+            </div>
+            <div className="horizontal-scroll">
+              {likedSongs.slice(0, 10).map((track, i) => (
+                <TrackCard key={i} track={track} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Playlists Preview */}
+        {playlists.length > 0 && (
+          <>
+            <div className="profile-section-header">
+              <h3 className="subsection-title">{Icons.playlist} Deine Playlists</h3>
+              <button className="btn-save-queue" onClick={() => setActiveView('playlists')}>Alle anzeigen</button>
+            </div>
+            <div className="profile-playlists">
+              {playlists.slice(0, 6).map(p => (
+                <button key={p.id} className="profile-playlist-card" onClick={() => loadPlaylist(p.id)}>
+                  <div className="profile-playlist-icon">{Icons.playlist}</div>
+                  <div className="profile-playlist-info">
+                    <span className="profile-playlist-name">{p.name}</span>
+                    <span className="profile-playlist-count">{p.track_count} Songs</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+    );
+  };
+
+  const renderSearch = () => {
+    if (searching && searchResults.length === 0) return <div className="search-loading"><span className="adding-spinner large" /> Suche...</div>;
+    if (searchResults.length === 0 && searchArtists.length === 0 && searchAlbums.length === 0) return null;
+
+    const topArtist = searchArtists[0];
 
     return (
       <>
-        <div className="search-results-header">
-          <h2 className="section-title">Results for "{searchQuery}"</h2>
-          <button className="btn-close-results" onClick={() => { setSearchResults([]); setActiveView('home'); }}>Close</button>
-        </div>
+        {/* Top Result + Artist */}
+        {(topArtist || searchResults.length > 0) && (
+          <div className="search-top-grid">
+            {/* Top Result Card */}
+            {searchResults.length > 0 && (
+              <div className="search-top-result" onClick={() => addToQueue(searchResults[0])}>
+                <h3 className="subsection-title">Top-Ergebnis</h3>
+                <div className="top-result-card">
+                  {searchResults[0].thumbnail && <img src={searchResults[0].thumbnail} alt="" className="top-result-img" />}
+                  <span className="top-result-title">{searchResults[0].title}</span>
+                  {searchResults[0].artist && <span className="top-result-artist">{searchResults[0].artist}</span>}
+                  <div className="top-result-play">{Icons.play}</div>
+                </div>
+              </div>
+            )}
 
-        {topArtist && (
+            {/* Artist Card */}
+            {topArtist && (
+              <div className="search-artist-result">
+                <h3 className="subsection-title">Artist</h3>
+                <div className="artist-result-card" onClick={() => searchGenre(topArtist.name)}>
+                  <div className="artist-result-avatar">
+                    {topArtist.image ? <img src={topArtist.image} alt="" /> : <div className="artist-card-placeholder">{topArtist.name[0]}</div>}
+                  </div>
+                  <span className="artist-result-name">{topArtist.name}</span>
+                  {topArtist.genres?.length > 0 && <span className="artist-result-genre">{topArtist.genres.join(', ')}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Songs with Artist badges */}
+        {searchResults.length > 0 && (
           <section className="content-section">
-            <h3 className="subsection-title">Artist</h3>
-            <div className="artist-card">
-              <div className="artist-card-avatar">
-                {topArtist.thumb ? <img src={topArtist.thumb} alt="" /> : <div className="artist-card-placeholder">{topArtist.name[0]}</div>}
-              </div>
-              <div className="artist-card-info">
-                <span className="artist-card-name">{topArtist.name}</span>
-                <span className="artist-card-type">Artist</span>
-              </div>
+            <h3 className="subsection-title">Songs</h3>
+            <div className="track-list">
+              {searchResults.slice(0, 6).map((track, i) => (
+                <div key={i} className={`track-row search-track-row`} onClick={() => addToQueue(track)}>
+                  <span className="track-row-num">{i + 1}</span>
+                  <div className="track-row-thumb">
+                    {track.thumbnail ? <img src={track.thumbnail} alt="" /> : <div className="track-row-thumb-empty" />}
+                    <button className="track-row-play-overlay" onClick={(e) => { e.stopPropagation(); addToQueue(track); }}>
+                      {adding === track.url ? <span className="adding-spinner" /> : Icons.playSmall}
+                    </button>
+                  </div>
+                  <div className="track-row-info">
+                    <span className="track-row-title">{track.title}</span>
+                    {track.albumName && <span className="track-row-album">{track.albumName}</span>}
+                  </div>
+                  {track.artistImage ? (
+                    <div className="track-artist-chip" onClick={(e) => { e.stopPropagation(); searchGenre(track.artist); }}>
+                      <img src={track.artistImage} alt="" className="track-artist-chip-img" />
+                      <span>{track.artist}</span>
+                    </div>
+                  ) : (
+                    track.artist && <span className="track-row-artist">{track.artist}</span>
+                  )}
+                  <button className={`track-row-like${isLiked(track.url) ? ' liked' : ''}`} onClick={(e) => { e.stopPropagation(); toggleLike(track); }}>
+                    {isLiked(track.url) ? Icons.heartFilled : Icons.heartOutline}
+                  </button>
+                  <span className="track-row-duration">{track.duration}</span>
+                </div>
+              ))}
             </div>
           </section>
         )}
 
-        <section className="content-section">
-          <h3 className="subsection-title">Songs</h3>
-          <div className="track-list">
-            {searchResults.map((track, i) => (
-              <TrackRow key={i} track={track} index={i} />
-            ))}
-          </div>
-        </section>
+        {/* Albums */}
+        {searchAlbums.length > 0 && (
+          <section className="content-section">
+            <h3 className="subsection-title">Alben</h3>
+            <div className="card-scroll">
+              {searchAlbums.map((album, i) => (
+                <div key={i} className="album-card" onClick={() => searchGenre(`${album.artist} ${album.name}`)}>
+                  <div className="album-card-cover">
+                    {album.image ? <img src={album.image} alt="" /> : <div className="track-card-empty" />}
+                    <div className="track-card-play">{Icons.playSmall}</div>
+                  </div>
+                  <div className="track-card-title">{album.name}</div>
+                  <div className="track-card-artist">{album.artist}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* More Songs (rest) */}
+        {searchResults.length > 6 && (
+          <section className="content-section">
+            <h3 className="subsection-title">Weitere Songs</h3>
+            <div className="card-scroll">
+              {searchResults.slice(6).map((track, i) => <TrackCard key={i} track={track} />)}
+            </div>
+          </section>
+        )}
+
+        {/* More Artists */}
+        {searchArtists.length > 1 && (
+          <section className="content-section">
+            <h3 className="subsection-title">Weitere Artists</h3>
+            <div className="artist-scroll">
+              {searchArtists.slice(1).map((artist, i) => (
+                <ArtistCard key={i} artist={{ name: artist.name, thumbnail: artist.image }} />
+              ))}
+            </div>
+          </section>
+        )}
       </>
     );
   };
@@ -1113,7 +1750,7 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-top">
           <div className="sidebar-brand" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
-            <div className="brand-icon">{Icons.equalizer}</div>
+            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="brand-logo" />
             <span className="brand-text">BeatByte</span>
           </div>
         </div>
@@ -1137,12 +1774,19 @@ function App() {
           </div>
         )}
 
-        {state.connected && (
-          <div className="sidebar-voice">
-            <div className="voice-status-dot" />
-            <span className="voice-label">Connected</span>
-          </div>
-        )}
+        <div className="sidebar-voice">
+          {state.connected ? (
+            <>
+              <div className="voice-status-dot" />
+              <span className="voice-label">Verbunden</span>
+            </>
+          ) : (
+            <button className="btn-join-voice" onClick={() => setShowChannelPicker(true)}>
+              {Icons.headphones}
+              <span className="voice-label">Channel beitreten</span>
+            </button>
+          )}
+        </div>
 
         <div className="sidebar-bottom">
           <button className="btn-disconnect" onClick={logout}>
@@ -1156,8 +1800,8 @@ function App() {
         <header className="top-bar">
           <div className="search-container">
             {Icons.search}
-            <input className="search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="Search songs or artists..." disabled={searching} />
-            {searchQuery && <button className="search-clear" onClick={() => { setSearchQuery(''); setSearchResults([]); if (activeView === 'search') setActiveView('home'); }}>{Icons.close}</button>}
+            <input className="search-input" value={searchQuery} onChange={e => onSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="Songs, Artists oder Alben suchen..." />
+            {searchQuery && <button className="search-clear" onClick={() => { onSearchInput(''); }}>{Icons.close}</button>}
           </div>
           <div className="profile-area" ref={profileRef}>
             {oauthUser ? (
@@ -1187,7 +1831,10 @@ function App() {
                       </div>
                     </div>
                     <div className="profile-dropdown-divider" />
-                    <button className="profile-dropdown-item" onClick={() => { setProfileOpen(false); }}>
+                    <button className="profile-dropdown-item" onClick={() => { setProfileOpen(false); setActiveView('profile'); }}>
+                      {Icons.user}<span>Profil</span>
+                    </button>
+                    <button className="profile-dropdown-item" onClick={() => { setProfileOpen(false); setActiveView('settings'); }}>
                       {Icons.settings}<span>Einstellungen</span>
                     </button>
                     <button className="profile-dropdown-item logout" onClick={() => { setProfileOpen(false); logout(); }}>
@@ -1212,8 +1859,42 @@ function App() {
            activeView === 'library' ? renderLibrary() :
            activeView === 'liked' ? renderLiked() :
            activeView === 'playlists' ? renderPlaylists() :
+           activeView === 'settings' ? renderSettings() :
+           activeView === 'profile' ? renderProfile() :
            renderHome()}
         </div>
+
+        {/* Channel Picker Modal */}
+        {showChannelPicker && (
+          <div className="modal-overlay" onClick={() => { setShowChannelPicker(false); setPendingTrack(null); }}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Voice Channel wählen</h3>
+                <button className="modal-close" onClick={() => { setShowChannelPicker(false); setPendingTrack(null); }}>{Icons.close}</button>
+              </div>
+              {pendingTrack && (
+                <div className="modal-track-preview">
+                  {pendingTrack.thumbnail && <img src={pendingTrack.thumbnail} alt="" />}
+                  <div className="modal-track-info">
+                    <span className="modal-track-title">{pendingTrack.title}</span>
+                    {pendingTrack.artist && <span className="modal-track-artist">{pendingTrack.artist}</span>}
+                  </div>
+                </div>
+              )}
+              <div className="modal-channels">
+                {channels.map(ch => (
+                  <button key={ch.id} className="channel-item" onClick={() => joinAndPlay(ch.id)} disabled={joiningChannel === ch.id}>
+                    {Icons.headphones}
+                    <span className="channel-name">{ch.name}</span>
+                    {ch.members > 0 && <span className="channel-members">{ch.members}</span>}
+                    <span className="channel-join">{joiningChannel === ch.id ? '...' : 'Beitreten'}</span>
+                  </button>
+                ))}
+                {channels.length === 0 && <p className="modal-empty">Keine Voice Channels gefunden</p>}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <footer className={`player-bar${state.current ? ' active' : ''}`}>
@@ -1258,13 +1939,16 @@ function App() {
               <a className="ctrl-btn" href={`https://www.google.com/search?q=${encodeURIComponent(state.current.title + ' lyrics')}`} target="_blank" rel="noopener noreferrer" title="Lyrics">{Icons.lyrics}</a>
               <div className="volume-control">
                 {Icons.volume}
-                <input type="range" className="volume-slider" min="0" max="200" value={state.volume} onChange={e => apiAction('volume', { volume: e.target.value })} title={`${state.volume}%`} />
+                <input type="range" className="volume-slider" min="0" max="200" value={localVolume} onChange={e => {
+                  const v = Number(e.target.value);
+                  setLocalVolume(v);
+                  clearTimeout(volumeTimerRef.current);
+                  volumeTimerRef.current = setTimeout(() => { apiAction('volume', { volume: v }); volumeTimerRef.current = null; }, 300);
+                }} title={`${localVolume}%`} />
               </div>
             </div>
           </>
-        ) : (
-          <div className="player-empty">No song playing</div>
-        )}
+        ) : null}
       </footer>
     </div>
   );

@@ -5,8 +5,8 @@ import {
 } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AddIcon from '@mui/icons-material/Add';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import { BEATBYTE_INVITE, SOUNDBOARD_INVITE } from '../config';
@@ -50,7 +50,7 @@ export default function Bots() {
 
     const bots = [
         {
-            name: 'BeatByte', subtitle: t('bots.beatbyte.subtitle'), commands: 16, status: 'online',
+            name: 'BeatByte', subtitle: t('bots.beatbyte.subtitle'), commands: 23, status: 'online',
             description: t('bots.beatbyte.description'),
             discordId: '1488919318472298647',
             avatarHash: 'f2829ad185e6a0fff4d7d064cdfdbb3e',
@@ -91,18 +91,22 @@ export default function Bots() {
 
                 <Stack spacing={2}>
                     {bots.map((bot, i) => (
-                        <Card key={i} sx={{
-                            bgcolor: '#18181b', opacity: bot.comingSoon ? 0.4 : 1,
-                            transition: 'all 0.2s ease',
-                            animation: `${fadeIn} 0.3s ease ${i * 0.06}s both`,
-                            '&:hover': bot.comingSoon ? {} : {
-                                borderColor: 'rgba(168,85,247,0.2)',
-                                boxShadow: '0 8px 32px rgba(168,85,247,0.06)',
-                            },
-                        }}>
+                        <Card key={i}
+                            component={bot.path ? Link : 'div'}
+                            to={bot.path || undefined}
+                            sx={{
+                                bgcolor: '#18181b', opacity: bot.comingSoon ? 0.4 : 1,
+                                textDecoration: 'none', cursor: bot.comingSoon ? 'default' : 'pointer',
+                                transition: 'all 0.2s ease',
+                                animation: `${fadeIn} 0.3s ease ${i * 0.06}s both`,
+                                '&:hover': bot.comingSoon ? {} : {
+                                    borderColor: 'rgba(168,85,247,0.2)',
+                                    boxShadow: '0 8px 32px rgba(168,85,247,0.06)',
+                                    '& .arrow-hint': { color: '#a855f7', transform: 'translateX(3px)' },
+                                },
+                            }}>
                             <CardContent sx={{ p: { xs: 3, sm: 3.5 } }}>
                                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems={{ sm: 'center' }}>
-                                    {/* Avatar + Info */}
                                     <Stack direction="row" spacing={2.5} alignItems="flex-start" sx={{ flex: 1 }}>
                                         <BotAvatar bot={bot} size={52} />
                                         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -118,7 +122,7 @@ export default function Bots() {
                                                 {bot.description}
                                             </Typography>
                                             <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                                                {bot.highlights?.map((h) => (
+                                                {(Array.isArray(bot.highlights) ? bot.highlights : []).map((h) => (
                                                     <Typography key={h} variant="caption" sx={{
                                                         px: 1.5, py: 0.25, borderRadius: 1,
                                                         bgcolor: 'rgba(168,85,247,0.06)', color: '#a1a1aa',
@@ -131,25 +135,20 @@ export default function Bots() {
                                         </Box>
                                     </Stack>
 
-                                    {/* Actions */}
                                     {!bot.comingSoon ? (
-                                        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                                            <Button component={Link} to={bot.path} size="small" variant="outlined"
-                                                endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+                                        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                                            <Button variant="contained" href={bot.inviteUrl} target="_blank"
+                                                onClick={(e) => e.stopPropagation()}
+                                                startIcon={<AddIcon sx={{ fontSize: 16 }} />}
                                                 sx={{
-                                                    borderColor: 'rgba(255,255,255,0.1)', color: '#fafafa', px: 2,
-                                                    '&:hover': { borderColor: 'rgba(255,255,255,0.2)' },
-                                                }}>
-                                                {t('bots.details')}
-                                            </Button>
-                                            <Button size="small" variant="contained" href={bot.inviteUrl} target="_blank"
-                                                startIcon={<AddIcon sx={{ fontSize: 14 }} />}
-                                                sx={{
-                                                    background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff', px: 2,
-                                                    '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)' },
+                                                    background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff',
+                                                    px: 3, py: 1, fontSize: '0.88rem', fontWeight: 600,
+                                                    boxShadow: '0 4px 16px rgba(168,85,247,0.25)',
+                                                    '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)', boxShadow: '0 6px 24px rgba(168,85,247,0.35)' },
                                                 }}>
                                                 {t('bots.invite')}
                                             </Button>
+                                            <ArrowForwardIcon className="arrow-hint" sx={{ fontSize: 18, color: '#52525b', transition: 'all 0.2s' }} />
                                         </Stack>
                                     ) : (
                                         <Chip label={t('bots.comingSoon')} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.04)', color: '#52525b' }} />

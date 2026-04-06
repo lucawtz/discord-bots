@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     AppBar, Toolbar, Typography, Button, IconButton, Box, Drawer,
     List, ListItem, ListItemButton, ListItemText, useScrollTrigger,
@@ -7,9 +7,8 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
-import LanguageIcon from '@mui/icons-material/Language';
-import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
+import PersonIcon from '@mui/icons-material/Person';
 import { useLanguage } from '../i18n/LanguageContext';
 import { DISCORD_LOGIN_URL } from '../config';
 
@@ -37,6 +36,7 @@ export default function Navbar() {
     const [anchorEl, setAnchorEl] = useState(null);
     const [langAnchor, setLangAnchor] = useState(null);
     const location = useLocation();
+    const navigate = useNavigate();
     const scrolled = useScrollTrigger({ disableHysteresis: true, threshold: 30 });
     const { t, lang, setLang } = useLanguage();
     const currentLang = languages.find(l => l.code === lang) ?? languages[0];
@@ -74,6 +74,7 @@ export default function Navbar() {
                             };
                             setUser(u);
                             localStorage.setItem('discord_user', JSON.stringify(u));
+                            localStorage.setItem('discord_access_token', token);
                         }
                         window.history.replaceState(null, '', window.location.pathname);
                     })
@@ -85,6 +86,7 @@ export default function Navbar() {
     const handleLogout = () => {
         setUser(null);
         localStorage.removeItem('discord_user');
+        localStorage.removeItem('discord_access_token');
         setAnchorEl(null);
     };
 
@@ -123,29 +125,37 @@ export default function Navbar() {
                         ))}
                     </Box>
 
-                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
-                        {/* Language Dropdown */}
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
+                        {/* Language Selector */}
                         <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
-                            startIcon={<LanguageIcon sx={{ fontSize: 18 }} />}
                             sx={{
-                                color: '#a1a1aa', fontSize: '0.8rem', fontWeight: 600, minWidth: 0, px: 1.5,
+                                color: '#a1a1aa', fontSize: '0.825rem', fontWeight: 500,
+                                textTransform: 'none', px: 1.5, py: 0.6, gap: 0.75, minWidth: 0,
+                                borderRadius: 1.5,
                                 '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.04)' },
                             }}>
-                            <Flag code={currentLang.flagCode} size={18} />
+                            <Flag code={currentLang.flagCode} size={16} />
+                            {currentLang.label}
                         </Button>
                         <Menu anchorEl={langAnchor} open={Boolean(langAnchor)} onClose={() => setLangAnchor(null)}
-                            PaperProps={{
-                                sx: { bgcolor: '#18181b', border: '1px solid rgba(255,255,255,0.08)', mt: 1, minWidth: 140 },
-                            }}>
+                            slotProps={{ paper: { sx: {
+                                bgcolor: '#141416', border: '1px solid rgba(255,255,255,0.06)',
+                                mt: 1.5, minWidth: 160, borderRadius: 3, py: 0.5,
+                                boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                            } } }}>
                             {languages.map((l) => (
                                 <MenuItem key={l.code} onClick={() => handleLangSelect(l.code)}
-                                    selected={lang === l.code}
                                     sx={{
-                                        fontSize: '0.85rem', color: lang === l.code ? '#fafafa' : '#a1a1aa', gap: 1.5,
-                                        '&.Mui-selected': { bgcolor: 'rgba(168,85,247,0.1)' },
-                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
+                                        fontSize: '0.85rem', fontWeight: lang === l.code ? 600 : 400,
+                                        color: lang === l.code ? '#fafafa' : '#71717a',
+                                        gap: 1.5, py: 1.2, px: 2, mx: 0.5, borderRadius: 1.5,
+                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' },
                                     }}>
-                                    <Flag code={l.flagCode} size={18} /> {l.label}
+                                    <Flag code={l.flagCode} size={18} />
+                                    {l.label}
+                                    {lang === l.code && (
+                                        <Box sx={{ ml: 'auto', width: 6, height: 6, borderRadius: '50%', bgcolor: '#a855f7' }} />
+                                    )}
                                 </MenuItem>
                             ))}
                         </Menu>
@@ -165,9 +175,14 @@ export default function Navbar() {
                                 </Button>
                                 <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}
                                     PaperProps={{
-                                        sx: { bgcolor: '#18181b', border: '1px solid rgba(255,255,255,0.08)', mt: 1, minWidth: 160 },
+                                        sx: { bgcolor: '#18181b', border: '1px solid rgba(255,255,255,0.08)', mt: 1, minWidth: 160, borderRadius: 3, py: 0.5 },
                                     }}>
-                                    <MenuItem onClick={handleLogout} sx={{ fontSize: '0.85rem', color: '#a1a1aa', gap: 1.5 }}>
+                                    <MenuItem onClick={() => { setAnchorEl(null); navigate('/profile'); }}
+                                        sx={{ fontSize: '0.85rem', color: '#a1a1aa', gap: 1.5, mx: 0.5, borderRadius: 1.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' } }}>
+                                        <PersonIcon sx={{ fontSize: 16 }} /> {t('profile.title')}
+                                    </MenuItem>
+                                    <MenuItem onClick={handleLogout}
+                                        sx={{ fontSize: '0.85rem', color: '#a1a1aa', gap: 1.5, mx: 0.5, borderRadius: 1.5, '&:hover': { bgcolor: 'rgba(239,68,68,0.08)', color: '#ef4444' } }}>
                                         <LogoutIcon sx={{ fontSize: 16 }} /> {t('nav.logout')}
                                     </MenuItem>
                                 </Menu>
@@ -231,6 +246,11 @@ export default function Navbar() {
                                 <Avatar src={user.avatar} sx={{ width: 28, height: 28 }}>{user.username?.[0]}</Avatar>
                                 <Typography sx={{ fontSize: '0.9rem', color: '#fafafa' }}>{user.username}</Typography>
                             </Stack>
+                            <Button fullWidth size="small" onClick={() => { setMobileOpen(false); navigate('/profile'); }}
+                                startIcon={<PersonIcon sx={{ fontSize: 16 }} />}
+                                sx={{ color: '#a1a1aa', justifyContent: 'flex-start', px: 2 }}>
+                                {t('profile.title')}
+                            </Button>
                             <Button fullWidth size="small" onClick={handleLogout}
                                 startIcon={<LogoutIcon sx={{ fontSize: 16 }} />}
                                 sx={{ color: '#a1a1aa', justifyContent: 'flex-start', px: 2 }}>

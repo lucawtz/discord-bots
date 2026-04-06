@@ -11,6 +11,7 @@ import Commands from './pages/Commands';
 import Premium from './pages/Premium';
 import Status from './pages/Status';
 import Changelog from './pages/Changelog';
+import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
                 <Route path="/commands" element={<Commands />} />
                 <Route path="/premium" element={<Premium />} />
                 <Route path="/guide" element={<Guide />} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/status" element={<Status />} />
                 <Route path="/changelog" element={<Changelog />} />
                 <Route path="/impressum" element={<Impressum />} />

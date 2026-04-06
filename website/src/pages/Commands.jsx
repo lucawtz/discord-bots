@@ -36,6 +36,13 @@ export default function Commands() {
                 { name: '/join', desc: t('commands.beatbyte.join') },
                 { name: '/lyrics [query]', desc: t('commands.beatbyte.lyrics') },
                 { name: '/app', desc: t('commands.beatbyte.app') },
+                { name: '/autodj', desc: t('commands.beatbyte.autodj') },
+                { name: '/disconnect', desc: t('commands.beatbyte.disconnect') },
+                { name: '/filter <filter>', desc: t('commands.beatbyte.filter') },
+                { name: '/move <von> <nach>', desc: t('commands.beatbyte.move') },
+                { name: '/playlist <action>', desc: t('commands.beatbyte.playlist') },
+                { name: '/replay', desc: t('commands.beatbyte.replay') },
+                { name: '/setrole [rolle]', desc: t('commands.beatbyte.setrole') },
             ],
         },
         {

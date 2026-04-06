@@ -12,6 +12,7 @@ const pageTitles = {
     '/commands': 'Commands | ByteBots',
     '/premium': 'Premium | ByteBots',
     '/guide': 'Guide | ByteBots',
+    '/profile': 'Profil | ByteBots',
     '/status': 'Status | ByteBots',
     '/changelog': 'Changelog | ByteBots',
     '/impressum': 'Impressum | ByteBots',
