@@ -180,7 +180,7 @@ function startAPI(ctx, client) {
         res.setHeader('X-XSS-Protection', '0');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com https://i.ytimg.com https://*.scdn.co; connect-src 'self' wss://app.bytebots.de; frame-ancestors 'none'");
+        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com https://i.ytimg.com https://*.scdn.co https://*.dzcdn.net https://e-cdns-images.dzcdn.net; connect-src 'self' wss: ws:; frame-ancestors 'none'");
 
         // CORS
         const corsOrigin = getCorsOrigin(req);
