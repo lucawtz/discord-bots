@@ -28,7 +28,6 @@ const Icons = {
   heartFilled: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>,
   playlist: <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>,
   search: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>,
-  collapse: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>,
   play: <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>,
   pause: <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>,
   skip: <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>,
@@ -38,11 +37,10 @@ const Icons = {
   add: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>,
   close: <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>,
   headphones: <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1a7 7 0 0 1 14 0v1h-4v8h4c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/></svg>,
-  delete: <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>,
+  delete: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>,
   music: <svg viewBox="0 0 24 24" width="48" height="48"><path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" opacity="0.3"/></svg>,
   lyrics: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6zm2-6h8v2H8v-2zm0-4h8v2H8v-2z"/></svg>,
   dj: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>,
-  dots: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>,
   playSmall: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>,
   user: <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>,
   settings: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>,
@@ -86,6 +84,8 @@ function App() {
   const [eqValues, setEqValues] = useState(() => {
     try { return JSON.parse(localStorage.getItem('eqValues')) || [0,0,0,0,0,0,0]; } catch { return [0,0,0,0,0,0,0]; }
   });
+  const [libraryTab, setLibraryTab] = useState('queue');
+  const [openPlaylist, setOpenPlaylist] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
@@ -452,21 +452,33 @@ function App() {
   const [searchArtists, setSearchArtists] = useState([]);
   const [searchAlbums, setSearchAlbums] = useState([]);
   const searchTimerRef = useRef(null);
+  const searchVersionRef = useRef(0);
 
   const search = async (query) => {
     const q = query !== undefined ? query : searchQuery;
     if (!q.trim()) { setSearchResults([]); setSearchArtists([]); setSearchAlbums([]); return; }
+    const version = ++searchVersionRef.current;
     setSearching(true); setError('');
     setActiveView('search');
     try {
-      const res = await fetch(`${botUrl}/api/search?q=${encodeURIComponent(q)}&enhanced=1`, { headers: getHeaders() });
+      // Phase 1: Quick track search (single API call, fast)
+      const res = await fetch(`${botUrl}/api/search?q=${encodeURIComponent(q)}`, { headers: getHeaders() });
+      if (searchVersionRef.current !== version) return; // stale, newer search started
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSearchResults(data.tracks || []);
-      setSearchArtists(data.artists || []);
-      setSearchAlbums(data.albums || []);
-    } catch (err) { setError(err.message); }
-    setSearching(false);
+      setSearchResults(data);
+      setSearching(false);
+
+      // Phase 2: Load artists + albums in background (non-blocking)
+      fetch(`${botUrl}/api/search?q=${encodeURIComponent(q)}&enhanced=1`, { headers: getHeaders() })
+        .then(r => r.json())
+        .then(full => {
+          if (searchVersionRef.current !== version) return; // stale
+          if (full.artists) setSearchArtists(full.artists);
+          if (full.albums) setSearchAlbums(full.albums);
+          if (full.tracks) setSearchResults(full.tracks);
+        }).catch(() => {});
+    } catch (err) { if (searchVersionRef.current === version) { setError(err.message); setSearching(false); } }
   };
 
   // Live search with debounce
@@ -478,7 +490,7 @@ function App() {
       if (activeView === 'search') setActiveView('home');
       return;
     }
-    searchTimerRef.current = setTimeout(() => search(value), 400);
+    searchTimerRef.current = setTimeout(() => search(value), 200);
   };
 
   const addToQueue = async (track) => {
@@ -542,6 +554,14 @@ function App() {
     } catch {}
   };
 
+  const clearQueue = async () => {
+    if (!guild) return;
+    try {
+      await fetch(`${botUrl}/api/guild/${guild.id}/queue`, { method: 'DELETE', headers: getHeaders() });
+      fetchState(guild.id);
+    } catch {}
+  };
+
   const fetchPlaylists = useCallback(async () => {
     if (!guild) return;
     try {
@@ -567,6 +587,17 @@ function App() {
       fetchPlaylists();
     } catch (err) { setError(err.message); }
     setSavingPlaylist(false);
+  };
+
+  const openPlaylistDetail = async (playlistId) => {
+    if (!guild) return;
+    try {
+      const res = await fetch(`${botUrl}/api/guild/${guild.id}/playlists/${playlistId}`, { headers: getHeaders() });
+      if (!res.ok) throw new Error('Playlist nicht gefunden');
+      const data = await res.json();
+      setOpenPlaylist(data);
+      setActiveView('playlist-detail');
+    } catch (err) { setError(err.message); }
   };
 
   const loadPlaylist = async (playlistId) => {
@@ -596,6 +627,17 @@ function App() {
     } catch {}
   };
 
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(searchTimerRef.current);
+      clearTimeout(eqTimerRef.current);
+      clearTimeout(eqSaveTimerRef.current);
+      clearTimeout(volumeTimerRef.current);
+      wsRef.current?.close();
+    };
+  }, []);
+
   // Close profile dropdown on outside click
   useEffect(() => {
     const handler = (e) => { if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false); };
@@ -603,14 +645,16 @@ function App() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch dynamic homepage content — cached in sessionStorage, delayed to not block core requests
-  const fetchHomepageContent = useCallback(async (force = false) => {
-    if (!connected || !guild || homeLoading) return;
+  // Fetch dynamic homepage content — cached in sessionStorage
+  const discoverVersionRef = useRef(0);
 
-    const filterParams = activeGenre !== 'all' ? `&genre=${activeGenre}` : '';
+  const fetchHomepageContent = useCallback(async (genre = 'all', force = false) => {
+    if (!connected || !guild) return;
+    const version = ++discoverVersionRef.current;
 
-    // Check sessionStorage cache (15 min TTL)
-    const cacheKey = `discover_${guild.id}_${activeGenre}_${detectedCountry.code}`;
+    const filterParams = genre !== 'all' ? `&genre=${genre}` : '';
+    const cacheKey = `discover_${guild.id}_${genre}_${detectedCountry.code}`;
+
     if (!force) {
       try {
         const cached = JSON.parse(sessionStorage.getItem(cacheKey));
@@ -634,7 +678,6 @@ function App() {
       try { const r = await fetch(url, { headers: h }); if (r.ok) return await r.json(); } catch {} return null;
     };
 
-    // Fetch in two batches to not overwhelm the server
     const [trending, localTrending, releases, serverPop] = await Promise.all([
       fetchJson(`${botUrl}/api/discover/trending?x=1${filterParams}`),
       fetchJson(`${botUrl}/api/discover/local-charts?country=${detectedCountry.code}`),
@@ -642,12 +685,12 @@ function App() {
       fetchJson(`${botUrl}/api/guild/${guild.id}/discover/popular`),
     ]);
 
+    if (discoverVersionRef.current !== version) { setHomeLoading(false); return; }
     if (trending) setTrendingTracks(trending);
     if (localTrending) setLocalTracks(localTrending);
     if (releases) setNewReleases(releases);
     if (serverPop) setPopularOnServer(serverPop);
 
-    // Second batch — lower priority
     const [recs, globalPop, artists, sections] = await Promise.all([
       fetchJson(`${botUrl}/api/guild/${guild.id}/discover/recommendations`),
       fetchJson(`${botUrl}/api/discover/global-popular`),
@@ -655,12 +698,12 @@ function App() {
       fetchJson(`${botUrl}/api/discover/sections?x=1${filterParams}`),
     ]);
 
+    if (discoverVersionRef.current !== version) { setHomeLoading(false); return; }
     if (recs) setRecommendedData(recs);
     if (globalPop) setGlobalPopular(globalPop);
     if (artists) setPopularArtists(artists);
     if (sections) setGenreSections(sections);
 
-    // Cache results
     try {
       sessionStorage.setItem(cacheKey, JSON.stringify({
         ts: Date.now(), trending, localTrending, releases, recs, serverPop, globalPop, artists, sections,
@@ -668,11 +711,11 @@ function App() {
     } catch {}
 
     setHomeLoading(false);
-  }, [connected, guild, botUrl, getHeaders, homeLoading]);
+  }, [connected, guild, botUrl, getHeaders]);
 
   useEffect(() => {
     if (!connected || !guild) return;
-    fetchHomepageContent(activeGenre !== 'all');
+    fetchHomepageContent(activeGenre, true);
   }, [connected, guild, activeGenre]);
 
   const totalDuration = state.current ? parseDuration(state.current.duration) : 0;
@@ -750,7 +793,7 @@ function App() {
     return (
       <div className="app">
         <aside className="sidebar">
-          <div className="sidebar-top"><div className="sidebar-brand"><img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="brand-logo" /><span className="brand-text">BeatByte</span></div></div>
+          <div className="sidebar-top"><div className="sidebar-brand"><img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="brand-logo" /><span className="brand-text">BeatByte</span></div></div>
           <nav className="sidebar-nav">
             {[1,2,3,4].map(i => <div key={i} className="skeleton-line" style={{ height: 36, margin: '2px 8px', borderRadius: 8 }} />)}
           </nav>
@@ -781,7 +824,7 @@ function App() {
         <div className="setup">
           <div className="setup-card">
             <div className="setup-logo">
-              <img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="setup-logo-icon" />
+              <img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="setup-logo-icon" />
             </div>
             <h1>Server wählen</h1>
             {oauthUser && <p className="setup-subtitle">Eingeloggt als {oauthUser.username}</p>}
@@ -806,7 +849,7 @@ function App() {
       <div className="setup">
         <div className="setup-card">
           <div className="setup-logo">
-            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="setup-logo-icon" />
+            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="setup-logo-icon" />
           </div>
           <h1>BeatByte</h1>
           <p className="setup-subtitle">Steuere deine Musik direkt im Browser</p>
@@ -886,9 +929,8 @@ function App() {
   // ── Sidebar Navigation ─────────────────────────────────────────
   const navItems = [
     { id: 'home', icon: Icons.home, label: 'Home' },
-    { id: 'library', icon: Icons.library, label: 'Library' },
+    { id: 'library', icon: Icons.library, label: 'Bibliothek' },
     { id: 'liked', icon: Icons.heart, label: 'Liked Songs' },
-    { id: 'playlists', icon: Icons.playlist, label: 'Playlists' },
   ];
 
   const searchGenre = async (query) => {
@@ -929,11 +971,9 @@ function App() {
   // Quick-access items
   const quickAccess = (() => {
     const items = [];
+    if (recentlyPlayed.length > 0) items.push({ icon: Icons.headphones, label: 'Zuletzt gehört', color: 'var(--purple-hover)', onClick: () => { setActiveView('library'); setLibraryTab('recent'); }, thumbnail: recentlyPlayed[0]?.thumbnail });
     if (likedSongs.length > 0) items.push({ icon: Icons.heart, label: 'Liked Songs', color: 'var(--red)', onClick: () => { setActiveView('liked'); } });
-    if (recentlyPlayed.length > 0) items.push({ icon: Icons.headphones, label: 'Zuletzt gehört', color: 'var(--purple-hover)', onClick: () => {}, tracks: recentlyPlayed.slice(0, 1) });
-    playlists.slice(0, 4).forEach(p => items.push({ icon: Icons.playlist, label: p.name, color: 'var(--purple)', onClick: () => loadPlaylist(p.id) }));
-    if (state.tracks.length > 0) items.push({ icon: Icons.library, label: 'Queue', color: 'var(--green)', onClick: () => { setActiveView('library'); } });
-    return items.slice(0, 6);
+    return items;
   })();
 
   const renderHome = () => (
@@ -948,7 +988,11 @@ function App() {
           <div className="quick-grid">
             {quickAccess.map((item, i) => (
               <button key={i} className="quick-tile" onClick={item.onClick}>
-                <div className="quick-tile-icon" style={{ color: item.color }}>{item.icon}</div>
+                {item.thumbnail ? (
+                  <img src={item.thumbnail} alt="" className="quick-tile-img" />
+                ) : (
+                  <div className="quick-tile-icon" style={{ background: item.color }}>{item.icon}</div>
+                )}
                 <span className="quick-tile-label">{item.label}</span>
               </button>
             ))}
@@ -995,10 +1039,50 @@ function App() {
         </section>
       )}
 
-      {/* Loading — show while discover content loads */}
+      {/* Skeleton — reserve layout while loading */}
       {homeLoading && trendingTracks.length === 0 && (
-        <div className="home-loading">
-          <span className="adding-spinner large" />
+        <div className="home-skeleton">
+          {/* Chart Hero skeleton */}
+          <div className="skeleton-line" style={{ height: 200, borderRadius: 12, marginBottom: 24 }} />
+          {/* Filter chips skeleton */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+            {[1,2,3,4,5,6].map(i => <div key={i} className="skeleton-line" style={{ width: 70, height: 32, borderRadius: 999 }} />)}
+          </div>
+          {/* Section title skeleton */}
+          <div className="skeleton-line" style={{ width: 160, height: 22, borderRadius: 6, marginBottom: 14 }} />
+          {/* Track list skeleton */}
+          {[1,2,3,4,5].map(i => (
+            <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 8 }}>
+              <div className="skeleton-line" style={{ width: 20, height: 14, borderRadius: 4 }} />
+              <div className="skeleton-line" style={{ width: 44, height: 44, borderRadius: 6 }} />
+              <div style={{ flex: 1 }}>
+                <div className="skeleton-line" style={{ width: '60%', height: 14, borderRadius: 4, marginBottom: 6 }} />
+                <div className="skeleton-line" style={{ width: '30%', height: 12, borderRadius: 4 }} />
+              </div>
+              <div className="skeleton-line" style={{ width: 32, height: 12, borderRadius: 4 }} />
+            </div>
+          ))}
+          {/* Cards row skeleton */}
+          <div className="skeleton-line" style={{ width: 140, height: 22, borderRadius: 6, marginTop: 24, marginBottom: 14 }} />
+          <div style={{ display: 'flex', gap: 16 }}>
+            {[1,2,3,4,5].map(i => (
+              <div key={i} style={{ flexShrink: 0 }}>
+                <div className="skeleton-line" style={{ width: 160, height: 160, borderRadius: 8, marginBottom: 8 }} />
+                <div className="skeleton-line" style={{ width: 120, height: 13, borderRadius: 4, marginBottom: 4 }} />
+                <div className="skeleton-line" style={{ width: 80, height: 12, borderRadius: 4 }} />
+              </div>
+            ))}
+          </div>
+          {/* Artist bubbles skeleton */}
+          <div className="skeleton-line" style={{ width: 130, height: 22, borderRadius: 6, marginTop: 24, marginBottom: 14 }} />
+          <div style={{ display: 'flex', gap: 20 }}>
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <div className="skeleton-line" style={{ width: 80, height: 80, borderRadius: '50%' }} />
+                <div className="skeleton-line" style={{ width: 60, height: 12, borderRadius: 4 }} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1037,7 +1121,7 @@ function App() {
         <section className="content-section">
           <div className="section-header">
             <h2 className="section-title">{Icons.fire} Globale Charts</h2>
-            <button className="btn-refresh" onClick={() => fetchHomepageContent(true)} title="Aktualisieren">{Icons.refresh}</button>
+            <button className="btn-refresh" onClick={() => fetchHomepageContent(activeGenre, true)} title="Aktualisieren">{Icons.refresh}</button>
           </div>
           <div className="track-list">
             {trendingTracks.slice(1, 11).map((track, i) => (
@@ -1123,6 +1207,25 @@ function App() {
         </section>
       ))}
 
+      {/* Import Promo Banner — only show when content is loaded */}
+      {!homeLoading && trendingTracks.length > 0 && (
+        <section className="content-section">
+          <div className="promo-banner" onClick={() => { setActiveView('library'); setLibraryTab('playlists'); }}>
+            <div className="promo-banner-glow" />
+            <div className="promo-banner-content">
+              <div className="promo-banner-logos">
+                <svg viewBox="0 0 24 24" width="36" height="36"><path fill="#1ed760" d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="var(--text-2)" d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                <svg viewBox="0 0 24 24" width="36" height="36"><path fill="#ff0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              </div>
+              <h3 className="promo-banner-title">Bring deine Musik mit</h3>
+              <p className="promo-banner-sub">Importiere deine Spotify & YouTube Playlists mit einem Klick</p>
+              <button className="promo-banner-btn">Jetzt importieren</button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── 6. Community ────────────────────────────────── */}
       {(popularOnServer.length > 0 || globalPopular.length > 0) && (
         <section className="content-section">
@@ -1162,35 +1265,173 @@ function App() {
 
   const renderLibrary = () => (
     <section className="content-section">
-      <div className="section-header">
-        <h2 className="section-title">Queue {state.tracks.length > 0 && <span className="badge">{state.tracks.length}</span>}</h2>
-        {state.tracks.length > 0 && (
-          <div className="section-actions">
-            <button className="btn-save-queue" onClick={() => setShowSaveInput(!showSaveInput)}>Save as Playlist</button>
-          </div>
-        )}
+      <h2 className="section-title">Bibliothek</h2>
+
+      {/* Tabs */}
+      <div className="settings-tabs" style={{ marginBottom: 20 }}>
+        <button className={`settings-tab${libraryTab === 'queue' ? ' active' : ''}`} onClick={() => setLibraryTab('queue')}>
+          Queue {state.tracks.length > 0 && <span className="badge">{state.tracks.length}</span>}
+        </button>
+        <button className={`settings-tab${libraryTab === 'recent' ? ' active' : ''}`} onClick={() => setLibraryTab('recent')}>
+          Zuletzt gehört
+        </button>
+        <button className={`settings-tab${libraryTab === 'playlists' ? ' active' : ''}`} onClick={() => setLibraryTab('playlists')}>
+          Playlists {playlists.length > 0 && <span className="badge">{playlists.length}</span>}
+        </button>
       </div>
-      {showSaveInput && (
-        <div className="playlist-save-form">
-          <input className="playlist-name-input" value={playlistName} onChange={e => setPlaylistName(e.target.value)} placeholder="Playlist-Name..." maxLength={50} onKeyDown={e => e.key === 'Enter' && savePlaylist()} autoFocus />
-          <button className="btn-playlist-save" onClick={savePlaylist} disabled={savingPlaylist || !playlistName.trim()}>
-            {savingPlaylist ? '...' : 'Save'}
-          </button>
-        </div>
+
+      {libraryTab === 'recent' && (
+        <>
+          {(() => {
+            const seen = new Set();
+            const unique = recentlyPlayed.filter(t => {
+              const key = t.url || t.title;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            return unique.length === 0 ? (
+              <div className="empty-state">
+                {Icons.headphones}
+                <p>Noch nichts gehört</p>
+                <p className="empty-hint">Spiele Songs ab und sie erscheinen hier</p>
+              </div>
+            ) : (
+              <div className="track-list">
+                {unique.map((track, i) => (
+                  <TrackRow key={i} track={track} index={i} />
+                ))}
+              </div>
+            );
+          })()}
+        </>
       )}
-      {state.tracks.length === 0 ? (
-        <div className="empty-state">
-          {Icons.music}
-          <p>Queue is empty</p>
-          <p className="empty-hint">Search for songs to add them</p>
-        </div>
-      ) : (
-        <div className="track-list">
-          {state.tracks.map((track, i) => (
-            <TrackRow key={i} track={track} index={i} onRemove={() => removeFromQueue(i)} draggable />
-          ))}
-        </div>
+
+      {libraryTab === 'queue' && (
+        <>
+          {state.tracks.length > 0 ? (
+            <>
+              <div className="queue-header">
+                <div className="queue-header-left">
+                  <span className="queue-count">{state.tracks.length} Songs</span>
+                </div>
+                <div className="queue-header-actions">
+                  <button className="queue-action-btn" onClick={() => setShowSaveInput(!showSaveInput)}>{Icons.add} <span>Speichern</span></button>
+                  <button className="queue-action-btn danger" onClick={async () => {
+                  try { await fetch(`${botUrl}/api/guild/${guild.id}/queue`, { method: 'DELETE', headers: getHeaders() }); fetchState(guild.id); } catch {}
+                }}>{Icons.delete} <span>Leeren</span></button>
+                </div>
+              </div>
+
+              {showSaveInput && (
+                <div className="playlist-save-form">
+                  <input className="playlist-name-input" value={playlistName} onChange={e => setPlaylistName(e.target.value)} placeholder="Playlist-Name..." maxLength={50} onKeyDown={e => e.key === 'Enter' && savePlaylist()} autoFocus />
+                  <button className="btn-playlist-save" onClick={savePlaylist} disabled={savingPlaylist || !playlistName.trim()}>
+                    {savingPlaylist ? '...' : 'Speichern'}
+                  </button>
+                </div>
+              )}
+
+              <div className="track-list">
+                {state.tracks.map((track, i) => (
+                  <TrackRow key={i} track={track} index={i} onRemove={() => removeFromQueue(i)} draggable />
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="empty-state">
+                {Icons.music}
+                <p>Queue ist leer</p>
+                <p className="empty-hint">Suche nach Songs oder lade eine Playlist</p>
+              </div>
+
+              {playlists.length > 0 && (
+                <div className="queue-suggestions">
+                  <h3 className="subsection-title">Playlist abspielen</h3>
+                  <div className="queue-suggestion-list">
+                    {playlists.map(p => (
+                      <button key={p.id} className="queue-suggestion-item" onClick={() => openPlaylistDetail(p.id)}>
+                        <div className="queue-suggestion-cover">
+                          {p.cover ? <img src={p.cover} alt="" /> : Icons.playlist}
+                        </div>
+                        <div className="queue-suggestion-info">
+                          <span className="queue-suggestion-name">{p.name}</span>
+                          <span className="queue-suggestion-count">{p.track_count} Songs</span>
+                        </div>
+                        <button className="queue-suggestion-add" onClick={(e) => { e.stopPropagation(); loadPlaylist(p.id); }}>Zur Queue hinzufügen</button>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
+
+      {libraryTab === 'playlists' && (
+        <>
+          {/* Import Card */}
+          <div className={`import-card${showImport ? ' open' : ''}`}>
+            <div className="import-card-header" onClick={() => setShowImport(!showImport)}>
+              <div className="import-card-logos">
+                <svg viewBox="0 0 24 24" width="24" height="24"><path fill="#1ed760" d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                <svg viewBox="0 0 24 24" width="24" height="24"><path fill="#ff0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              </div>
+              <div className="import-card-text">
+                <span className="import-card-title">Playlist importieren</span>
+                <span className="import-card-sub">Spotify & YouTube Link einfügen</span>
+              </div>
+              <span className={`import-card-chevron${showImport ? ' open' : ''}`}>{Icons.chevronDown}</span>
+            </div>
+            {showImport && (
+              <div className="import-card-body">
+                <div className="import-card-input-row">
+                  <input className="import-card-input" value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="https://open.spotify.com/playlist/..." onKeyDown={e => e.key === 'Enter' && importPlaylist()} autoFocus />
+                  <button className="import-card-btn" onClick={importPlaylist} disabled={importing || !importUrl.trim()}>
+                    {importing ? '...' : 'Importieren'}
+                  </button>
+                </div>
+                <div className="import-card-help">
+                  <span className="import-card-help-title">So findest du deine Playlist-URL:</span>
+                  <div className="import-card-steps">
+                    <div className="import-card-step"><span className="import-step-num">1</span><span>Öffne Spotify oder YouTube und gehe zu deiner Playlist</span></div>
+                    <div className="import-card-step"><span className="import-step-num">2</span><span>Klicke auf die drei Punkte (...) oder das Teilen-Symbol</span></div>
+                    <div className="import-card-step"><span className="import-step-num">3</span><span>Wähle "Teilen" → "Link kopieren"</span></div>
+                    <div className="import-card-step"><span className="import-step-num">4</span><span>Füge den Link oben ein</span></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {playlists.length === 0 && !showImport ? (
+            <div className="empty-state">
+              {Icons.playlist}
+              <p>Keine Playlists</p>
+              <p className="empty-hint">Importiere eine Playlist oder speichere deine Queue</p>
+            </div>
+          ) : (
+            <div className="playlist-grid">
+              {playlists.map(p => (
+                <div key={p.id} className="playlist-card-lg">
+                  <div className="playlist-card-lg-top" onClick={() => openPlaylistDetail(p.id)}>
+                    {p.cover ? <img src={p.cover} alt="" className="playlist-card-lg-cover" /> : <div className="playlist-card-lg-icon">{Icons.playlist}</div>}
+                    <div className="playlist-card-lg-play">{Icons.playSmall}</div>
+                  </div>
+                  <div className="playlist-card-lg-info">
+                    <span className="playlist-card-lg-name">{p.name}</span>
+                    <span className="playlist-card-lg-count">{p.track_count} Songs</span>
+                  </div>
+                  <button className="playlist-card-delete" onClick={() => deletePlaylist(p.id)}>{Icons.delete}</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
     </section>
   );
 
@@ -1202,8 +1443,8 @@ function App() {
       {likedSongs.length === 0 ? (
         <div className="empty-state">
           {Icons.heart}
-          <p>No liked songs yet</p>
-          <p className="empty-hint">Click the heart icon on any song to save it here</p>
+          <p>Keine Liked Songs</p>
+          <p className="empty-hint">Klicke auf das Herz-Icon bei einem Song um ihn hier zu speichern</p>
         </div>
       ) : (
         <div className="track-list">
@@ -1230,72 +1471,6 @@ function App() {
     } catch (err) { setError(err.message); }
     setImporting(false);
   };
-
-  const renderPlaylists = () => (
-    <section className="content-section">
-      <div className="section-header">
-        <h2 className="section-title">Playlists</h2>
-        <div className="section-actions">
-          <button className="btn-save-queue" onClick={() => setShowImport(!showImport)}>Importieren</button>
-          <button className="btn-icon" onClick={() => setShowSaveInput(!showSaveInput)} title="Queue als Playlist speichern">{Icons.add}</button>
-        </div>
-      </div>
-
-      {/* Import from URL */}
-      {showImport && (
-        <div className="import-form">
-          <div className="import-form-header">
-            <span className="import-form-title">Playlist importieren</span>
-            <div className="import-form-badges">
-              <span className="import-badge spotify">Spotify</span>
-              <span className="import-badge youtube">YouTube</span>
-              <span className="import-badge apple">Apple Music</span>
-              <span className="import-badge deezer">Deezer</span>
-            </div>
-          </div>
-          <input className="playlist-name-input" value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="Playlist-URL einfügen..." onKeyDown={e => e.key === 'Enter' && importPlaylist()} autoFocus />
-          <input className="playlist-name-input" value={importName} onChange={e => setImportName(e.target.value)} placeholder="Name (optional — wird automatisch erkannt)" maxLength={50} />
-          <button className="btn-connect" onClick={importPlaylist} disabled={importing || !importUrl.trim()} style={{ marginTop: 8 }}>
-            {importing ? 'Importiere...' : 'Importieren'}
-          </button>
-        </div>
-      )}
-
-      {/* Save queue as playlist */}
-      {showSaveInput && (
-        <div className="playlist-save-form">
-          <input className="playlist-name-input" value={playlistName} onChange={e => setPlaylistName(e.target.value)} placeholder="Playlist-Name..." maxLength={50} onKeyDown={e => e.key === 'Enter' && savePlaylist()} autoFocus />
-          <button className="btn-playlist-save" onClick={savePlaylist} disabled={savingPlaylist || !playlistName.trim()}>
-            {savingPlaylist ? '...' : 'Speichern'}
-          </button>
-        </div>
-      )}
-
-      {playlists.length === 0 && !showImport ? (
-        <div className="empty-state">
-          {Icons.playlist}
-          <p>Keine Playlists</p>
-          <p className="empty-hint">Importiere eine Playlist oder speichere deine Queue</p>
-        </div>
-      ) : (
-        <div className="playlist-grid">
-          {playlists.map(p => (
-            <div key={p.id} className="playlist-card-lg">
-              <div className="playlist-card-lg-top" onClick={() => loadPlaylist(p.id)}>
-                <div className="playlist-card-lg-icon">{Icons.playlist}</div>
-                <div className="playlist-card-lg-play">{Icons.playSmall}</div>
-              </div>
-              <div className="playlist-card-lg-info">
-                <span className="playlist-card-lg-name">{p.name}</span>
-                <span className="playlist-card-lg-count">{p.track_count} Songs</span>
-              </div>
-              <button className="playlist-card-delete" onClick={() => deletePlaylist(p.id)}>{Icons.delete}</button>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
 
   const renderSettings = () => (
     <section className="content-section">
@@ -1381,7 +1556,7 @@ function App() {
               </div>
               <div className="settings-row">
                 <span className="settings-label">Discover-Cache</span>
-                <button className="settings-btn" onClick={() => { sessionStorage.clear(); fetchHomepageContent(true); }}>Cache leeren</button>
+                <button className="settings-btn" onClick={() => { sessionStorage.clear(); fetchHomepageContent(activeGenre, true); }}>Cache leeren</button>
               </div>
               <div className="settings-row">
                 <span className="settings-label">Alle lokalen Daten</span>
@@ -1404,6 +1579,8 @@ function App() {
               </div>
             </div>
           </div>
+
+          <p className="settings-disclaimer">Alle Marken, Logos und Dienstnamen sind Eigentum ihrer jeweiligen Inhaber. BeatByte ist nicht mit Spotify, YouTube, Apple Music oder Deezer verbunden oder von diesen unterstützt.</p>
         </>
       ) : (
         <>
@@ -1605,11 +1782,11 @@ function App() {
           <>
             <div className="profile-section-header">
               <h3 className="subsection-title">{Icons.playlist} Deine Playlists</h3>
-              <button className="btn-save-queue" onClick={() => setActiveView('playlists')}>Alle anzeigen</button>
+              <button className="btn-save-queue" onClick={() => { setActiveView('library'); setLibraryTab('playlists'); }}>Alle anzeigen</button>
             </div>
             <div className="profile-playlists">
               {playlists.slice(0, 6).map(p => (
-                <button key={p.id} className="profile-playlist-card" onClick={() => loadPlaylist(p.id)}>
+                <button key={p.id} className="profile-playlist-card" onClick={() => openPlaylistDetail(p.id)}>
                   <div className="profile-playlist-icon">{Icons.playlist}</div>
                   <div className="profile-playlist-info">
                     <span className="profile-playlist-name">{p.name}</span>
@@ -1620,6 +1797,56 @@ function App() {
             </div>
           </>
         )}
+      </section>
+    );
+  };
+
+  const renderPlaylistDetail = () => {
+    if (!openPlaylist) return null;
+    const tracks = openPlaylist.tracks || [];
+    const totalDur = tracks.reduce((sum, t) => {
+      if (!t.duration) return sum;
+      const parts = t.duration.split(':').map(Number);
+      return sum + (parts.length === 2 ? parts[0] * 60 + parts[1] : 0);
+    }, 0);
+    const totalMin = Math.floor(totalDur / 60);
+
+    return (
+      <section className="content-section">
+        {/* Header */}
+        <div className="playlist-detail-header">
+          <div className="playlist-detail-cover">
+            {tracks[0]?.thumbnail ? <img src={tracks[0].thumbnail} alt="" /> : <div className="playlist-detail-cover-empty">{Icons.playlist}</div>}
+          </div>
+          <div className="playlist-detail-info">
+            <span className="playlist-detail-type">Playlist</span>
+            <h1 className="playlist-detail-name">{openPlaylist.name}</h1>
+            <span className="playlist-detail-meta">{tracks.length} Songs · {totalMin} Min.</span>
+            <div className="playlist-detail-actions">
+              <button className="playlist-detail-play" onClick={() => loadPlaylist(openPlaylist.id)}>{Icons.play}</button>
+              <button className="playlist-detail-action-btn" onClick={async () => {
+                await loadPlaylist(openPlaylist.id);
+                if (guild) apiAction('shuffle');
+              }} title="Shuffle abspielen">{Icons.shuffle}</button>
+              <button className="playlist-detail-action-btn" onClick={() => { deletePlaylist(openPlaylist.id); setOpenPlaylist(null); setActiveView('library'); setLibraryTab('playlists'); }} title="Playlist löschen">{Icons.delete}</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="playlist-detail-toolbar">
+          <span className="playlist-detail-toolbar-count">{tracks.length} Songs</span>
+          <div className="playlist-detail-toolbar-actions">
+            <button className="settings-btn" onClick={() => loadPlaylist(openPlaylist.id)}>Zur Queue hinzufügen</button>
+          </div>
+        </div>
+
+        {/* Track List */}
+        <div className="track-list" style={{ marginTop: 8 }}>
+          {tracks.map((track, i) => (
+            <TrackRow key={i} track={track} index={i} />
+          ))}
+        </div>
       </section>
     );
   };
@@ -1750,7 +1977,7 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-top">
           <div className="sidebar-brand" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
-            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128" alt="BeatByte" className="brand-logo" />
+            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="brand-logo" />
             <span className="brand-text">BeatByte</span>
           </div>
         </div>
@@ -1764,6 +1991,23 @@ function App() {
           ))}
         </nav>
 
+        {/* Playlists Quick Access */}
+        {playlists.length > 0 && (
+          <div className="sidebar-playlists">
+            <div className="sidebar-label">Playlists</div>
+            {playlists.slice(0, 6).map(p => (
+              <button key={p.id} className="sidebar-playlist-item" onClick={() => openPlaylistDetail(p.id)}>
+                {p.cover ? <img src={p.cover} alt="" className="sidebar-playlist-cover" /> : <span className="nav-icon">{Icons.playlist}</span>}
+                <span className="nav-label">{p.name}</span>
+              </button>
+            ))}
+            <button className="sidebar-playlist-item sidebar-playlist-add" onClick={() => { setActiveView('library'); setLibraryTab('playlists'); }}>
+              <span className="nav-icon">{Icons.add}</span>
+              <span className="nav-label">Importieren</span>
+            </button>
+          </div>
+        )}
+
         {guild && (
           <div className="sidebar-guild">
             <div className="sidebar-label">Server</div>
@@ -1773,20 +2017,6 @@ function App() {
             </div>
           </div>
         )}
-
-        <div className="sidebar-voice">
-          {state.connected ? (
-            <>
-              <div className="voice-status-dot" />
-              <span className="voice-label">Verbunden</span>
-            </>
-          ) : (
-            <button className="btn-join-voice" onClick={() => setShowChannelPicker(true)}>
-              {Icons.headphones}
-              <span className="voice-label">Channel beitreten</span>
-            </button>
-          )}
-        </div>
 
         <div className="sidebar-bottom">
           <button className="btn-disconnect" onClick={logout}>
@@ -1803,6 +2033,17 @@ function App() {
             <input className="search-input" value={searchQuery} onChange={e => onSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="Songs, Artists oder Alben suchen..." />
             {searchQuery && <button className="search-clear" onClick={() => { onSearchInput(''); }}>{Icons.close}</button>}
           </div>
+          {state.connected ? (
+            <div className="voice-chip connected">
+              <div className="voice-status-dot" />
+              <span>Verbunden</span>
+            </div>
+          ) : (
+            <button className="voice-chip" onClick={() => setShowChannelPicker(true)}>
+              {Icons.headphones}
+              <span>Verbinden</span>
+            </button>
+          )}
           <div className="profile-area" ref={profileRef}>
             {oauthUser ? (
               <>
@@ -1858,9 +2099,9 @@ function App() {
           {activeView === 'search' ? renderSearch() :
            activeView === 'library' ? renderLibrary() :
            activeView === 'liked' ? renderLiked() :
-           activeView === 'playlists' ? renderPlaylists() :
-           activeView === 'settings' ? renderSettings() :
+           activeView === 'playlist-detail' ? renderPlaylistDetail() :
            activeView === 'profile' ? renderProfile() :
+           activeView === 'settings' ? renderSettings() :
            renderHome()}
         </div>
 

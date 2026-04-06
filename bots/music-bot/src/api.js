@@ -415,6 +415,30 @@ function startAPI(ctx, client) {
                         (results.tracks || []).slice(0, 3).forEach(t => ctx.preResolveTrack(t.url));
                         return json(res, results);
                     }
+                    // Fast search via Deezer (single call, ~200ms)
+                    try {
+                        const deezerData = await new Promise((resolve, reject) => {
+                            require('https').get(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=10`, { timeout: 5000 }, (r) => {
+                                let d = ''; r.on('data', c => d += c);
+                                r.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse')); } });
+                            }).on('error', reject);
+                        });
+                        const tracks = (deezerData.data || []).map(t => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            artistImage: t.artist?.picture_medium || null,
+                            thumbnail: t.album?.cover_medium || null,
+                            albumName: t.album?.title || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                            source: 'deezer',
+                        }));
+                        if (tracks.length > 0) {
+                            tracks.slice(0, 3).forEach(t => ctx.preResolveTrack(t.url));
+                            return json(res, tracks);
+                        }
+                    } catch {}
+                    // Fallback to YouTube search
                     return json(res, await ctx.searchTracks(q));
                 }
 
@@ -445,24 +469,44 @@ function startAPI(ctx, client) {
                             source: 'deezer-charts',
                         }));
 
-                        // Genre filter: enrich with Spotify search if specific genre selected
+                        // Genre filter: search Deezer for genre-specific tracks
                         if (genreFilter !== 'all') {
-                            const genreQueries = {
-                                pop: 'pop hits', hiphop: 'hip hop rap', rnb: 'rnb soul',
-                                rock: 'rock', electronic: 'electronic dance', latin: 'latin reggaeton', kpop: 'kpop',
+                            const genreArtists = {
+                                pop: ['Sabrina Carpenter', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande'],
+                                hiphop: ['Kendrick Lamar', 'Drake', 'Travis Scott', 'Central Cee'],
+                                rnb: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean'],
+                                rock: ['Arctic Monkeys', 'Imagine Dragons', 'Linkin Park', 'Maneskin'],
+                                electronic: ['David Guetta', 'Calvin Harris', 'Martin Garrix', 'Tiesto'],
+                                latin: ['Bad Bunny', 'Karol G', 'Rauw Alejandro', 'Feid'],
+                                kpop: ['BTS', 'BLACKPINK', 'NewJeans', 'Stray Kids'],
                             };
-                            const q = genreQueries[genreFilter];
-                            if (q) {
+                            const artists = genreArtists[genreFilter];
+                            if (artists) {
                                 try {
-                                    const data = await ctx.spotifyFetch(`/search?q=${encodeURIComponent(q)}&type=track&limit=15&market=DE`);
-                                    tracks = (data.tracks?.items || []).map(t => ({
-                                        title: t.name,
-                                        artist: t.artists?.map(a => a.name).join(', ') || '',
-                                        thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
-                                        duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
-                                        url: `${t.artists?.[0]?.name || ''} ${t.name}`,
-                                        source: 'spotify',
-                                    }));
+                                    const https = require('https');
+                                    const deezerGet = (url) => new Promise((resolve, reject) => {
+                                        https.get(url, { timeout: 8000 }, (r) => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{try{resolve(JSON.parse(d));}catch{reject(new Error('Parse'));}}); }).on('error',reject);
+                                    });
+                                    const results = await Promise.allSettled(
+                                        artists.map(a => deezerGet(`https://api.deezer.com/search?q=${encodeURIComponent(a)}&limit=5`))
+                                    );
+                                    const seen = new Set();
+                                    tracks = [];
+                                    for (const r of results) {
+                                        if (r.status !== 'fulfilled') continue;
+                                        for (const t of (r.value.data || [])) {
+                                            if (seen.has(t.id)) continue;
+                                            seen.add(t.id);
+                                            tracks.push({
+                                                title: t.title || '',
+                                                artist: t.artist?.name || '',
+                                                thumbnail: t.album?.cover_medium || null,
+                                                duration: `${Math.floor((t.duration||0)/60)}:${String((t.duration||0)%60).padStart(2,'0')}`,
+                                                url: `${t.artist?.name||''} ${t.title||''}`,
+                                                source: 'deezer',
+                                            });
+                                        }
+                                    }
                                 } catch {}
                             }
                         }
@@ -519,14 +563,16 @@ function startAPI(ctx, client) {
                     const genreFilter = url.searchParams.get('genre') || 'all';
 
                     const allSections = [
-                        { title: 'Pop Hits', query: 'pop hits 2025', genre: 'pop' },
-                        { title: 'Hip-Hop', query: 'hip hop rap trending', genre: 'hiphop' },
-                        { title: 'Chill Vibes', query: 'chill lofi relaxing', genre: 'electronic' },
-                        { title: 'Party', query: 'party dance hits', genre: 'electronic' },
-                        { title: 'R&B & Soul', query: 'rnb soul smooth', genre: 'rnb' },
-                        { title: 'Rock & Indie', query: 'rock indie alternative', genre: 'rock' },
-                        { title: 'Latin Hits', query: 'reggaeton latin hits', genre: 'latin' },
-                        { title: 'K-Pop', query: 'kpop korean pop hits', genre: 'kpop' },
+                        { title: 'Pop Hits', artists: ['Sabrina Carpenter', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande', 'Olivia Rodrigo'], genre: 'pop' },
+                        { title: 'Hip-Hop', artists: ['Kendrick Lamar', 'Drake', 'Travis Scott', 'Central Cee', 'Future'], genre: 'hiphop' },
+                        { title: 'Chill Vibes', artists: ['Khruangbin', 'Mac DeMarco', 'Tame Impala', 'FKJ', 'Tom Misch'], genre: 'electronic' },
+                        { title: 'Party', artists: ['David Guetta', 'Calvin Harris', 'Tiesto', 'Martin Garrix', 'Marshmello'], genre: 'electronic' },
+                        { title: 'R&B & Soul', artists: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean', 'Daniel Caesar'], genre: 'rnb' },
+                        { title: 'Rock & Indie', artists: ['Arctic Monkeys', 'Imagine Dragons', 'Linkin Park', 'Maneskin', 'Green Day'], genre: 'rock' },
+                        { title: 'Latin Hits', artists: ['Bad Bunny', 'Karol G', 'Rauw Alejandro', 'Feid', 'Peso Pluma'], genre: 'latin' },
+                        { title: 'K-Pop', artists: ['BTS', 'BLACKPINK', 'NewJeans', 'Stray Kids', 'aespa'], genre: 'kpop' },
+                        { title: 'Deutsch Rap', artists: ['Apache 207', 'Luciano', 'Capital Bra', 'Shirin David', 'Pashanim'], genre: 'hiphop' },
+                        { title: 'EDM & Dance', artists: ['Robin Schulz', 'Felix Jaehn', 'Regard', 'Joel Corry', 'Becky Hill'], genre: 'electronic' },
                     ];
 
                     let sections = allSections;
@@ -537,16 +583,50 @@ function startAPI(ctx, client) {
                     const hour = new Date().getHours();
                     const offset = (hour * 2) % sections.length;
                     const picked = [];
-                    for (let i = 0; i < Math.min(4, sections.length); i++) picked.push(sections[(offset + i) % sections.length]);
+                    // Always include Chill Vibes, then fill with rotating others
+                    const chillSection = sections.find(s => s.title === 'Chill Vibes');
+                    if (chillSection) picked.push(chillSection);
+                    for (let i = 0; i < sections.length && picked.length < 5; i++) {
+                        const s = sections[(offset + i) % sections.length];
+                        if (!picked.includes(s)) picked.push(s);
+                    }
 
                     try {
+                        const https = require('https');
+                        const deezerSearch = (query, limit = 4) => new Promise((resolve, reject) => {
+                            https.get(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`, { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+
+                        const mapTrack = (t) => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                        });
+
+                        // For each section, pick 3 random artists and search individually
+                        const seed = Date.now() / 3600000 | 0;
                         const results = await Promise.allSettled(
-                            picked.map(s =>
-                                ctx.searchTracks(s.query, 6).then(tracks => ({
-                                    title: s.title,
-                                    tracks: tracks || [],
-                                }))
-                            )
+                            picked.map(async (s) => {
+                                const shuffled = [...s.artists].sort((a, b) => Math.sin(seed + a.length) - Math.sin(seed + b.length));
+                                const picks = shuffled.slice(0, 3);
+                                const searches = await Promise.allSettled(picks.map(a => deezerSearch(a, 4)));
+                                const seen = new Set();
+                                const tracks = [];
+                                for (const r of searches) {
+                                    if (r.status !== 'fulfilled') continue;
+                                    for (const t of (r.value.data || [])) {
+                                        if (seen.has(t.id)) continue;
+                                        seen.add(t.id);
+                                        tracks.push(mapTrack(t));
+                                    }
+                                }
+                                return { title: s.title, tracks };
+                            })
                         );
                         return json(res, results.filter(r => r.status === 'fulfilled').map(r => r.value).filter(s => s.tracks.length > 0));
                     } catch { return json(res, []); }
@@ -586,20 +666,30 @@ function startAPI(ctx, client) {
                     }
                 }
 
-                // GET /api/discover/popular-artists — Artists from Deezer charts
+                // GET /api/discover/popular-artists — Extract real music artists from track charts
                 if (method === 'GET' && urlPath === '/api/discover/popular-artists') {
                     try {
+                        // Get artists from the track charts (guaranteed real musicians, not audiobooks)
                         const data = await new Promise((resolve, reject) => {
-                            require('https').get('https://api.deezer.com/chart/0/artists?limit=8', { timeout: 8000 }, (res) => {
+                            require('https').get('https://api.deezer.com/chart/0/tracks?limit=25', { timeout: 8000 }, (res) => {
                                 let d = ''; res.on('data', c => d += c);
                                 res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse error')); } });
                             }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
                         });
-                        const artists = (data.data || []).map(a => ({
-                            id: String(a.id),
-                            name: a.name || '',
-                            image: a.picture_medium || a.picture || null,
-                        }));
+                        // Deduplicate artists from chart tracks
+                        const seen = new Set();
+                        const artists = [];
+                        for (const t of (data.data || [])) {
+                            const a = t.artist;
+                            if (!a || seen.has(a.id)) continue;
+                            seen.add(a.id);
+                            artists.push({
+                                id: String(a.id),
+                                name: a.name || '',
+                                image: a.picture_medium || a.picture || null,
+                            });
+                            if (artists.length >= 8) break;
+                        }
                         return json(res, artists);
                     } catch { return json(res, []); }
                 }
@@ -616,36 +706,53 @@ function startAPI(ctx, client) {
                 if (method === 'GET' && recsMatch) {
                     const guildId = recsMatch[1];
                     try {
-                        // Get top artists from history
-                        const topArtists = ctx.db.getTopArtistsFromHistory('guild', guildId, 30, 3);
+                        // Get top artists from listening history
+                        const topArtists = ctx.db.getTopArtistsFromHistory('guild', guildId, 30, 5);
                         if (topArtists.length === 0) return json(res, { forYou: [], becauseYouListened: null });
 
-                        // Search Spotify for seed artists
-                        const seedSearches = await Promise.all(
+                        // Find Deezer artist IDs for top 2 artists
+                        const https = require('https');
+                        const deezerGet = (url) => new Promise((resolve, reject) => {
+                            https.get(url, { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+
+                        const artistSearches = await Promise.allSettled(
                             topArtists.slice(0, 2).map(a =>
-                                ctx.spotifyFetch(`/search?q=${encodeURIComponent(a.artist)}&type=artist&limit=1`)
-                                    .then(d => d.artists?.items?.[0]?.id)
-                                    .catch(() => null)
+                                deezerGet(`https://api.deezer.com/search/artist?q=${encodeURIComponent(a.artist)}&limit=1`)
+                                    .then(d => ({ id: d.data?.[0]?.id, name: a.artist }))
                             )
                         );
-                        const seedArtistIds = seedSearches.filter(Boolean);
+                        const seedArtists = artistSearches.filter(r => r.status === 'fulfilled' && r.value.id).map(r => r.value);
 
-                        if (seedArtistIds.length === 0) return json(res, { forYou: [], becauseYouListened: null });
+                        if (seedArtists.length === 0) return json(res, { forYou: [], becauseYouListened: null });
 
-                        // Get recommendations from Spotify
-                        const recs = await ctx.spotifyFetch(
-                            `/recommendations?seed_artists=${seedArtistIds.join(',')}&limit=10&market=DE`
+                        // Get radio tracks (similar songs) from Deezer for each artist
+                        const radioResults = await Promise.allSettled(
+                            seedArtists.map(a => deezerGet(`https://api.deezer.com/artist/${a.id}/radio`))
                         );
-                        const forYou = (recs.tracks || []).map(t => {
-                            const searchQ = `${t.artists?.[0]?.name || ''} ${t.name}`;
-                            return {
-                                title: t.name,
-                                artist: t.artists?.map(a => a.name).join(', ') || '',
-                                thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
-                                duration: `${Math.floor((t.duration_ms || 0) / 60000)}:${String(Math.floor(((t.duration_ms || 0) % 60000) / 1000)).padStart(2, '0')}`,
-                                url: searchQ,
-                            };
-                        });
+
+                        const seen = new Set();
+                        const forYou = [];
+                        for (const r of radioResults) {
+                            if (r.status !== 'fulfilled') continue;
+                            for (const t of (r.value.data || [])) {
+                                if (seen.has(t.id)) continue;
+                                seen.add(t.id);
+                                forYou.push({
+                                    title: t.title || '',
+                                    artist: t.artist?.name || '',
+                                    artistImage: t.artist?.picture_medium || null,
+                                    thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                                    duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                                    url: `${t.artist?.name || ''} ${t.title || ''}`,
+                                });
+                                if (forYou.length >= 12) break;
+                            }
+                            if (forYou.length >= 12) break;
+                        }
 
                         return json(res, {
                             forYou,
@@ -823,6 +930,21 @@ function startAPI(ctx, client) {
                     return json(res, { ok: true });
                 }
 
+                // DELETE /api/guild/:id/queue — Clear entire queue
+                const clearMatch = urlPath.match(/^\/api\/guild\/(\d+)\/queue$/);
+                if (method === 'DELETE' && clearMatch) {
+                    const queue = ctx.queues.get(clearMatch[1]);
+                    if (queue) {
+                        queue.tracks = [];
+                        queue.current = null;
+                        if (queue.player) try { queue.player.stop(true); } catch {}
+                        for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
+                        queue.processes.clear();
+                    }
+                    broadcast('stateUpdate', getGuildState(clearMatch[1]));
+                    return json(res, { ok: true });
+                }
+
                 // DELETE /api/guild/:id/queue/:index
                 const removeMatch = urlPath.match(/^\/api\/guild\/(\d+)\/queue\/(\d+)$/);
                 if (method === 'DELETE' && removeMatch) {
@@ -908,7 +1030,7 @@ function startAPI(ctx, client) {
                 if (method === 'POST' && playlistsListMatch) {
                     const guildId = playlistsListMatch[1];
                     const { name } = await parseBody(req);
-                    if (!name || name.length > 50) return json(res, { error: 'Name ungueltig (1-50 Zeichen)' }, 400);
+                    if (!name || name.length > 50) return json(res, { error: 'Name ungültig (1-50 Zeichen)' }, 400);
 
                     const queue = ctx.queues.get(guildId);
                     const tracks = [];
@@ -1068,9 +1190,9 @@ function startAPI(ctx, client) {
                     const { from, to } = await parseBody(req);
                     const queue = ctx.queues.get(guildId);
                     if (!queue) return json(res, { error: 'Keine Queue' }, 400);
-                    if (typeof from !== 'number' || typeof to !== 'number') return json(res, { error: 'from und to muessen Zahlen sein' }, 400);
+                    if (typeof from !== 'number' || typeof to !== 'number') return json(res, { error: 'from und to müssen Zahlen sein' }, 400);
                     if (from < 0 || from >= queue.tracks.length || to < 0 || to >= queue.tracks.length) {
-                        return json(res, { error: 'Index ausserhalb der Queue' }, 400);
+                        return json(res, { error: 'Index außerhalb der Queue' }, 400);
                     }
                     const [moved] = queue.tracks.splice(from, 1);
                     queue.tracks.splice(to, 0, moved);

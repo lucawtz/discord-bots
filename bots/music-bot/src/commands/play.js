@@ -97,14 +97,13 @@ module.exports = {
 
             if (!queue.current) {
                 ctx.playNext(interaction.guild.id);
-            }
-
-            const embed = new EmbedBuilder()
-                .setThumbnail(track.thumbnail)
-                .setDescription(`[${track.title}](${track.url})`);
-
-            if (wasPlaying) {
-                embed.setAuthor({ name: 'Zur Warteschlange hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                // Now Playing Embed wird automatisch von playNext gesendet
+                ctx.autoDelete(interaction.editReply({ content: `-# ▶️ **${track.title}** wird abgespielt` }), ctx.DELETE_SHORT_MS);
+            } else {
+                const embed = new EmbedBuilder()
+                    .setAuthor({ name: 'Zur Warteschlange hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setThumbnail(track.albumArt || track.thumbnail || null)
+                    .setDescription(`[${track.title}](${track.url})`)
                     .addFields(
                         { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
                         { name: 'Position', value: `\`#${queue.tracks.length}\``, inline: true },
@@ -112,16 +111,9 @@ module.exports = {
                     )
                     .setColor(0x6E41CC)
                     .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
-            } else {
-                embed.setAuthor({ name: 'Spielt jetzt', iconURL: interaction.client.user.displayAvatarURL() })
-                    .addFields(
-                        { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
-                        { name: 'Angefragt von', value: track.requestedBy, inline: true },
-                    )
-                    .setColor(0x6E41CC);
-            }
 
-            ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
+                ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
+            }
         } catch (error) {
             console.error('Play error:', error.message);
             if (queue.connection && !queue.current) {

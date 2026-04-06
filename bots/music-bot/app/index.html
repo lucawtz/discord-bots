@@ -3,7 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Discord Music Bot</title>
+    <link rel="icon" id="favicon" href="/favicon.png" />
+    <script>
+      (function(){
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function(){
+          var c = document.createElement('canvas');
+          c.width = 64; c.height = 64;
+          var ctx = c.getContext('2d');
+          ctx.beginPath(); ctx.arc(32,32,32,0,Math.PI*2); ctx.closePath(); ctx.clip();
+          ctx.drawImage(img,0,0,64,64);
+          document.getElementById('favicon').href = c.toDataURL('image/png');
+        };
+        img.src = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=64';
+      })();
+    </script>
+    <title>BeatByte</title>
   </head>
   <body>
     <div id="root"></div>

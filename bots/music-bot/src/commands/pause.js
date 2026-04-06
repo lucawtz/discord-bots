@@ -13,11 +13,15 @@ module.exports = {
         if (!requirePlaying(interaction, queue)) return;
 
         if (queue.player.state.status === AudioPlayerStatus.Paused) {
+            queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
             queue.player.unpause();
-            ctx.autoDelete(interaction.reply({ content: 'Resumed.', fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.updateNowPlayingMsg(queue);
+            ctx.autoDelete(interaction.reply({ content: `-# ▶️ Fortgesetzt`, fetchReply: true }), ctx.DELETE_SHORT_MS);
         } else {
+            queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
             queue.player.pause();
-            ctx.autoDelete(interaction.reply({ content: 'Paused.', fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.updateNowPlayingMsg(queue);
+            ctx.autoDelete(interaction.reply({ content: `-# ⏸️ Pausiert`, fetchReply: true }), ctx.DELETE_SHORT_MS);
         }
     },
 };

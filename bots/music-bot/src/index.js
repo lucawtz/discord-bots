@@ -1401,12 +1401,12 @@ async function joinChannel(guildId, channelId) {
 }
 
 // ── Player-Buttons erstellen (2 Reihen) ─────────────────────────
-function createPlayerButtons(loopMode) {
-    const loopEmoji = loopMode === 'song' ? '🔂' : loopMode === 'queue' ? '🔁' : '🔁';
+function createPlayerButtons(loopMode, isPaused = false) {
+    const loopEmoji = loopMode === 'song' ? '🔂' : '🔁';
     const loopStyle = loopMode !== 'off' ? ButtonStyle.Primary : ButtonStyle.Secondary;
 
     const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('music_pause').setEmoji('⏯️').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('music_pause').setEmoji(isPaused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('music_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('music_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger),
     );
@@ -1421,6 +1421,7 @@ function createPlayerButtons(loopMode) {
 // ── Now Playing Embed bauen ──────────────────────────────────────
 function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
     const botUser = clientOrInteraction.user || clientOrInteraction;
+    const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
 
     const descLines = [];
     descLines.push(`### ${track.title}`);
@@ -1428,13 +1429,9 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
     descLines.push('');
 
     // Progress bar
-    if (typeof elapsed === 'number') {
-        const total = parseDuration(track.duration);
-        descLines.push(createProgressBar(elapsed, total));
-    } else {
-        const total = parseDuration(track.duration);
-        descLines.push(createProgressBar(0, total));
-    }
+    const elapsedSec = typeof elapsed === 'number' ? elapsed : 0;
+    const total = parseDuration(track.duration);
+    descLines.push(createProgressBar(elapsedSec, total));
 
     // Status als kleine Zeile
     const status = [];
@@ -1452,12 +1449,22 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
     }
 
     const embed = new EmbedBuilder()
-        .setAuthor({ name: 'Now playing', iconURL: botUser.displayAvatarURL() })
+        .setAuthor({ name: isPaused ? '⏸ Paused' : 'Now playing', iconURL: botUser.displayAvatarURL() })
         .setDescription(descLines.join('\n'))
         .setThumbnail(track.albumArt || track.thumbnail || null)
-        .setColor(0x6E41CC);
+        .setColor(isPaused ? 0x95a5a6 : 0x6E41CC);
 
     return embed;
+}
+
+// ── Now Playing Nachricht aktualisieren ──────────────────────────
+function updateNowPlayingMsg(queue) {
+    if (!queue._nowPlayingMsg || !queue.current) return Promise.resolve();
+    const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
+    const elapsed = getElapsed(queue);
+    const rows = createPlayerButtons(queue.loopMode, isPaused);
+    const embed = buildNowPlayingEmbed(queue.current, queue, client, elapsed);
+    return queue._nowPlayingMsg.edit({ embeds: [embed], components: rows }).catch(() => {});
 }
 
 // ── Wiedergabe ────────────────────────────────────────────────────
@@ -1593,7 +1600,7 @@ async function playNext(guildId) {
 
         // "Now Playing"-Nachricht mit Buttons senden
         if (queue.channel) {
-            const rows = createPlayerButtons(queue.loopMode);
+            const rows = createPlayerButtons(queue.loopMode, false);
             const npEmbed = buildNowPlayingEmbed(track, queue, client);
 
             queue.channel.send({ embeds: [npEmbed], components: rows })
@@ -1635,7 +1642,7 @@ const ctx = {
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-    parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed,
+    parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, updateNowPlayingMsg,
 };
 
 // ── API Broadcast & Access Codes (wird nach API-Start gesetzt) ──
@@ -1663,22 +1670,23 @@ async function handleButton(interaction) {
             if (queue.player.state.status === AudioPlayerStatus.Paused) {
                 queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
                 queue.player.unpause();
-                await interaction.reply({ content: 'Resumed.', ephemeral: true });
             } else {
                 queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
                 queue.player.pause();
-                await interaction.reply({ content: 'Paused.', ephemeral: true });
             }
+            await interaction.deferUpdate();
+            updateNowPlayingMsg(queue);
             break;
 
         case 'music_skip':
+            await interaction.deferUpdate();
             for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
             queue.processes.clear();
             queue.player.stop();
-            await interaction.reply({ content: `Skipped **${queue.current.title}**.`, ephemeral: true });
             break;
 
         case 'music_stop':
+            await interaction.deferUpdate();
             for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
             queue.processes.clear();
             queue.tracks = [];
@@ -1688,7 +1696,6 @@ async function handleButton(interaction) {
             if (queue._nowPlayingMsg) { queue._nowPlayingMsg.delete().catch(() => {}); queue._nowPlayingMsg = null; }
             if (queue.player) queue.player.stop(true);
             scheduleLeave(interaction.guildId);
-            await interaction.reply({ content: 'Stopped.', ephemeral: true });
             break;
 
         case 'music_shuffle':
@@ -1699,21 +1706,16 @@ async function handleButton(interaction) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
             }
-            await interaction.reply({ content: `Shuffled **${queue.tracks.length} songs**.`, ephemeral: true });
+            await interaction.deferUpdate();
+            updateNowPlayingMsg(queue);
             break;
 
         case 'music_loop': {
             const modes = ['off', 'song', 'queue'];
-            const labels = { off: 'Loop disabled.', song: 'Looping current song.', queue: 'Looping queue.' };
             const idx = (modes.indexOf(queue.loopMode) + 1) % modes.length;
             queue.loopMode = modes[idx];
-            await interaction.reply({ content: labels[queue.loopMode], ephemeral: true });
-            // Embed + Buttons auf Now Playing aktualisieren
-            if (queue._nowPlayingMsg && queue.current) {
-                const rows = createPlayerButtons(queue.loopMode);
-                const embed = buildNowPlayingEmbed(queue.current, queue, client);
-                queue._nowPlayingMsg.edit({ embeds: [embed], components: rows }).catch(() => {});
-            }
+            await interaction.deferUpdate();
+            updateNowPlayingMsg(queue);
             break;
         }
     }
@@ -1765,13 +1767,17 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     const members = channel.members.filter(m => !m.user.bot).size;
 
     if (members === 0 && queue.player.state.status === AudioPlayerStatus.Playing) {
+        if (queue._playbackStart) {
+            queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
+        }
         queue.player.pause();
         queue._autoPaused = true;
-        autoDelete(queue.channel?.send('⏸️ Pausiert — niemand im Channel.'), DELETE_SHORT_MS);
+        updateNowPlayingMsg(queue);
     } else if (members > 0 && queue._autoPaused) {
+        queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
         queue.player.unpause();
         queue._autoPaused = false;
-        autoDelete(queue.channel?.send('▶️ Fortgesetzt — willkommen zurück!'), DELETE_SHORT_MS);
+        updateNowPlayingMsg(queue);
     }
 });
 

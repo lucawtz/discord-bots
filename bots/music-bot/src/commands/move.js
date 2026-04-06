@@ -36,7 +36,7 @@ module.exports = {
         queue.tracks.splice(to - 1, 0, track);
 
         ctx.autoDelete(interaction.reply({
-            content: `Moved **${track.title}** from position ${from} to ${to}.`,
+            content: `-# ↕️ **${track.title}** von Position ${from} nach ${to} verschoben`,
             fetchReply: true,
         }), ctx.DELETE_SHORT_MS);
     },

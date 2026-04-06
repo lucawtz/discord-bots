@@ -170,7 +170,7 @@ module.exports = {
             }
 
             ctx.db.deletePlaylist(playlist.id, interaction.user.id);
-            ctx.autoDelete(interaction.reply({ content: `🗑️ Playlist **${name}** geloescht.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.autoDelete(interaction.reply({ content: `-# 🗑️ Playlist **${name}** geloescht`, fetchReply: true }), ctx.DELETE_SHORT_MS);
         }
 
         else if (sub === 'import') {

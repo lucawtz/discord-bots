@@ -16,13 +16,13 @@ module.exports = {
         if (role) {
             ctx.db.setGuildSetting(interaction.guildId, 'dj_role_id', role.id);
             ctx.autoDelete(
-                interaction.reply({ content: `DJ-Rolle auf **${role.name}** gesetzt.`, fetchReply: true }),
+                interaction.reply({ content: `-# 🎧 DJ-Rolle auf **${role.name}** gesetzt`, fetchReply: true }),
                 ctx.DELETE_SHORT_MS
             );
         } else {
             ctx.db.setGuildSetting(interaction.guildId, 'dj_role_id', null);
             ctx.autoDelete(
-                interaction.reply({ content: 'DJ-Rolle entfernt. Nur Admins, Moderatoren und der Song-Requester koennen jetzt direkt skippen.', fetchReply: true }),
+                interaction.reply({ content: `-# 🎧 DJ-Rolle entfernt`, fetchReply: true }),
                 ctx.DELETE_SHORT_MS
             );
         }

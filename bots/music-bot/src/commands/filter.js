@@ -40,7 +40,8 @@ module.exports = {
         queue._playbackStart = Date.now();
         queue._seekOffset = elapsed;
 
-        const labels = { off: 'Filter disabled.', bassboost: 'Bassboost enabled.', nightcore: 'Nightcore enabled.', slowed: 'Slowed enabled.' };
+        ctx.updateNowPlayingMsg(queue);
+        const labels = { off: '-# 🎛️ Filter deaktiviert', bassboost: '-# 🎛️ Bassboost aktiviert', nightcore: '-# 🎛️ Nightcore aktiviert', slowed: '-# 🎛️ Slowed aktiviert' };
         ctx.autoDelete(interaction.reply({ content: labels[filter], fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

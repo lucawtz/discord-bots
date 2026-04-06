@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { AudioPlayerStatus } = require('@discordjs/voice');
 const { requirePlaying } = require('../utils/checks');
 
 module.exports = {
@@ -12,8 +13,10 @@ module.exports = {
         if (!requirePlaying(interaction, queue)) return;
 
         const elapsed = ctx.getElapsed(queue);
+        const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
         const embed = ctx.buildNowPlayingEmbed(queue.current, queue, interaction.client, elapsed);
+        const rows = ctx.createPlayerButtons(queue.loopMode, isPaused);
 
-        ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }));
+        ctx.autoDelete(interaction.reply({ embeds: [embed], components: rows, fetchReply: true }));
     },
 };

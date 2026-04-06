@@ -228,11 +228,13 @@ function getPlaylist(id) {
 
 function getPlaylists(guildId, userId) {
   const sql = userId
-    ? `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count
+    ? `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count,
+       (SELECT pt2.thumbnail FROM playlist_tracks pt2 WHERE pt2.playlist_id = p.id AND pt2.thumbnail IS NOT NULL ORDER BY pt2.position LIMIT 1) as cover
        FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
        WHERE p.guild_id = :guildId AND (p.user_id = :userId OR p.user_id = 'dashboard')
        GROUP BY p.id ORDER BY p.created_at DESC`
-    : `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count
+    : `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count,
+       (SELECT pt2.thumbnail FROM playlist_tracks pt2 WHERE pt2.playlist_id = p.id AND pt2.thumbnail IS NOT NULL ORDER BY pt2.position LIMIT 1) as cover
        FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
        WHERE p.guild_id = :guildId
        GROUP BY p.id ORDER BY p.created_at DESC`;

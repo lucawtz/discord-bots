@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const { requireVoiceChannel, killQueueProcesses } = require('../utils/checks');
 
 module.exports = {
@@ -32,20 +32,10 @@ module.exports = {
             killQueueProcesses(queue);
             queue.current = null;
 
-            // Sofort abspielen
+            // Sofort abspielen — Now Playing Embed kommt von playNext
             ctx.playNext(interaction.guild.id);
 
-            const embed = new EmbedBuilder()
-                .setAuthor({ name: 'Warteschlange uebersprungen — Spielt jetzt', iconURL: interaction.client.user.displayAvatarURL() })
-                .setDescription(`[${track.title}](${track.url})`)
-                .setThumbnail(track.thumbnail)
-                .addFields(
-                    { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
-                    { name: 'Angefragt von', value: track.requestedBy, inline: true },
-                )
-                .setColor(0x6E41CC);
-
-            ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
+            ctx.autoDelete(interaction.editReply({ content: `-# ⏭️ **${track.title}** wird abgespielt` }), ctx.DELETE_SHORT_MS);
         } catch (error) {
             console.error('PlayNow error:', error.message);
             if (queue.connection && !queue.current) {
