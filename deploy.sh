@@ -18,7 +18,9 @@ if [ ! -d "$REPO_DIR" ]; then
 else
     echo ">> Pullen..."
     cd "$REPO_DIR"
+    git stash --include-untracked
     git pull
+    git stash pop || true
 fi
 
 # ── 2. Dependencies installieren ─────────────────────────────
