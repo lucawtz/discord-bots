@@ -42,9 +42,13 @@ npm install --production
 
 echo ">> Website: npm install..."
 cd "$REPO_DIR/website"
-npm install --production
+npm install
 
-# ── 3. Music Web App bauen ───────────────────────────────────
+# ── 3. Frontend Apps bauen ───────────────────────────────────
+echo ">> Website: build..."
+cd "$REPO_DIR/website"
+node node_modules/vite/bin/vite.js build
+
 echo ">> Music App: npm install + build..."
 cd "$REPO_DIR/bots/music-bot/app"
 npm install
