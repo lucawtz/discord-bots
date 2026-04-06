@@ -7,6 +7,7 @@ on:
 jobs:
   lint-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -21,14 +22,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Syntax check music-bot
-        run: node --check bots/music-bot/src/index.js
-
-      - name: Syntax check soundboard-bot
-        run: node --check bots/soundboard-bot/src/index.js
-
-      - name: Syntax check dashboard
-        run: node --check dashboard/server.js
+      - name: Syntax check all JS files
+        run: |
+          echo ">> Music Bot"
+          find bots/music-bot/src -name "*.js" -exec node --check {} +
+          echo ">> Soundboard Bot"
+          find bots/soundboard-bot/src -name "*.js" -exec node --check {} +
+          echo ">> Dashboard"
+          node --check dashboard/server.js
 
       - name: Build music-bot webapp
         run: pnpm --filter discord-music-bot-app build
