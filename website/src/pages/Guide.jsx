@@ -2,106 +2,11 @@ import { useState } from 'react';
 import {
     Box, Typography, Container, Stack, Chip, List, ListItemButton,
     ListItemText, ListItemIcon, Drawer, IconButton, useMediaQuery, useTheme,
+    Avatar,
 } from '@mui/material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
-import DownloadIcon from '@mui/icons-material/Download';
-import SettingsIcon from '@mui/icons-material/Settings';
-import MusicNoteIcon from '@mui/icons-material/MusicNote';
-import GraphicEqIcon from '@mui/icons-material/GraphicEq';
-import HelpIcon from '@mui/icons-material/Help';
 import MenuIcon from '@mui/icons-material/Menu';
-
-const sections = [
-    {
-        id: 'getting-started',
-        label: 'Getting Started',
-        icon: <MenuBookIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Getting Started',
-            body: [
-                { type: 'text', value: 'Willkommen bei ByteBots! Hier erfaehrst du, wie du unsere Bots auf deinem Discord Server einrichtest.' },
-                { type: 'heading', value: '1. Bot einladen' },
-                { type: 'text', value: 'Klicke auf "Add to Server" auf der jeweiligen Bot-Seite. Du wirst zu Discord weitergeleitet, wo du den Server auswaehlen kannst.' },
-                { type: 'heading', value: '2. Berechtigungen' },
-                { type: 'text', value: 'Der Bot benoetigt Berechtigungen fuer Voice Channels (Verbinden, Sprechen) und Text Channels (Nachrichten senden, Slash Commands). Diese werden automatisch angefragt.' },
-                { type: 'heading', value: '3. Loslegen' },
-                { type: 'text', value: 'Nach dem Einladen kannst du sofort Slash Commands nutzen. Tippe / in einen Text Channel um alle verfuegbaren Commands zu sehen.' },
-            ],
-        },
-    },
-    {
-        id: 'setup',
-        label: 'Setup & Config',
-        icon: <SettingsIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Setup & Konfiguration',
-            body: [
-                { type: 'heading', value: 'DJ-Rolle (BeatByte)' },
-                { type: 'text', value: 'Erstelle eine Rolle namens "DJ" auf deinem Server. User mit dieser Rolle koennen Songs direkt skippen, ohne Vote-Skip.' },
-                { type: 'heading', value: 'Web Player Zugang' },
-                { type: 'text', value: 'Nutze /app in Discord um einen Zugangscode fuer den Web Player zu erhalten. Der Code ist 7 Tage gueltig.' },
-                { type: 'heading', value: 'Soundboard Dashboard' },
-                { type: 'text', value: 'Nutze /dashboard um einen Link zum Web-Dashboard zu erhalten. Dort kannst du Sounds hochladen, organisieren und verwalten.' },
-            ],
-        },
-    },
-    {
-        id: 'music-commands',
-        label: 'Music Commands',
-        icon: <MusicNoteIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'BeatByte Commands',
-            body: [
-                { type: 'text', value: 'BeatByte bietet 16 Slash Commands fuer volle Musiksteuerung:' },
-                { type: 'command', name: '/play <query>', desc: 'Song oder Playlist abspielen. Unterstuetzt YouTube-URLs und Suchbegriffe.' },
-                { type: 'command', name: '/playnow <query>', desc: 'Sofort abspielen, Queue ueberspringen.' },
-                { type: 'command', name: '/skip', desc: 'Aktuellen Song ueberspringen (Vote-Skip oder DJ-Rolle).' },
-                { type: 'command', name: '/pause', desc: 'Wiedergabe pausieren oder fortsetzen.' },
-                { type: 'command', name: '/stop', desc: 'Stoppen und Queue leeren.' },
-                { type: 'command', name: '/queue', desc: 'Aktuelle Warteschlange anzeigen.' },
-                { type: 'command', name: '/shuffle', desc: 'Queue zufaellig mischen.' },
-                { type: 'command', name: '/loop [modus]', desc: 'Loop-Modus setzen: off, song oder queue.' },
-                { type: 'command', name: '/volume [%]', desc: 'Lautstaerke aendern (0-200%).' },
-                { type: 'command', name: '/seek <zeit>', desc: 'Zu Position springen (z.B. 1:30).' },
-                { type: 'command', name: '/app', desc: 'Web Player mit Zugangscode oeffnen.' },
-            ],
-        },
-    },
-    {
-        id: 'soundboard-commands',
-        label: 'Soundboard Commands',
-        icon: <GraphicEqIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Soundboard Commands',
-            body: [
-                { type: 'text', value: 'Der Soundboard Bot hat 5 Commands:' },
-                { type: 'command', name: '/sound <name>', desc: 'Sound suchen und abspielen. Autocomplete fuer Soundnamen.' },
-                { type: 'command', name: '/favorite <name>', desc: 'Sound als Favorit markieren oder entfernen.' },
-                { type: 'command', name: '/soundboard', desc: 'Interaktives Panel mit Buttons und Menues oeffnen.' },
-                { type: 'command', name: '/dashboard', desc: 'Web-Dashboard zum Verwalten und Hochladen.' },
-                { type: 'command', name: '/volume <prozent>', desc: 'Persoenliche Lautstaerke setzen (0-200%).' },
-            ],
-        },
-    },
-    {
-        id: 'troubleshooting',
-        label: 'Troubleshooting',
-        icon: <HelpIcon sx={{ fontSize: 18 }} />,
-        content: {
-            title: 'Troubleshooting',
-            body: [
-                { type: 'heading', value: 'Bot reagiert nicht' },
-                { type: 'text', value: 'Stelle sicher, dass der Bot die noetigen Berechtigungen hat und online ist. Pruefe ob Slash Commands fuer den Channel aktiviert sind.' },
-                { type: 'heading', value: 'Kein Sound' },
-                { type: 'text', value: 'Der Bot muss Berechtigungen zum Verbinden und Sprechen im Voice Channel haben. Pruefe auch ob der Bot nicht stumm geschaltet ist.' },
-                { type: 'heading', value: 'Web Player verbindet nicht' },
-                { type: 'text', value: 'Stelle sicher, dass der Zugangscode aktuell ist (max. 7 Tage). Nutze /app fuer einen neuen Code.' },
-                { type: 'heading', value: 'Sound Upload schlaegt fehl' },
-                { type: 'text', value: 'Erlaubte Formate: MP3, WAV, OGG, WebM. Maximale Dateigroesse: 5 MB.' },
-            ],
-        },
-    },
-];
+import { useLanguage } from '../i18n/LanguageContext';
 
 function ContentRenderer({ items }) {
     return (
@@ -109,6 +14,17 @@ function ContentRenderer({ items }) {
             {items.map((item, i) => {
                 if (item.type === 'heading') {
                     return <Typography key={i} variant="h6" sx={{ fontSize: '1.05rem', fontWeight: 600, mt: i > 0 ? 2 : 0 }}>{item.value}</Typography>;
+                }
+                if (item.type === 'section') {
+                    return (
+                        <Typography key={i} variant="overline" sx={{
+                            color: '#a855f7', letterSpacing: 3, fontSize: '0.65rem',
+                            mt: i > 0 ? 4 : 1, display: 'block', pb: 1,
+                            borderBottom: '1px solid rgba(168,85,247,0.1)',
+                        }}>
+                            {item.value}
+                        </Typography>
+                    );
                 }
                 if (item.type === 'command') {
                     return (
@@ -119,7 +35,7 @@ function ContentRenderer({ items }) {
                         }}>
                             <Typography sx={{
                                 fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem',
-                                fontWeight: 600, color: 'primary.light', whiteSpace: 'nowrap', minWidth: 180,
+                                fontWeight: 600, color: 'primary.light', whiteSpace: 'nowrap', minWidth: 200,
                             }}>
                                 {item.name}
                             </Typography>
@@ -133,32 +49,135 @@ function ContentRenderer({ items }) {
     );
 }
 
+const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=64';
+const EARTASTIC_AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=64';
+
 export default function Guide() {
+    const { t } = useLanguage();
     const [activeSection, setActiveSection] = useState('getting-started');
     const [mobileOpen, setMobileOpen] = useState(false);
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-    const current = sections.find(s => s.id === activeSection);
+    const navItems = [
+        {
+            id: 'getting-started',
+            label: t('guide.gettingStarted'),
+            icon: <MenuBookIcon sx={{ fontSize: 18 }} />,
+        },
+        {
+            id: 'beatbyte',
+            label: 'BeatByte',
+            icon: <Avatar src={BEATBYTE_AVATAR} sx={{ width: 22, height: 22, borderRadius: 1 }} />,
+        },
+        {
+            id: 'eartastic',
+            label: 'EarTastic',
+            icon: <Avatar src={EARTASTIC_AVATAR} sx={{ width: 22, height: 22, borderRadius: 1 }} />,
+        },
+    ];
+
+    const sections = {
+        'getting-started': {
+            title: t('guide.gettingStartedTitle'),
+            body: [
+                { type: 'text', value: t('guide.gettingStartedIntro') },
+                { type: 'heading', value: t('guide.inviteBot') },
+                { type: 'text', value: t('guide.inviteBotText') },
+                { type: 'heading', value: t('guide.permissions') },
+                { type: 'text', value: t('guide.permissionsText') },
+                { type: 'heading', value: t('guide.getStarted') },
+                { type: 'text', value: t('guide.getStartedText') },
+
+                { type: 'section', value: 'TROUBLESHOOTING' },
+                { type: 'heading', value: t('guide.botNotResponding') },
+                { type: 'text', value: t('guide.botNotRespondingText') },
+                { type: 'heading', value: t('guide.noSound') },
+                { type: 'text', value: t('guide.noSoundText') },
+                { type: 'heading', value: t('guide.webPlayerNotConnecting') },
+                { type: 'text', value: t('guide.webPlayerNotConnectingText') },
+                { type: 'heading', value: t('guide.uploadFails') },
+                { type: 'text', value: t('guide.uploadFailsText') },
+            ],
+        },
+        'beatbyte': {
+            title: 'BeatByte',
+            body: [
+                { type: 'section', value: 'SETUP' },
+                { type: 'heading', value: t('guide.djRole') },
+                { type: 'text', value: t('guide.djRoleText') },
+                { type: 'heading', value: t('guide.webPlayerAccess') },
+                { type: 'text', value: t('guide.webPlayerAccessText') },
+                { type: 'heading', value: t('guide.autoDjHeading') },
+                { type: 'text', value: t('guide.autoDjText') },
+                { type: 'heading', value: t('guide.filtersHeading') },
+                { type: 'text', value: t('guide.filtersText') },
+
+                { type: 'section', value: 'COMMANDS' },
+                { type: 'command', name: '/play <query>', desc: t('commands.beatbyte.play') },
+                { type: 'command', name: '/playnow <query>', desc: t('commands.beatbyte.playnow') },
+                { type: 'command', name: '/skip', desc: t('commands.beatbyte.skip') },
+                { type: 'command', name: '/pause', desc: t('commands.beatbyte.pause') },
+                { type: 'command', name: '/stop', desc: t('commands.beatbyte.stop') },
+                { type: 'command', name: '/queue', desc: t('commands.beatbyte.queue') },
+                { type: 'command', name: '/nowplaying', desc: t('commands.beatbyte.nowplaying') },
+                { type: 'command', name: '/clear', desc: t('commands.beatbyte.clear') },
+                { type: 'command', name: '/remove <pos>', desc: t('commands.beatbyte.remove') },
+                { type: 'command', name: '/shuffle', desc: t('commands.beatbyte.shuffle') },
+                { type: 'command', name: '/loop [modus]', desc: t('commands.beatbyte.loop') },
+                { type: 'command', name: '/seek <zeit>', desc: t('commands.beatbyte.seek') },
+                { type: 'command', name: '/volume [%]', desc: t('commands.beatbyte.volume') },
+                { type: 'command', name: '/join', desc: t('commands.beatbyte.join') },
+                { type: 'command', name: '/lyrics [query]', desc: t('commands.beatbyte.lyrics') },
+                { type: 'command', name: '/app', desc: t('commands.beatbyte.app') },
+                { type: 'command', name: '/autodj', desc: t('commands.beatbyte.autodj') },
+                { type: 'command', name: '/disconnect', desc: t('commands.beatbyte.disconnect') },
+                { type: 'command', name: '/filter <filter>', desc: t('commands.beatbyte.filter') },
+                { type: 'command', name: '/move <von> <nach>', desc: t('commands.beatbyte.move') },
+                { type: 'command', name: '/playlist <action>', desc: t('commands.beatbyte.playlist') },
+                { type: 'command', name: '/replay', desc: t('commands.beatbyte.replay') },
+                { type: 'command', name: '/setrole [rolle]', desc: t('commands.beatbyte.setrole') },
+            ],
+        },
+        'eartastic': {
+            title: 'EarTastic',
+            body: [
+                { type: 'section', value: 'SETUP' },
+                { type: 'heading', value: t('guide.soundboardDashboard') },
+                { type: 'text', value: t('guide.soundboardDashboardText') },
+                { type: 'heading', value: t('guide.soundUploadHeading') },
+                { type: 'text', value: t('guide.soundUploadText') },
+
+                { type: 'section', value: 'COMMANDS' },
+                { type: 'command', name: '/sound <name>', desc: t('commands.eartastic.sound') },
+                { type: 'command', name: '/favorite <name>', desc: t('commands.eartastic.favorite') },
+                { type: 'command', name: '/soundboard', desc: t('commands.eartastic.soundboard') },
+                { type: 'command', name: '/dashboard', desc: t('commands.eartastic.dashboard') },
+                { type: 'command', name: '/volume <prozent>', desc: t('commands.eartastic.volume') },
+            ],
+        },
+    };
+
+    const current = sections[activeSection];
 
     const sidebar = (
-        <Box sx={{ width: 240, p: 2 }}>
-            <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 2, px: 2, mb: 1, display: 'block' }}>
-                Documentation
+        <Box sx={{ width: 220, p: 2 }}>
+            <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 2, px: 2, mb: 1, display: 'block', fontSize: '0.65rem' }}>
+                {t('footer.documentation')}
             </Typography>
             <List disablePadding>
-                {sections.map((s) => (
+                {navItems.map((s) => (
                     <ListItemButton
                         key={s.id}
                         selected={activeSection === s.id}
                         onClick={() => { setActiveSection(s.id); setMobileOpen(false); }}
                         sx={{
-                            borderRadius: 2, mb: 0.5, py: 1,
+                            borderRadius: 2, mb: 0.25, py: 0.8,
                             '&.Mui-selected': { bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' },
                             '&:hover': { bgcolor: 'rgba(168,85,247,0.06)' },
                         }}
                     >
-                        <ListItemIcon sx={{ minWidth: 36, color: activeSection === s.id ? 'primary.light' : 'text.disabled' }}>
+                        <ListItemIcon sx={{ minWidth: 34, color: activeSection === s.id ? 'primary.light' : 'text.disabled' }}>
                             {s.icon}
                         </ListItemIcon>
                         <ListItemText primary={s.label} primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: activeSection === s.id ? 600 : 400 }} />
@@ -172,7 +191,6 @@ export default function Guide() {
         <Box sx={{ pt: 10, pb: 10, px: 3 }}>
             <Container maxWidth="lg">
                 <Stack direction="row" spacing={4}>
-                    {/* Desktop Sidebar */}
                     {!isMobile && (
                         <Box sx={{
                             position: 'sticky', top: 80, height: 'fit-content',
@@ -182,13 +200,14 @@ export default function Guide() {
                         </Box>
                     )}
 
-                    {/* Mobile menu button */}
                     {isMobile && (
                         <IconButton onClick={() => setMobileOpen(true)}
-                            sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 100,
+                            sx={{
+                                position: 'fixed', bottom: 24, right: 24, zIndex: 100,
                                 bgcolor: '#a855f7', color: '#fff', width: 48, height: 48,
                                 boxShadow: '0 8px 24px rgba(168,85,247,0.4)',
-                                '&:hover': { bgcolor: '#6b4fe0' } }}>
+                                '&:hover': { bgcolor: '#6b4fe0' },
+                            }}>
                             <MenuIcon />
                         </IconButton>
                     )}
@@ -198,13 +217,12 @@ export default function Guide() {
                         {sidebar}
                     </Drawer>
 
-                    {/* Content */}
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Chip label="Guide" size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
                         <Typography variant="h3" sx={{ mb: 4, fontSize: { xs: '1.75rem', md: '2.25rem' } }}>
-                            {current?.content.title}
+                            {current?.title}
                         </Typography>
-                        {current && <ContentRenderer items={current.content.body} />}
+                        {current && <ContentRenderer items={current.body} />}
                     </Box>
                 </Stack>
             </Container>

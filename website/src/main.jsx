@@ -5,14 +5,17 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { BrowserRouter } from 'react-router-dom';
 import theme from './theme';
 import App from './App';
+import { LanguageProvider } from './i18n/LanguageContext';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <BrowserRouter>
-                <App />
-            </BrowserRouter>
+            <LanguageProvider>
+                <BrowserRouter>
+                    <App />
+                </BrowserRouter>
+            </LanguageProvider>
         </ThemeProvider>
     </React.StrictMode>
 );

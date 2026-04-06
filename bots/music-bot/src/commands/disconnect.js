@@ -14,6 +14,6 @@ module.exports = {
 
         ctx.destroyQueue(interaction.guildId);
 
-        ctx.autoDelete(interaction.reply({ content: 'Disconnected.', fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `-# 👋 Disconnected`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

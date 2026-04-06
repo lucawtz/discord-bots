@@ -1,6 +1,22 @@
 import { Box, Typography, Container } from "@mui/material";
+import { useLanguage } from '../i18n/LanguageContext';
 
 export default function Datenschutz() {
+  const { t } = useLanguage();
+
+  const s3Items = t('datenschutz.s3Items');
+  const s7Items = t('datenschutz.s7Items');
+
+  const renderWithLineBreaks = (text) => {
+    if (typeof text !== 'string') return text;
+    return text.split('\n').map((line, i, arr) => (
+      <span key={i}>
+        {line}
+        {i < arr.length - 1 && <br />}
+      </span>
+    ));
+  };
+
   return (
     <Box sx={{ py: 10, px: 3 }}>
       <Container maxWidth="sm">
@@ -12,55 +28,43 @@ export default function Datenschutz() {
             fontSize: { xs: "1.75rem", md: "2.25rem" },
           }}
         >
-          Datenschutzerklaerung
+          {t('datenschutz.title')}
         </Typography>
 
         {/* 1. Verantwortlicher */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          1. Verantwortlicher
+          {t('datenschutz.s1Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 3, lineHeight: 2 }}
         >
-          Luca Wirtz
-          <br />
-          Schönecker Straße 14
-          <br />
-          54570 Mürlenbach
-          <br />
-          E-Mail: kontakt@bytebots.de
+          {renderWithLineBreaks(t('datenschutz.s1Text'))}
         </Typography>
 
         {/* 2. Allgemeines */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          2. Allgemeines zur Datenverarbeitung
+          {t('datenschutz.s2Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 3, lineHeight: 1.8 }}
         >
-          Der Schutz deiner persoenlichen Daten ist mir wichtig. Diese
-          Datenschutzerklaerung informiert dich darueber, welche Daten bei der
-          Nutzung dieser Website erhoben werden und wie diese verwendet werden.
-          Diese Website setzt keine Cookies und verwendet keine Tracking- oder
-          Analyse-Tools.
+          {t('datenschutz.s2Text')}
         </Typography>
 
         {/* 3. Server-Logs */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          3. Server-Log-Dateien
+          {t('datenschutz.s3Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 1, lineHeight: 1.8 }}
         >
-          Der Hosting-Provider dieser Seiten erhebt und speichert automatisch
-          Informationen in sogenannten Server-Log-Dateien, die dein Browser
-          automatisch uebermittelt. Dies sind:
+          {t('datenschutz.s3Text')}
         </Typography>
         <Box
           component="ul"
@@ -71,84 +75,64 @@ export default function Datenschutz() {
             "& li": { fontSize: "0.875rem", mb: 0.5 },
           }}
         >
-          <li>Browsertyp und Browserversion</li>
-          <li>Verwendetes Betriebssystem</li>
-          <li>Referrer URL</li>
-          <li>IP-Adresse (anonymisiert)</li>
-          <li>Uhrzeit der Serveranfrage</li>
+          {(Array.isArray(s3Items) ? s3Items : []).map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
         </Box>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 3, lineHeight: 1.8 }}
         >
-          Diese Daten sind nicht bestimmten Personen zuordenbar. Eine
-          Zusammenfuehrung dieser Daten mit anderen Datenquellen wird nicht
-          vorgenommen. Die Erfassung erfolgt auf Grundlage von Art. 6 Abs. 1
-          lit. f DSGVO (berechtigtes Interesse an der sicheren Bereitstellung
-          der Website).
+          {t('datenschutz.s3Footer')}
         </Typography>
 
         {/* 4. SSL */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          4. SSL-Verschluesselung
+          {t('datenschutz.s4Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 3, lineHeight: 1.8 }}
         >
-          Diese Seite nutzt aus Sicherheitsgruenden eine SSL-Verschluesselung.
-          Eine verschluesselte Verbindung erkennst du daran, dass die
-          Adresszeile des Browsers von "http://" auf "https://" wechselt und an
-          dem Schloss-Symbol in deiner Browserzeile.
+          {t('datenschutz.s4Text')}
         </Typography>
 
         {/* 5. Externe Dienste */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          5. Externe Dienste
+          {t('datenschutz.s5Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 3, lineHeight: 1.8 }}
         >
-          Diese Website laedt Schriftarten von Google Fonts
-          (fonts.googleapis.com). Dabei wird eine Verbindung zu Servern von
-          Google hergestellt, wobei deine IP-Adresse an Google uebertragen wird.
-          Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Weitere Informationen
-          findest du in der Datenschutzerklaerung von Google:
-          https://policies.google.com/privacy
+          {t('datenschutz.s5Text')}
         </Typography>
 
         {/* 6. Discord Bot Daten */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          6. Discord Bot Dienste
+          {t('datenschutz.s6Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 3, lineHeight: 1.8 }}
         >
-          Die auf dieser Website vorgestellten Discord Bots verarbeiten Daten im
-          Rahmen der Discord-Plattform. Dazu gehoeren Server-IDs, Channel-IDs
-          und Nutzernamen, die fuer die Funktionalitaet der Bots erforderlich
-          sind. Diese Daten werden ausschliesslich auf eigenen Servern
-          verarbeitet und nicht an Dritte weitergegeben. Die Verarbeitung
-          erfolgt auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO.
+          {t('datenschutz.s6Text')}
         </Typography>
 
         {/* 7. Betroffenenrechte */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          7. Deine Rechte
+          {t('datenschutz.s7Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 1, lineHeight: 1.8 }}
         >
-          Du hast gegenueber mir folgende Rechte hinsichtlich deiner
-          personenbezogenen Daten:
+          {t('datenschutz.s7Text')}
         </Typography>
         <Box
           component="ul"
@@ -159,37 +143,28 @@ export default function Datenschutz() {
             "& li": { fontSize: "0.875rem", mb: 0.5 },
           }}
         >
-          <li>Recht auf Auskunft (Art. 15 DSGVO)</li>
-          <li>Recht auf Berichtigung (Art. 16 DSGVO)</li>
-          <li>Recht auf Loeschung (Art. 17 DSGVO)</li>
-          <li>Recht auf Einschraenkung der Verarbeitung (Art. 18 DSGVO)</li>
-          <li>Recht auf Widerspruch (Art. 21 DSGVO)</li>
-          <li>Recht auf Datenuebertagbarkeit (Art. 20 DSGVO)</li>
+          {(Array.isArray(s7Items) ? s7Items : []).map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
         </Box>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mb: 3, lineHeight: 1.8 }}
         >
-          Zur Ausuebung dieser Rechte kannst du dich jederzeit per E-Mail an
-          mich wenden. Darueber hinaus hast du das Recht, dich bei einer
-          Datenschutz-Aufsichtsbehoerde ueber die Verarbeitung deiner
-          personenbezogenen Daten zu beschweren.
+          {t('datenschutz.s7Footer')}
         </Typography>
 
-        {/* 8. Aktualitaet */}
+        {/* 8. Aktualität */}
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          8. Aktualitaet dieser Datenschutzerklaerung
+          {t('datenschutz.s8Title')}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ lineHeight: 1.8 }}
         >
-          Diese Datenschutzerklaerung ist aktuell gueltig und hat den Stand
-          April 2026. Durch die Weiterentwicklung der Website oder aufgrund
-          geaenderter gesetzlicher Vorgaben kann eine Anpassung dieser
-          Datenschutzerklaerung erforderlich werden.
+          {t('datenschutz.s8Text')}
         </Typography>
       </Container>
     </Box>

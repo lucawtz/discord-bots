@@ -18,6 +18,6 @@ module.exports = {
         queue.tracks.unshift({ ...track, _retried: false });
         queue.player.stop();
 
-        ctx.autoDelete(interaction.reply({ content: `Replaying **${track.title}**.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `-# 🔄 **${track.title}** wird neu gestartet`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

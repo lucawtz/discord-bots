@@ -23,6 +23,6 @@ module.exports = {
             queue._resource.volume.setVolume(queue.volume);
         }
 
-        ctx.autoDelete(interaction.reply({ content: `Volume set to **${percent}%**.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `-# 🔊 Lautstaerke auf **${percent}%** gesetzt`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

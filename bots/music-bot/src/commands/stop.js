@@ -28,6 +28,6 @@ module.exports = {
         // Nach Timeout den Channel verlassen
         ctx.scheduleLeave(interaction.guildId);
 
-        ctx.autoDelete(interaction.reply({ content: 'Stopped.', fetchReply: true }), ctx.DELETE_SHORT_MS);
+        ctx.autoDelete(interaction.reply({ content: `-# ⏹️ Wiedergabe gestoppt`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
 };

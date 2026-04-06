@@ -211,14 +211,68 @@ function spotifyTrackToSearch(track) {
 async function searchSpotifyTrack(url) {
     const parsed = parseSpotifyUrl(url);
     if (!parsed || parsed.type !== 'track') throw new Error('Ungültige Spotify-Track-URL');
-    const data = await spotifyFetch(`/tracks/${parsed.id}`);
-    const info = spotifyTrackToSearch(data);
-    // Auf YouTube suchen
+
+    let info;
+    try {
+        const data = await spotifyFetch(`/tracks/${parsed.id}`);
+        info = spotifyTrackToSearch(data);
+    } catch {
+        // Embed-Fallback wenn API fehlschlägt
+        const entity = await fetchSpotifyEmbed('track', parsed.id);
+        const trackData = entity.trackList?.[0] || entity;
+        info = {
+            searchQuery: `${trackData.title || entity.name} ${trackData.subtitle || ''}`.trim(),
+            title: trackData.subtitle ? `${trackData.subtitle} – ${trackData.title || entity.name}` : (trackData.title || entity.name),
+            duration: formatDuration(Math.floor((trackData.duration || 0) / 1000)),
+            artist: trackData.subtitle || null,
+            albumArt: entity.coverArt?.sources?.[0]?.url || null,
+        };
+    }
+
     const ytTrack = await searchTrack(info.searchQuery);
-    ytTrack.title = info.title; // Spotify-Titel verwenden (genauer)
+    ytTrack.title = info.title;
     if (info.artist) ytTrack.artist = info.artist;
     if (info.albumArt) ytTrack.albumArt = info.albumArt;
     return ytTrack;
+}
+
+// Spotify Embed-Seite parsen (kein API-Key nötig, funktioniert immer)
+function fetchSpotifyEmbed(type, id) {
+    return new Promise((resolve, reject) => {
+        const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
+        const req = https.get(embedUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            timeout: 10000,
+        }, (res) => {
+            // Redirects folgen
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                https.get(res.headers.location, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 }, (res2) => {
+                    let data = '';
+                    res2.on('data', (d) => data += d);
+                    res2.on('end', () => resolveEmbed(data, resolve, reject));
+                }).on('error', reject);
+                return;
+            }
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => resolveEmbed(data, resolve, reject));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Spotify Embed: Timeout')); });
+    });
+}
+
+function resolveEmbed(html, resolve, reject) {
+    const match = html.match(/<script\s+id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+    if (!match) return reject(new Error('Spotify Embed: Keine Daten gefunden'));
+    try {
+        const data = JSON.parse(match[1]);
+        const entity = data.props?.pageProps?.state?.data?.entity;
+        if (!entity) return reject(new Error('Spotify Embed: Keine Entity-Daten'));
+        resolve(entity);
+    } catch { reject(new Error('Spotify Embed: Ungültige Daten')); }
 }
 
 async function searchSpotifyPlaylist(url) {
@@ -228,31 +282,48 @@ async function searchSpotifyPlaylist(url) {
     let title = 'Spotify Playlist';
     let allTracks = [];
 
-    if (parsed.type === 'playlist') {
-        const data = await spotifyFetch(`/playlists/${parsed.id}?fields=name,tracks.items(track(name,artists,duration_ms)),tracks.next,tracks.total`);
-        title = data.name || title;
-        allTracks = (data.tracks?.items || []).filter(i => i.track).map(i => i.track);
-
-        // Weitere Seiten laden (Spotify paginiert bei 100)
-        let next = data.tracks?.next;
-        while (next) {
-            const endpoint = next.replace('https://api.spotify.com/v1', '');
-            const page = await spotifyFetch(endpoint);
-            allTracks.push(...(page.items || []).filter(i => i.track).map(i => i.track));
-            next = page.next;
+    // Zuerst mit App-Credentials versuchen
+    try {
+        if (parsed.type === 'playlist') {
+            const data = await spotifyFetch(`/playlists/${parsed.id}?market=DE`);
+            title = data.name || title;
+            if (data.tracks?.items) {
+                allTracks = data.tracks.items.filter(i => i.track && !i.track.is_local).map(i => i.track);
+                let next = data.tracks?.next;
+                while (next) {
+                    const page = await spotifyFetch(next.replace('https://api.spotify.com/v1', ''));
+                    allTracks.push(...(page.items || []).filter(i => i.track && !i.track.is_local).map(i => i.track));
+                    next = page.next;
+                }
+            }
+        } else if (parsed.type === 'album') {
+            const data = await spotifyFetch(`/albums/${parsed.id}?market=DE`);
+            title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
+            allTracks = data.tracks?.items || [];
         }
-    } else if (parsed.type === 'album') {
-        const data = await spotifyFetch(`/albums/${parsed.id}`);
-        title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
-        allTracks = data.tracks?.items || [];
-        // Album-Tracks haben keine Thumbnail, aber das ist ok — YouTube hat welche
+    } catch (e) {
+        console.log('Spotify API Fehler:', e.message);
+    }
+
+    // Fallback: Embed-Seite scrapen wenn keine Tracks gefunden
+    if (allTracks.length === 0) {
+        console.log('Spotify: Nutze Embed-Seite als Fallback...');
+        const entity = await fetchSpotifyEmbed(parsed.type, parsed.id);
+        title = entity.name || entity.title || title;
+
+        allTracks = (entity.trackList || []).filter(t => t.uri && t.isPlayable !== false).map(t => ({
+            name: t.title,
+            artists: [{ name: t.subtitle || '' }],
+            duration_ms: t.duration || 0,
+            album: { images: entity.coverArt?.sources || [] },
+        }));
     }
 
     if (allTracks.length === 0) throw new Error('Leere Spotify-Playlist/Album');
 
-    // Alle Spotify-Tracks parallel auf YouTube suchen (max 5 gleichzeitig)
+    // Alle Spotify-Tracks parallel auf YouTube suchen
     const tracks = [];
-    const batchSize = 5;
+    const batchSize = 10;
     for (let i = 0; i < allTracks.length; i += batchSize) {
         const batch = allTracks.slice(i, i + batchSize);
         const results = await Promise.allSettled(
@@ -371,7 +442,7 @@ async function searchAppleMusicPlaylist(url) {
     if (allTracks.length === 0) throw new Error('Leere Apple Music Playlist/Album');
 
     const tracks = [];
-    const batchSize = 5;
+    const batchSize = 10;
     for (let i = 0; i < allTracks.length; i += batchSize) {
         const batch = allTracks.slice(i, i + batchSize);
         const results = await Promise.allSettled(
@@ -394,18 +465,136 @@ async function searchAppleMusicPlaylist(url) {
     return { title, tracks };
 }
 
-// ── Piped API (schnelle Suche mit Instance-Rotation) ────────────
+// ── Deezer (öffentliche API, keine Auth nötig) ───────────────────
+function isDeezerUrl(url) {
+    return url.includes('deezer.com/') || url.includes('deezer.page.link/');
+}
+
+function parseDeezerUrl(url) {
+    // Unterstützt: deezer.com/track/ID, /album/ID, /playlist/ID (mit optionalem Storefront wie /de/)
+    const match = url.match(/deezer\.com\/(?:[a-z]{2}\/)?(track|album|playlist)\/(\d+)/);
+    if (!match) return null;
+    return { type: match[1], id: match[2] };
+}
+
+function deezerFetch(endpoint) {
+    return new Promise((resolve, reject) => {
+        const req = https.get(`https://api.deezer.com${endpoint}`, { timeout: 8000 }, (res) => {
+            let data = '';
+            res.on('data', (d) => data += d);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.error) return reject(new Error(json.error.message || `Deezer API Fehler`));
+                    resolve(json);
+                } catch { reject(new Error('Deezer API: Ungültige Antwort')); }
+            });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Deezer API: Timeout')); });
+    });
+}
+
+function deezerTrackToSearch(track) {
+    const artists = track.artist?.name || '';
+    const albumArt = track.album?.cover_medium || track.album?.cover || null;
+    return {
+        searchQuery: `${track.title} ${artists}`,
+        title: artists ? `${artists} – ${track.title}` : track.title,
+        duration: formatDuration(track.duration || 0),
+        artist: artists || null,
+        albumArt,
+    };
+}
+
+async function searchDeezerTrack(url) {
+    const parsed = parseDeezerUrl(url);
+    if (!parsed || parsed.type !== 'track') throw new Error('Ungültige Deezer-Track-URL');
+    const data = await deezerFetch(`/track/${parsed.id}`);
+    const info = deezerTrackToSearch(data);
+    const ytTrack = await searchTrack(info.searchQuery);
+    ytTrack.title = info.title;
+    if (info.artist) ytTrack.artist = info.artist;
+    if (info.albumArt) ytTrack.albumArt = info.albumArt;
+    return ytTrack;
+}
+
+async function searchDeezerPlaylist(url) {
+    const parsed = parseDeezerUrl(url);
+    if (!parsed) throw new Error('Ungültige Deezer-URL');
+
+    let title = 'Deezer Playlist';
+    let allTracks = [];
+
+    if (parsed.type === 'playlist') {
+        const data = await deezerFetch(`/playlist/${parsed.id}`);
+        title = data.title || title;
+        allTracks = data.tracks?.data || [];
+    } else if (parsed.type === 'album') {
+        const data = await deezerFetch(`/album/${parsed.id}`);
+        title = `${data.artist?.name || ''} – ${data.title || 'Album'}`.trim();
+        // Album-Tracks haben kein album-Objekt, also manuell setzen
+        const albumArt = data.cover_medium || data.cover || null;
+        allTracks = (data.tracks?.data || []).map(t => ({
+            ...t,
+            album: { cover_medium: albumArt, cover: albumArt },
+            artist: t.artist || data.artist,
+        }));
+    }
+
+    if (allTracks.length === 0) throw new Error('Leere Deezer Playlist/Album');
+
+    const tracks = [];
+    const batchSize = 10;
+    for (let i = 0; i < allTracks.length; i += batchSize) {
+        const batch = allTracks.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+            batch.map(async (t) => {
+                const info = deezerTrackToSearch(t);
+                const ytTrack = await searchTrack(info.searchQuery);
+                ytTrack.title = info.title;
+                if (info.artist) ytTrack.artist = info.artist;
+                if (info.albumArt) ytTrack.albumArt = info.albumArt;
+                return ytTrack;
+            })
+        );
+        for (const r of results) {
+            if (r.status === 'fulfilled') tracks.push(r.value);
+        }
+    }
+
+    if (tracks.length === 0) throw new Error('Konnte keine Songs von Deezer auf YouTube finden');
+    console.log(`Deezer: ${tracks.length}/${allTracks.length} Songs gefunden für "${title}"`);
+    return { title, tracks };
+}
+
+// ── Amazon Music (kein öffentliches API — Fallback über yt-dlp) ──
+function isAmazonMusicUrl(url) {
+    return /music\.amazon\.(com|de|co\.uk|fr|it|es|co\.jp|in|com\.br|com\.mx|com\.au)\//.test(url);
+}
+
+function parseAmazonMusicUrl(url) {
+    const match = url.match(/music\.amazon\.[^/]+\/(playlists|albums|tracks)\/([A-Za-z0-9]+)/);
+    if (!match) return null;
+    const typeMap = { playlists: 'playlist', albums: 'album', tracks: 'track' };
+    return { type: typeMap[match[1]] || match[1], id: match[2] };
+}
+
+// ── Piped API (schnelle Suche mit Instance-Rotation + Circuit Breaker) ──
 const PIPED_INSTANCES = [
     'https://pipedapi.kavin.rocks',
     'https://pipedapi.adminforge.de',
     'https://pipedapi.in.projectsegfau.lt',
 ];
 let pipedInstanceIndex = 0;
+let pipedDownUntil = 0;          // Circuit Breaker: Timestamp bis wann Piped übersprungen wird
+let pipedConsecutiveFails = 0;   // Zähler für aufeinanderfolgende Ausfälle
+const PIPED_COOLDOWN_MS = 5 * 60_000; // 5 Minuten Cooldown wenn alle Instanzen tot
 
 function pipedFetchSingle(instance, endpoint) {
     return new Promise((resolve, reject) => {
         const url = `${instance}${endpoint}`;
-        const req = https.get(url, { timeout: 4000 }, (res) => {
+        const req = https.get(url, { timeout: 2000 }, (res) => {
             if (res.statusCode >= 400) {
                 res.resume();
                 return reject(new Error(`Piped ${res.statusCode}`));
@@ -423,27 +612,72 @@ function pipedFetchSingle(instance, endpoint) {
 }
 
 async function pipedFetch(endpoint) {
-    // Alle Instanzen durchprobieren, beginnend bei der zuletzt erfolgreichen
+    // Circuit Breaker: Piped komplett überspringen wenn kürzlich alle Instanzen ausgefallen
+    if (Date.now() < pipedDownUntil) {
+        throw new Error('Piped API: Circuit Breaker aktiv');
+    }
+
     for (let i = 0; i < PIPED_INSTANCES.length; i++) {
         const idx = (pipedInstanceIndex + i) % PIPED_INSTANCES.length;
         try {
             const result = await pipedFetchSingle(PIPED_INSTANCES[idx], endpoint);
-            pipedInstanceIndex = idx; // Erfolgreiche Instanz merken
+            pipedInstanceIndex = idx;
+            pipedConsecutiveFails = 0; // Reset bei Erfolg
+            pipedDownUntil = 0;
             return result;
         } catch (err) {
-            console.log(`Piped ${PIPED_INSTANCES[idx]} fehlgeschlagen: ${err.message}`);
-            if (i === PIPED_INSTANCES.length - 1) throw err; // Alle fehlgeschlagen
+            if (i === PIPED_INSTANCES.length - 1) {
+                pipedConsecutiveFails++;
+                // Sofort Circuit Breaker aktivieren wenn alle Instanzen tot
+                if (pipedConsecutiveFails >= 1) {
+                    pipedDownUntil = Date.now() + PIPED_COOLDOWN_MS;
+                    console.log(`Piped: Alle Instanzen ausgefallen, überspringe für ${PIPED_COOLDOWN_MS / 60000} Minuten`);
+                }
+                throw err;
+            }
         }
     }
 }
 
+function isMusicResult(item) {
+    if (!item || !item.url || item.type !== 'stream') return false;
+    const dur = item.duration || 0;
+    if (dur > 0 && (dur < 30 || dur > 900)) return false;
+    const title = (item.title || '').toLowerCase();
+    const uploader = (item.uploaderName || item.uploader || '').toLowerCase();
+    const combined = title + ' ' + uploader;
+    const nonMusic = [
+        'gameplay', 'tutorial', 'review', 'unboxing', 'reaction', 'podcast',
+        'compilat', 'highlights', 'trailer', 'vlog', 'how to', 'news', 'politics',
+        'cooking', 'rezept', 'recipe', 'schnell und einfach', 'kochen', 'backen',
+        'stiftung warentest', 'warentest', 'test der', 'im test',
+        'geheimnisse', 'dokumentation', 'doku', 'reportage',
+        'mukbang', 'asmr essen', 'food hack', 'lifehack',
+        'prank', 'challenge', 'experiment', 'try not to',
+        'nachrichten', 'tagesschau', 'interview', 'pressekonferenz',
+    ];
+    if (nonMusic.some(w => combined.includes(w))) return false;
+    // Known non-music channels
+    const nonMusicChannels = ['zdf', 'ard', 'rtl', 'sat.1', 'stiftung', 'warentest', 'chefkoch',
+        'tasty', 'buzzfeed', 'galileo', 'spiegel', 'bild', 'focus', 'welt'];
+    if (nonMusicChannels.some(c => uploader.includes(c))) return false;
+    return true;
+}
+
 async function pipedSearch(query, limit = 5) {
-    const data = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=music_songs`);
-    const items = (data.items || []).filter(i => i.url && i.type === 'stream').slice(0, limit);
+    let data;
+    try {
+        data = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=music_songs`);
+    } catch (err) {
+        throw err;
+    }
+    const items = (data.items || []).filter(isMusicResult).slice(0, limit);
     if (items.length === 0) {
-        // Fallback: ohne Filter suchen
-        const data2 = await pipedFetch(`/search?q=${encodeURIComponent(query)}&filter=videos`);
-        const items2 = (data2.items || []).filter(i => i.url && i.type === 'stream').slice(0, limit);
+        // Fallback: video filter but with music keyword appended
+        const musicQuery = query.includes('music') || query.includes('song') || query.includes('audio')
+            ? query : `${query} music`;
+        const data2 = await pipedFetch(`/search?q=${encodeURIComponent(musicQuery)}&filter=videos`);
+        const items2 = (data2.items || []).filter(isMusicResult).slice(0, limit);
         if (items2.length === 0) throw new Error('Keine Ergebnisse');
         return items2;
     }
@@ -461,8 +695,27 @@ function pipedToTrack(item) {
     };
 }
 
+// ── Track URL Cache (avoid repeated YouTube lookups) ─────────────
+const trackCache = new Map(); // query -> { track, ts }
+const TRACK_CACHE_TTL = 30 * 60 * 1000; // 30 min
+setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of trackCache) { if (now - v.ts > TRACK_CACHE_TTL) trackCache.delete(k); }
+}, 5 * 60 * 1000);
+
+// Pre-resolve: resolve YouTube URLs in background for faster playback
+function preResolveTrack(query) {
+    if (!query || query.startsWith('http') || trackCache.has(query)) return;
+    searchTrack(query).then(track => {
+        trackCache.set(query, { track, ts: Date.now() });
+    }).catch(() => {});
+}
+
 // ── Suche: Piped API mit yt-dlp Fallback ─────────────────────────
 async function searchTrack(query) {
+    // Check cache first
+    const cached = trackCache.get(query);
+    if (cached && Date.now() - cached.ts < TRACK_CACHE_TTL) return { ...cached.track };
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
 
     // Spotify-Track-URL erkennen
@@ -475,17 +728,24 @@ async function searchTrack(query) {
         return searchAppleMusicTrack(query);
     }
 
-    // URLs direkt über yt-dlp auflösen
+    // Deezer Track-URL erkennen
+    if (isUrl && isDeezerUrl(query)) {
+        return searchDeezerTrack(query);
+    }
+
+    // URLs direkt über yt-dlp auflösen (inkl. Amazon Music)
     if (isUrl) return searchTrackYtdlp(query);
 
-    // Piped API für Textsuche
+    // Piped API für Textsuche (mit yt-dlp Fallback)
+    let track;
     try {
         const items = await pipedSearch(query, 1);
-        return pipedToTrack(items[0]);
-    } catch (err) {
-        console.log('Piped-Suche fehlgeschlagen, Fallback auf yt-dlp:', err.message);
-        return searchTrackYtdlp(`ytsearch1:${query}`);
+        track = pipedToTrack(items[0]);
+    } catch {
+        track = await searchTrackYtdlp(`ytsearch1:${query}`);
     }
+    trackCache.set(query, { track, ts: Date.now() });
+    return track;
 }
 
 async function searchTracks(query, limit = 5) {
@@ -495,17 +755,27 @@ async function searchTracks(query, limit = 5) {
         return [track];
     }
 
-    // Piped API für Textsuche
+    // Piped API für Textsuche (mit yt-dlp Fallback)
     try {
         const items = await pipedSearch(query, limit);
         return items.map(pipedToTrack);
-    } catch (err) {
-        console.log('Piped-Suche fehlgeschlagen, Fallback auf yt-dlp:', err.message);
+    } catch {
         return searchTracksYtdlp(query, limit);
     }
 }
 
 // ── Enhanced Search (kategorisiert + Spotify-Metadaten) ─────────
+
+// Deezer fetch helper (no API key needed)
+function deezerFetch(endpoint) {
+    return new Promise((resolve, reject) => {
+        require('https').get(`https://api.deezer.com${endpoint}`, { timeout: 8000 }, (res) => {
+            let data = '';
+            res.on('data', d => data += d);
+            res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Deezer parse error')); } });
+        }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Deezer timeout')); });
+    });
+}
 
 async function searchEnhanced(query) {
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
@@ -514,72 +784,49 @@ async function searchEnhanced(query) {
         return { tracks: [track], artists: [], albums: [] };
     }
 
-    // Parallel: YouTube/Piped tracks + Spotify search (artist, tracks, albums)
-    const [ytTracks, spotifyResult] = await Promise.allSettled([
-        searchTracks(query, 10),
-        searchSpotifyEnhanced(query),
+    // Deezer-first: guaranteed music results, no rate limits
+    const [tracksRes, artistsRes, albumsRes] = await Promise.allSettled([
+        deezerFetch(`/search?q=${encodeURIComponent(query)}&limit=10`),
+        deezerFetch(`/search/artist?q=${encodeURIComponent(query)}&limit=5`),
+        deezerFetch(`/search/album?q=${encodeURIComponent(query)}&limit=5`),
     ]);
 
-    const tracks = ytTracks.status === 'fulfilled' ? ytTracks.value : [];
-    const spotify = spotifyResult.status === 'fulfilled' ? spotifyResult.value : { artists: [], albums: [], tracks: [] };
+    const deezerTracks = tracksRes.status === 'fulfilled' ? (tracksRes.value.data || []) : [];
+    const deezerArtists = artistsRes.status === 'fulfilled' ? (artistsRes.value.data || []) : [];
+    const deezerAlbums = albumsRes.status === 'fulfilled' ? (albumsRes.value.data || []) : [];
 
-    // Merge: enrich YouTube tracks with Spotify artist data
-    const enrichedTracks = tracks.map(t => {
-        // Try matching with Spotify track for better metadata
-        const spMatch = spotify.tracks.find(st =>
-            normalizeForMatch(st.name).includes(normalizeForMatch(t.title)) ||
-            normalizeForMatch(t.title).includes(normalizeForMatch(st.name))
-        );
-        if (spMatch && !t.artist) {
-            t.artist = spMatch.artists?.map(a => a.name).join(', ') || t.artist;
-        }
-        return t;
-    });
+    // Map Deezer tracks (url = search query for YouTube playback)
+    let tracks = deezerTracks.map(t => ({
+        title: t.title || '',
+        artist: t.artist?.name || '',
+        artistImage: t.artist?.picture_medium || t.artist?.picture || null,
+        thumbnail: t.album?.cover_medium || t.album?.cover || null,
+        albumName: t.album?.title || null,
+        duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+        url: `${t.artist?.name || ''} ${t.title || ''}`,
+        source: 'deezer',
+    }));
 
-    // Score and sort tracks by relevance
-    const queryLower = normalizeForMatch(query);
-    const scoredTracks = enrichedTracks.map(t => {
-        let score = 0;
-        const titleLower = normalizeForMatch(t.title);
-        const artistLower = normalizeForMatch(t.artist || '');
-        // Exact title match
-        if (titleLower === queryLower) score += 100;
-        // Title contains query
-        else if (titleLower.includes(queryLower)) score += 50;
-        // Query words in title
-        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 1);
-        const matchedWords = queryWords.filter(w => titleLower.includes(w) || artistLower.includes(w));
-        score += (matchedWords.length / Math.max(queryWords.length, 1)) * 40;
-        // Artist match bonus
-        if (artistLower && queryLower.includes(artistLower)) score += 30;
-        return { ...t, _score: score };
-    });
-
-    scoredTracks.sort((a, b) => b._score - a._score);
-
-    // Filter artists: only include if name is reasonably related to query
-    const relevantArtists = spotify.artists.filter(a => {
-        const nameNorm = normalizeForMatch(a.name);
-        return queryLower.includes(nameNorm) || nameNorm.includes(queryLower) ||
-            fuzzyMatch(queryLower, nameNorm) > 0.5;
-    });
+    // Fallback to YouTube if Deezer returns nothing
+    if (tracks.length === 0) {
+        try { tracks = await searchTracks(query, 10); } catch { tracks = []; }
+    }
 
     return {
-        tracks: scoredTracks.map(({ _score, ...t }) => t),
-        artists: relevantArtists.map(a => ({
-            id: a.id,
-            name: a.name,
-            image: a.images?.[1]?.url || a.images?.[0]?.url || null,
-            genres: a.genres?.slice(0, 3) || [],
-            followers: a.followers?.total || 0,
+        tracks,
+        artists: deezerArtists.map(a => ({
+            id: String(a.id),
+            name: a.name || '',
+            image: a.picture_medium || a.picture || null,
+            genres: [],
+            followers: a.nb_fan || 0,
         })),
-        albums: spotify.albums.map(a => ({
-            id: a.id,
-            name: a.name,
-            artist: a.artists?.map(ar => ar.name).join(', ') || '',
-            image: a.images?.[1]?.url || a.images?.[0]?.url || null,
-            releaseDate: a.release_date || null,
-            totalTracks: a.total_tracks || 0,
+        albums: deezerAlbums.map(a => ({
+            id: String(a.id),
+            name: a.title || '',
+            artist: a.artist?.name || '',
+            image: a.cover_medium || a.cover || null,
+            totalTracks: a.nb_tracks || 0,
         })),
     };
 }
@@ -671,7 +918,27 @@ function searchTracksYtdlp(query, limit = 5) {
             try {
                 const data = JSON.parse(stdout);
                 const entries = data.entries || [data];
-                resolve(entries.filter(i => i).map(info => ({
+                const tracks = entries.filter(i => {
+                    if (!i) return false;
+                    const dur = i.duration || 0;
+                    if (dur > 0 && (dur < 30 || dur > 900)) return false;
+                    const title = (i.title || '').toLowerCase();
+                    const channel = (i.channel || i.uploader || '').toLowerCase();
+                    const combined = title + ' ' + channel;
+                    const nonMusic = [
+                        'gameplay', 'tutorial', 'review', 'unboxing', 'reaction', 'podcast',
+                        'compilat', 'highlights', 'trailer', 'vlog', 'how to',
+                        'cooking', 'rezept', 'recipe', 'schnell und einfach', 'kochen', 'backen',
+                        'stiftung warentest', 'warentest', 'im test', 'test der',
+                        'geheimnisse', 'dokumentation', 'doku', 'reportage',
+                        'mukbang', 'prank', 'challenge', 'experiment',
+                        'nachrichten', 'interview', 'pressekonferenz',
+                    ];
+                    if (nonMusic.some(w => combined.includes(w))) return false;
+                    const nonChannels = ['zdf', 'ard', 'rtl', 'stiftung', 'chefkoch', 'tasty', 'galileo', 'spiegel', 'bild'];
+                    if (nonChannels.some(c => channel.includes(c))) return false;
+                    return true;
+                }).map(info => ({
                     title: info.title || 'Unbekannter Titel',
                     url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
                     duration: formatDuration(info.duration),
@@ -680,13 +947,152 @@ function searchTracksYtdlp(query, limit = 5) {
                     artist: info.artist || info.creator || info.channel || info.uploader || null,
                     album: info.album || null,
                     albumArt: info.thumbnail || info.thumbnails?.find(t => t.width >= 300)?.url || null,
-                })));
+                }));
+                resolve(tracks);
             } catch {
                 reject(new Error('Konnte Suchergebnisse nicht parsen'));
             }
         });
         proc.on('error', (e) => reject(new Error(`yt-dlp konnte nicht gestartet werden: ${e.message}`)));
     });
+}
+
+// ── Progressives Playlist-Loading ────────────────────────────────
+// Holt nur die Metadaten (Titel, Artist, Duration) ohne YouTube-Auflösung
+async function fetchPlaylistMeta(url) {
+    if (isSpotifyUrl(url)) {
+        const parsed = parseSpotifyUrl(url);
+        if (!parsed || parsed.type === 'track') return null;
+
+        let title = 'Spotify Playlist';
+        let rawTracks = [];
+
+        // API versuchen
+        try {
+            if (parsed.type === 'playlist') {
+                const data = await spotifyFetch(`/playlists/${parsed.id}?market=DE`);
+                title = data.name || title;
+                if (data.tracks?.items) {
+                    rawTracks = data.tracks.items
+                        .filter(i => i.track && !i.track.is_local)
+                        .map(i => spotifyTrackToSearch(i.track));
+                }
+            } else if (parsed.type === 'album') {
+                const data = await spotifyFetch(`/albums/${parsed.id}?market=DE`);
+                title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
+                rawTracks = (data.tracks?.items || []).map(t => spotifyTrackToSearch(t));
+            }
+        } catch {}
+
+        // Embed-Fallback
+        if (rawTracks.length === 0) {
+            const entity = await fetchSpotifyEmbed(parsed.type, parsed.id);
+            title = entity.name || entity.title || title;
+            rawTracks = (entity.trackList || [])
+                .filter(t => t.uri && t.isPlayable !== false)
+                .map(t => spotifyTrackToSearch({
+                    name: t.title,
+                    artists: [{ name: t.subtitle || '' }],
+                    duration_ms: t.duration || 0,
+                    album: { images: entity.coverArt?.sources || [] },
+                }));
+        }
+
+        return rawTracks.length > 0 ? { title, rawTracks } : null;
+    }
+
+    if (isAppleMusicUrl(url)) {
+        const parsed = parseAppleMusicUrl(url);
+        if (!parsed || parsed.type === 'track') return null;
+
+        let title = 'Apple Music Playlist';
+        let allTracks = [];
+
+        if (parsed.type === 'album') {
+            const data = await appleMusicFetch(`/catalog/${parsed.storefront}/albums/${parsed.id}`);
+            const album = data.data?.[0];
+            if (!album) return null;
+            const attrs = album.attributes || {};
+            title = `${attrs.artistName || ''} – ${attrs.name || 'Album'}`.trim();
+            allTracks = album.relationships?.tracks?.data || [];
+        } else if (parsed.type === 'playlist') {
+            const data = await appleMusicFetch(`/catalog/${parsed.storefront}/playlists/${parsed.id}`);
+            const playlist = data.data?.[0];
+            if (!playlist) return null;
+            title = playlist.attributes?.name || title;
+            allTracks = playlist.relationships?.tracks?.data || [];
+        }
+
+        const rawTracks = allTracks.map(t => appleMusicTrackToSearch(t));
+        return rawTracks.length > 0 ? { title, rawTracks } : null;
+    }
+
+    if (isDeezerUrl(url)) {
+        const parsed = parseDeezerUrl(url);
+        if (!parsed || parsed.type === 'track') return null;
+
+        let title = 'Deezer Playlist';
+        let allTracks = [];
+
+        if (parsed.type === 'playlist') {
+            const data = await deezerFetch(`/playlist/${parsed.id}`);
+            title = data.title || title;
+            allTracks = data.tracks?.data || [];
+        } else if (parsed.type === 'album') {
+            const data = await deezerFetch(`/album/${parsed.id}`);
+            title = `${data.artist?.name || ''} – ${data.title || 'Album'}`.trim();
+            const albumArt = data.cover_medium || data.cover || null;
+            allTracks = (data.tracks?.data || []).map(t => ({
+                ...t,
+                album: { cover_medium: albumArt, cover: albumArt },
+                artist: t.artist || data.artist,
+            }));
+        }
+
+        const rawTracks = allTracks.map(t => deezerTrackToSearch(t));
+        return rawTracks.length > 0 ? { title, rawTracks } : null;
+    }
+
+    // YouTube/Amazon Music: kein progressives Loading möglich
+    return null;
+}
+
+// Löst Tracks im Hintergrund auf und fügt sie zur Queue hinzu
+function resolvePlaylistInBackground(guildId, rawTracks, user) {
+    const batchSize = 10;
+    let resolved = 0;
+
+    (async () => {
+        for (let i = 0; i < rawTracks.length; i += batchSize) {
+            // Abbrechen wenn Queue nicht mehr existiert (z.B. /stop, /disconnect)
+            const queue = queues.get(guildId);
+            if (!queue) break;
+
+            const batch = rawTracks.slice(i, i + batchSize);
+            const results = await Promise.allSettled(
+                batch.map(async (info) => {
+                    const ytTrack = await searchTrack(info.searchQuery);
+                    ytTrack.title = info.title;
+                    if (info.artist) ytTrack.artist = info.artist;
+                    if (info.albumArt) ytTrack.albumArt = info.albumArt;
+                    ytTrack.requestedBy = user.toString();
+                    ytTrack._requestedById = user.id;
+                    return ytTrack;
+                })
+            );
+            for (const r of results) {
+                if (r.status === 'fulfilled') {
+                    queue.tracks.push(r.value);
+                    resolved++;
+                }
+            }
+            // Falls nichts spielt und Tracks da sind, starten
+            if (queue.connection && !queue.current && queue.tracks.length > 0) {
+                playNext(guildId);
+            }
+        }
+        if (resolved > 0) console.log(`Playlist: ${resolved}/${rawTracks.length} Tracks im Hintergrund geladen`);
+    })().catch(err => console.error('Hintergrund-Playlist-Fehler:', err.message));
 }
 
 async function searchPlaylist(url) {
@@ -696,6 +1102,10 @@ async function searchPlaylist(url) {
     // Apple Music Playlists/Alben
     if (isAppleMusicUrl(url)) return searchAppleMusicPlaylist(url);
 
+    // Deezer Playlists/Alben
+    if (isDeezerUrl(url)) return searchDeezerPlaylist(url);
+
+    // Amazon Music & alles andere über yt-dlp
     return new Promise((resolve, reject) => {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
@@ -739,6 +1149,14 @@ function isPlaylistUrl(url) {
         const parsed = parseAppleMusicUrl(url);
         return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
     }
+    if (isDeezerUrl(url)) {
+        const parsed = parseDeezerUrl(url);
+        return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
+    }
+    if (isAmazonMusicUrl(url)) {
+        const parsed = parseAmazonMusicUrl(url);
+        return parsed && (parsed.type === 'playlist' || parsed.type === 'album');
+    }
     return url.includes('list=') || url.includes('/playlist') || url.includes('/album');
 }
 
@@ -765,11 +1183,11 @@ function getElapsed(queue) {
     return Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
 }
 
-function createProgressBar(elapsed, total, length = 12) {
+function createProgressBar(elapsed, total, length = 20) {
     const progress = total > 0 ? Math.min(elapsed / total, 1) : 0;
-    const pos = Math.round(progress * length);
-    const bar = '▬'.repeat(Math.max(pos - 1, 0)) + '🔘' + '▬'.repeat(length - pos);
-    return `${formatDuration(elapsed)} ${bar} ${formatDuration(total)}`;
+    const filled = Math.round(progress * length);
+    const bar = '━'.repeat(filled) + '●' + '─'.repeat(Math.max(length - filled, 0));
+    return `\`${formatDuration(elapsed)}\` ${bar} \`${formatDuration(total)}\``;
 }
 
 function updateActivity(guildId) {
@@ -801,7 +1219,13 @@ function createStream(url, queue, onError, seekSeconds = 0) {
         ...cookieArgs, '--js-runtimes', 'node', url,
     ]);
 
-    const filterArgs = AUDIO_FILTERS[queue.filter] || [];
+    let filterArgs = AUDIO_FILTERS[queue.filter] || [];
+    // Custom EQ: build FFmpeg equalizer chain from band values
+    if (queue.filter === 'custom' && Array.isArray(queue.eqBands) && queue.eqBands.some(v => v !== 0)) {
+        const freqs = [60, 150, 400, 1000, 2500, 6000, 16000];
+        const eqChain = queue.eqBands.map((gain, i) => `equalizer=f=${freqs[i]}:width_type=o:width=1.5:g=${gain}`).join(',');
+        filterArgs = ['-af', eqChain];
+    }
 
     const ffmpeg = spawn(ffmpegPath, [
         ...(seekSeconds > 0 ? ['-ss', String(seekSeconds)] : []),
@@ -976,16 +1400,71 @@ async function joinChannel(guildId, channelId) {
     return setupVoiceConnection(guildId, channel, guild);
 }
 
-// ── Player-Buttons erstellen ─────────────────────────────────────
-function createPlayerButtons(loopMode) {
-    const loopEmoji = loopMode === 'song' ? '🔂' : loopMode === 'queue' ? '🔁' : '➡️';
-    return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('music_pause').setEmoji('⏯️').setStyle(ButtonStyle.Secondary),
+// ── Player-Buttons erstellen (2 Reihen) ─────────────────────────
+function createPlayerButtons(loopMode, isPaused = false) {
+    const loopEmoji = loopMode === 'song' ? '🔂' : '🔁';
+    const loopStyle = loopMode !== 'off' ? ButtonStyle.Primary : ButtonStyle.Secondary;
+
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_pause').setEmoji(isPaused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('music_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('music_loop').setEmoji(loopEmoji).setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('music_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger),
     );
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('music_loop').setEmoji(loopEmoji).setStyle(loopStyle),
+        new ButtonBuilder().setCustomId('music_app').setLabel('Web Player').setEmoji('🎧').setStyle(ButtonStyle.Link).setURL('https://app.bytebots.de'),
+    );
+    return [row1, row2];
+}
+
+// ── Now Playing Embed bauen ──────────────────────────────────────
+function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
+    const botUser = clientOrInteraction.user || clientOrInteraction;
+    const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
+
+    const descLines = [];
+    descLines.push(`### ${track.title}`);
+    if (track.artist) descLines.push(`*${track.artist}*`);
+    descLines.push('');
+
+    // Progress bar
+    const elapsedSec = typeof elapsed === 'number' ? elapsed : 0;
+    const total = parseDuration(track.duration);
+    descLines.push(createProgressBar(elapsedSec, total));
+
+    // Status als kleine Zeile
+    const status = [];
+    if (track.requestedBy) status.push(track.requestedBy);
+    if (queue.tracks.length > 0) status.push(`📋 ${queue.tracks.length} in Queue`);
+    if (queue.loopMode === 'song') status.push('🔂 Song');
+    else if (queue.loopMode === 'queue') status.push('🔁 Queue');
+    if (queue.filter && queue.filter !== 'off') {
+        const labels = { bassboost: 'Bassboost', nightcore: 'Nightcore', slowed: 'Slowed' };
+        status.push(`🎛️ ${labels[queue.filter] || queue.filter}`);
+    }
+    if (queue.autoDj) status.push('🤖 Auto-DJ');
+    if (status.length > 0) {
+        descLines.push(`-# ${status.join('  ·  ')}`);
+    }
+
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: isPaused ? '⏸ Paused' : 'Now playing', iconURL: botUser.displayAvatarURL() })
+        .setDescription(descLines.join('\n'))
+        .setThumbnail(track.albumArt || track.thumbnail || null)
+        .setColor(isPaused ? 0x95a5a6 : 0x6E41CC);
+
+    return embed;
+}
+
+// ── Now Playing Nachricht aktualisieren ──────────────────────────
+function updateNowPlayingMsg(queue) {
+    if (!queue._nowPlayingMsg || !queue.current) return Promise.resolve();
+    const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
+    const elapsed = getElapsed(queue);
+    const rows = createPlayerButtons(queue.loopMode, isPaused);
+    const embed = buildNowPlayingEmbed(queue.current, queue, client, elapsed);
+    return queue._nowPlayingMsg.edit({ embeds: [embed], components: rows }).catch(() => {});
 }
 
 // ── Wiedergabe ────────────────────────────────────────────────────
@@ -1121,23 +1600,10 @@ async function playNext(guildId) {
 
         // "Now Playing"-Nachricht mit Buttons senden
         if (queue.channel) {
-            const row = createPlayerButtons(queue.loopMode);
-            const npEmbed = new EmbedBuilder()
-                .setAuthor({ name: 'Spielt jetzt', iconURL: client.user.displayAvatarURL() })
-                .setDescription(`[${track.title}](${track.url})`)
-                .setThumbnail(track.albumArt || track.thumbnail)
-                .addFields(
-                    { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
-                    { name: 'Angefragt von', value: track.requestedBy || '—', inline: true },
-                )
-                .setColor(0x6E41CC);
-            if (track.artist) {
-                npEmbed.spliceFields(1, 0, { name: 'Artist', value: track.artist, inline: true });
-            }
-            if (queue.loopMode !== 'off') {
-                npEmbed.setFooter({ text: queue.loopMode === 'song' ? 'Song Loop' : 'Queue Loop' });
-            }
-            queue.channel.send({ embeds: [npEmbed], components: [row] })
+            const rows = createPlayerButtons(queue.loopMode, false);
+            const npEmbed = buildNowPlayingEmbed(track, queue, client);
+
+            queue.channel.send({ embeds: [npEmbed], components: rows })
                 .then(msg => { queue._nowPlayingMsg = msg; })
                 .catch(() => {});
         }
@@ -1171,12 +1637,12 @@ for (const file of commandFiles) {
 
 // ── Context-Objekt für Commands ───────────────────────────────────
 const ctx = {
-    db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, spotifyFetch, searchPlaylist, isPlaylistUrl,
+    db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, preResolveTrack, spotifyFetch, searchPlaylist, isPlaylistUrl, fetchPlaylistMeta, resolvePlaylistInBackground, fetchSpotifyEmbed,
     playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-    parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons,
+    parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, updateNowPlayingMsg,
 };
 
 // ── API Broadcast & Access Codes (wird nach API-Start gesetzt) ──
@@ -1204,22 +1670,23 @@ async function handleButton(interaction) {
             if (queue.player.state.status === AudioPlayerStatus.Paused) {
                 queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
                 queue.player.unpause();
-                await interaction.reply({ content: 'Resumed.', ephemeral: true });
             } else {
                 queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
                 queue.player.pause();
-                await interaction.reply({ content: 'Paused.', ephemeral: true });
             }
+            await interaction.deferUpdate();
+            updateNowPlayingMsg(queue);
             break;
 
         case 'music_skip':
+            await interaction.deferUpdate();
             for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
             queue.processes.clear();
             queue.player.stop();
-            await interaction.reply({ content: `Skipped **${queue.current.title}**.`, ephemeral: true });
             break;
 
         case 'music_stop':
+            await interaction.deferUpdate();
             for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
             queue.processes.clear();
             queue.tracks = [];
@@ -1229,7 +1696,6 @@ async function handleButton(interaction) {
             if (queue._nowPlayingMsg) { queue._nowPlayingMsg.delete().catch(() => {}); queue._nowPlayingMsg = null; }
             if (queue.player) queue.player.stop(true);
             scheduleLeave(interaction.guildId);
-            await interaction.reply({ content: 'Stopped.', ephemeral: true });
             break;
 
         case 'music_shuffle':
@@ -1240,26 +1706,16 @@ async function handleButton(interaction) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
             }
-            await interaction.reply({ content: `Shuffled **${queue.tracks.length} songs**.`, ephemeral: true });
+            await interaction.deferUpdate();
+            updateNowPlayingMsg(queue);
             break;
 
         case 'music_loop': {
             const modes = ['off', 'song', 'queue'];
-            const labels = { off: 'Loop disabled.', song: 'Looping current song.', queue: 'Looping queue.' };
             const idx = (modes.indexOf(queue.loopMode) + 1) % modes.length;
             queue.loopMode = modes[idx];
-            await interaction.reply({ content: labels[queue.loopMode], ephemeral: true });
-            // Button auf Now Playing aktualisieren
-            if (queue._nowPlayingMsg) {
-                const row = createPlayerButtons(queue.loopMode);
-                const embed = EmbedBuilder.from(queue._nowPlayingMsg.embeds[0]);
-                if (queue.loopMode !== 'off') {
-                    embed.setFooter({ text: queue.loopMode === 'song' ? 'Song Loop' : 'Queue Loop' });
-                } else {
-                    embed.setFooter(null);
-                }
-                queue._nowPlayingMsg.edit({ embeds: [embed], components: [row] }).catch(() => {});
-            }
+            await interaction.deferUpdate();
+            updateNowPlayingMsg(queue);
             break;
         }
     }
@@ -1311,13 +1767,17 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     const members = channel.members.filter(m => !m.user.bot).size;
 
     if (members === 0 && queue.player.state.status === AudioPlayerStatus.Playing) {
+        if (queue._playbackStart) {
+            queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
+        }
         queue.player.pause();
         queue._autoPaused = true;
-        autoDelete(queue.channel?.send('⏸️ Pausiert — niemand im Channel.'), DELETE_SHORT_MS);
+        updateNowPlayingMsg(queue);
     } else if (members > 0 && queue._autoPaused) {
+        queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
         queue.player.unpause();
         queue._autoPaused = false;
-        autoDelete(queue.channel?.send('▶️ Fortgesetzt — willkommen zurück!'), DELETE_SHORT_MS);
+        updateNowPlayingMsg(queue);
     }
 });
 

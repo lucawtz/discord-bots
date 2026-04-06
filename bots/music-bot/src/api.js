@@ -13,7 +13,7 @@ function startAPI(ctx, client) {
     const apiKey = process.env.API_KEY || '';
 
     // ── Rate Limiting ────────────────────────────────────────────
-    const isApiLimited = createRateLimiter(100, 60_000);
+    const isApiLimited = createRateLimiter(150, 60_000);
     const isSearchLimited = createRateLimiter(20, 60_000);
     const isAuthLimited = createRateLimiter(5, 15 * 60_000);
 
@@ -141,6 +141,7 @@ function startAPI(ctx, client) {
             volume: Math.round((queue.volume || 1) * 100),
             elapsed,
             autoDj: !!queue.autoDj,
+            filter: queue.filter || 'off',
         };
     }
 
@@ -230,6 +231,7 @@ function startAPI(ctx, client) {
             const discordClientId = process.env.CLIENT_ID;
             const discordClientSecret = process.env.DISCORD_CLIENT_SECRET;
             const oauthRedirectUri = process.env.OAUTH_REDIRECT_URI || `http://localhost:${port}/api/auth/discord/callback`;
+            const frontendUrl = process.env.FRONTEND_URL || ''; // empty = relative redirect (same origin)
 
             // GET /api/auth/discord — Redirect to Discord OAuth2
             if (method === 'GET' && urlPath === '/api/auth/discord') {
@@ -255,14 +257,14 @@ function startAPI(ctx, client) {
                 const errorParam = url.searchParams.get('error');
 
                 if (errorParam || !code) {
-                    res.writeHead(302, { Location: '/?error=discord_denied' });
+                    res.writeHead(302, { Location: `${frontendUrl}/?error=discord_denied` });
                     return res.end();
                 }
 
                 // Validate CSRF state
                 const stateKey = `oauth_state_${state}`;
                 if (!state || !sessions.has(stateKey)) {
-                    res.writeHead(302, { Location: '/?error=invalid_state' });
+                    res.writeHead(302, { Location: `${frontendUrl}/?error=invalid_state` });
                     return res.end();
                 }
                 sessions.delete(stateKey);
@@ -306,24 +308,24 @@ function startAPI(ctx, client) {
                         });
 
                     if (sharedGuilds.length === 0) {
-                        res.writeHead(302, { Location: '/?error=no_shared_guilds' });
+                        res.writeHead(302, { Location: `${frontendUrl}/?error=no_shared_guilds` });
                         return res.end();
                     }
 
                     // Store OAuth data temporarily for guild selection
                     const oauthToken = crypto.randomBytes(32).toString('hex');
                     sessions.set(`oauth_pending_${oauthToken}`, {
-                        user: { id: user.id, username: user.username, avatar: user.avatar },
+                        user: { id: user.id, username: user.username, global_name: user.global_name || user.username, avatar: user.avatar },
                         guilds: sharedGuilds,
                         createdAt: Date.now(),
                     });
 
                     // Redirect with token as query param (CSP-safe, no inline script)
-                    res.writeHead(302, { Location: `/?discord_token=${oauthToken}` });
+                    res.writeHead(302, { Location: `${frontendUrl}/?discord_token=${oauthToken}` });
                     return res.end();
                 } catch (err) {
                     console.error('OAuth error:', err.message);
-                    res.writeHead(302, { Location: '/?error=oauth_failed' });
+                    res.writeHead(302, { Location: `${frontendUrl}/?error=oauth_failed` });
                     return res.end();
                 }
             }
@@ -333,19 +335,19 @@ function startAPI(ctx, client) {
                 const { oauthToken } = await parseBody(req);
                 if (!oauthToken) return json(res, { error: 'Token fehlt' }, 400);
                 const pending = sessions.get(`oauth_pending_${oauthToken}`);
-                if (!pending) return json(res, { error: 'Ungueltiger oder abgelaufener Token' }, 401);
+                if (!pending) return json(res, { error: 'Ungültiger oder abgelaufener Token' }, 401);
                 return json(res, { user: pending.user, guilds: pending.guilds });
             }
 
             // POST /api/auth/discord/select — Select guild from OAuth
             if (method === 'POST' && urlPath === '/api/auth/discord/select') {
                 const { oauthToken, guildId } = await parseBody(req);
-                if (!oauthToken || !guildId) return json(res, { error: 'Token und guildId benoetigt' }, 400);
+                if (!oauthToken || !guildId) return json(res, { error: 'Token und guildId benötigt' }, 400);
                 const pendingKey = `oauth_pending_${oauthToken}`;
                 const pending = sessions.get(pendingKey);
-                if (!pending) return json(res, { error: 'Ungueltiger oder abgelaufener Token' }, 401);
+                if (!pending) return json(res, { error: 'Ungültiger oder abgelaufener Token' }, 401);
                 const selectedGuild = pending.guilds.find(g => g.id === guildId);
-                if (!selectedGuild) return json(res, { error: 'Server nicht verfuegbar' }, 403);
+                if (!selectedGuild) return json(res, { error: 'Server nicht verfügbar' }, 403);
                 sessions.delete(pendingKey);
                 const sessionToken = createSession(guildId, { ...pending.user, authType: 'discord' });
                 return json(res, { token: sessionToken, user: pending.user, guild: selectedGuild });
@@ -365,6 +367,7 @@ function startAPI(ctx, client) {
                     valid: true,
                     userId: userData?.id || null,
                     username: userData?.username || null,
+                    global_name: userData?.global_name || userData?.username || null,
                     avatar: userData?.avatar || null,
                     authType: userData?.authType || 'code',
                     guild: guild ? { id: guild.id, name: guild.name, icon: guild.iconURL({ size: 128 }) } : null,
@@ -381,7 +384,8 @@ function startAPI(ctx, client) {
             // ── Geschuetzte API-Endpunkte ────────────────────────
             if (urlPath.startsWith('/api/')) {
                 if (urlPath.includes('/search') && isSearchLimited(clientIp)) return json(res, { error: 'Zu viele Suchanfragen.' }, 429);
-                if (isApiLimited(clientIp)) return json(res, { error: 'Zu viele Anfragen.' }, 429);
+                // Discover endpoints are cached client-side, don't count against rate limit
+                if (!urlPath.startsWith('/api/discover/') && isApiLimited(clientIp)) return json(res, { error: 'Zu viele Anfragen.' }, 429);
 
                 const auth = authenticateRequest(req);
                 if (!auth) return json(res, { error: 'Nicht authentifiziert. Nutze /app in Discord für einen Zugangs-Code.' }, 401);
@@ -406,34 +410,294 @@ function startAPI(ctx, client) {
                     if (!q) return json(res, { error: 'Query fehlt' }, 400);
                     // Enhanced search returns categorized results (artists, tracks, albums)
                     if (url.searchParams.get('enhanced') === '1') {
-                        return json(res, await ctx.searchEnhanced(q));
+                        const results = await ctx.searchEnhanced(q);
+                        // Pre-resolve top 3 YouTube URLs in background for instant playback
+                        (results.tracks || []).slice(0, 3).forEach(t => ctx.preResolveTrack(t.url));
+                        return json(res, results);
                     }
+                    // Fast search via Deezer (single call, ~200ms)
+                    try {
+                        const deezerData = await new Promise((resolve, reject) => {
+                            require('https').get(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=10`, { timeout: 5000 }, (r) => {
+                                let d = ''; r.on('data', c => d += c);
+                                r.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse')); } });
+                            }).on('error', reject);
+                        });
+                        const tracks = (deezerData.data || []).map(t => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            artistImage: t.artist?.picture_medium || null,
+                            thumbnail: t.album?.cover_medium || null,
+                            albumName: t.album?.title || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                            source: 'deezer',
+                        }));
+                        if (tracks.length > 0) {
+                            tracks.slice(0, 3).forEach(t => ctx.preResolveTrack(t.url));
+                            return json(res, tracks);
+                        }
+                    } catch {}
+                    // Fallback to YouTube search
                     return json(res, await ctx.searchTracks(q));
                 }
 
                 // ── Discover Endpoints ─────────────────────────────
 
-                // GET /api/discover/trending
+                // GET /api/discover/trending — Real charts from Deezer (no API key needed)
                 if (method === 'GET' && urlPath === '/api/discover/trending') {
+                    const genreFilter = url.searchParams.get('genre') || 'all';
+
                     try {
-                        const tracks = await ctx.searchTracks(`trending music ${new Date().getFullYear()}`, 10);
+                        // Deezer Chart API — real, daily-updated global charts
+                        const chartData = await new Promise((resolve, reject) => {
+                            const chartUrl = 'https://api.deezer.com/chart/0/tracks?limit=20';
+                            require('https').get(chartUrl, { timeout: 8000 }, (res) => {
+                                let data = '';
+                                res.on('data', d => data += d);
+                                res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Deezer parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Deezer timeout')); });
+                        });
+
+                        let tracks = (chartData.data || []).map((t, i) => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                            position: t.position || i + 1,
+                            source: 'deezer-charts',
+                        }));
+
+                        // Genre filter: search Deezer for genre-specific tracks
+                        if (genreFilter !== 'all') {
+                            const genreArtists = {
+                                pop: ['Sabrina Carpenter', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande'],
+                                hiphop: ['Kendrick Lamar', 'Drake', 'Travis Scott', 'Central Cee'],
+                                rnb: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean'],
+                                rock: ['Arctic Monkeys', 'Imagine Dragons', 'Linkin Park', 'Maneskin'],
+                                electronic: ['David Guetta', 'Calvin Harris', 'Martin Garrix', 'Tiesto'],
+                                latin: ['Bad Bunny', 'Karol G', 'Rauw Alejandro', 'Feid'],
+                                kpop: ['BTS', 'BLACKPINK', 'NewJeans', 'Stray Kids'],
+                            };
+                            const artists = genreArtists[genreFilter];
+                            if (artists) {
+                                try {
+                                    const https = require('https');
+                                    const deezerGet = (url) => new Promise((resolve, reject) => {
+                                        https.get(url, { timeout: 8000 }, (r) => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{try{resolve(JSON.parse(d));}catch{reject(new Error('Parse'));}}); }).on('error',reject);
+                                    });
+                                    const results = await Promise.allSettled(
+                                        artists.map(a => deezerGet(`https://api.deezer.com/search?q=${encodeURIComponent(a)}&limit=5`))
+                                    );
+                                    const seen = new Set();
+                                    tracks = [];
+                                    for (const r of results) {
+                                        if (r.status !== 'fulfilled') continue;
+                                        for (const t of (r.value.data || [])) {
+                                            if (seen.has(t.id)) continue;
+                                            seen.add(t.id);
+                                            tracks.push({
+                                                title: t.title || '',
+                                                artist: t.artist?.name || '',
+                                                thumbnail: t.album?.cover_medium || null,
+                                                duration: `${Math.floor((t.duration||0)/60)}:${String((t.duration||0)%60).padStart(2,'0')}`,
+                                                url: `${t.artist?.name||''} ${t.title||''}`,
+                                                source: 'deezer',
+                                            });
+                                        }
+                                    }
+                                } catch {}
+                            }
+                        }
+
+                        if (tracks.length > 0) return json(res, tracks);
+                        throw new Error('No chart data');
+                    } catch (err) {
+                        console.error('Charts failed:', err.message);
+                        try {
+                            const artists = ['Sabrina Carpenter', 'Billie Eilish', 'The Weeknd', 'Kendrick Lamar'];
+                            const results = await Promise.allSettled(artists.map(a => ctx.searchTracks(a, 3)));
+                            return json(res, results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).slice(0, 12));
+                        } catch { return json(res, []); }
+                    }
+                }
+
+                // GET /api/discover/local-charts — Country-specific charts via Deezer
+                if (method === 'GET' && urlPath === '/api/discover/local-charts') {
+                    const country = (url.searchParams.get('country') || 'DE').toUpperCase();
+                    // Deezer editorial IDs per country
+                    const editorialIds = { DE: 116, AT: 116, CH: 116, US: 0, GB: 0, FR: 52, ES: 81, IT: 80, TR: 109, BR: 36, NL: 71, SE: 60, PL: 83, KR: 0, JP: 105, MX: 131 };
+                    const editorialId = editorialIds[country] ?? 0;
+
+                    try {
+                        const chartUrl = editorialId > 0
+                            ? `https://api.deezer.com/editorial/${editorialId}/charts`
+                            : 'https://api.deezer.com/chart/0/tracks?limit=15';
+
+                        const chartData = await new Promise((resolve, reject) => {
+                            require('https').get(chartUrl, { timeout: 8000 }, (res) => {
+                                let data = '';
+                                res.on('data', d => data += d);
+                                res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+
+                        const rawTracks = editorialId > 0 ? (chartData.tracks?.data || []) : (chartData.data || []);
+                        const tracks = rawTracks.slice(0, 15).map((t, i) => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                            position: t.position || i + 1,
+                            source: 'deezer-charts',
+                        }));
+
                         return json(res, tracks);
                     } catch { return json(res, []); }
                 }
 
-                // GET /api/discover/new-releases
+                // GET /api/discover/sections — Genre/mood sections like Spotify home
+                if (method === 'GET' && urlPath === '/api/discover/sections') {
+                    const genreFilter = url.searchParams.get('genre') || 'all';
+
+                    const allSections = [
+                        { title: 'Pop Hits', artists: ['Sabrina Carpenter', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande', 'Olivia Rodrigo'], genre: 'pop' },
+                        { title: 'Hip-Hop', artists: ['Kendrick Lamar', 'Drake', 'Travis Scott', 'Central Cee', 'Future'], genre: 'hiphop' },
+                        { title: 'Chill Vibes', artists: ['Khruangbin', 'Mac DeMarco', 'Tame Impala', 'FKJ', 'Tom Misch'], genre: 'electronic' },
+                        { title: 'Party', artists: ['David Guetta', 'Calvin Harris', 'Tiesto', 'Martin Garrix', 'Marshmello'], genre: 'electronic' },
+                        { title: 'R&B & Soul', artists: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean', 'Daniel Caesar'], genre: 'rnb' },
+                        { title: 'Rock & Indie', artists: ['Arctic Monkeys', 'Imagine Dragons', 'Linkin Park', 'Maneskin', 'Green Day'], genre: 'rock' },
+                        { title: 'Latin Hits', artists: ['Bad Bunny', 'Karol G', 'Rauw Alejandro', 'Feid', 'Peso Pluma'], genre: 'latin' },
+                        { title: 'K-Pop', artists: ['BTS', 'BLACKPINK', 'NewJeans', 'Stray Kids', 'aespa'], genre: 'kpop' },
+                        { title: 'Deutsch Rap', artists: ['Apache 207', 'Luciano', 'Capital Bra', 'Shirin David', 'Pashanim'], genre: 'hiphop' },
+                        { title: 'EDM & Dance', artists: ['Robin Schulz', 'Felix Jaehn', 'Regard', 'Joel Corry', 'Becky Hill'], genre: 'electronic' },
+                    ];
+
+                    let sections = allSections;
+                    if (genreFilter !== 'all') sections = sections.filter(s => s.genre === genreFilter);
+                    if (sections.length === 0) sections = allSections;
+
+                    // Pick 4 sections
+                    const hour = new Date().getHours();
+                    const offset = (hour * 2) % sections.length;
+                    const picked = [];
+                    // Always include Chill Vibes, then fill with rotating others
+                    const chillSection = sections.find(s => s.title === 'Chill Vibes');
+                    if (chillSection) picked.push(chillSection);
+                    for (let i = 0; i < sections.length && picked.length < 5; i++) {
+                        const s = sections[(offset + i) % sections.length];
+                        if (!picked.includes(s)) picked.push(s);
+                    }
+
+                    try {
+                        const https = require('https');
+                        const deezerSearch = (query, limit = 4) => new Promise((resolve, reject) => {
+                            https.get(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`, { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+
+                        const mapTrack = (t) => ({
+                            title: t.title || '',
+                            artist: t.artist?.name || '',
+                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                            url: `${t.artist?.name || ''} ${t.title || ''}`,
+                        });
+
+                        // For each section, pick 3 random artists and search individually
+                        const seed = Date.now() / 3600000 | 0;
+                        const results = await Promise.allSettled(
+                            picked.map(async (s) => {
+                                const shuffled = [...s.artists].sort((a, b) => Math.sin(seed + a.length) - Math.sin(seed + b.length));
+                                const picks = shuffled.slice(0, 3);
+                                const searches = await Promise.allSettled(picks.map(a => deezerSearch(a, 4)));
+                                const seen = new Set();
+                                const tracks = [];
+                                for (const r of searches) {
+                                    if (r.status !== 'fulfilled') continue;
+                                    for (const t of (r.value.data || [])) {
+                                        if (seen.has(t.id)) continue;
+                                        seen.add(t.id);
+                                        tracks.push(mapTrack(t));
+                                    }
+                                }
+                                return { title: s.title, tracks };
+                            })
+                        );
+                        return json(res, results.filter(r => r.status === 'fulfilled').map(r => r.value).filter(s => s.tracks.length > 0));
+                    } catch { return json(res, []); }
+                }
+
+                // GET /api/discover/new-releases — New songs via Deezer editorial charts
                 if (method === 'GET' && urlPath === '/api/discover/new-releases') {
                     try {
-                        const data = await ctx.spotifyFetch('/browse/new-releases?country=DE&limit=12');
-                        const albums = (data.albums?.items || []).map(a => ({
+                        // Deezer editorial "new releases" chart
+                        const data = await new Promise((resolve, reject) => {
+                            require('https').get('https://api.deezer.com/editorial/0/releases?limit=12', { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+                        const albums = (data.data || []).map(a => ({
                             id: a.id,
-                            name: a.name,
-                            artist: a.artists?.map(ar => ar.name).join(', ') || '',
-                            image: a.images?.[1]?.url || a.images?.[0]?.url || null,
-                            releaseDate: a.release_date || null,
-                            totalTracks: a.total_tracks || 0,
+                            name: a.title || '',
+                            artist: a.artist?.name || '',
+                            image: a.cover_medium || a.cover || null,
+                            url: `${a.artist?.name || ''} ${a.title || ''}`,
                         }));
-                        return json(res, albums);
+                        if (albums.length > 0) return json(res, albums);
+                        throw new Error('No releases');
+                    } catch {
+                        // Fallback: Spotify search
+                        try {
+                            const year = new Date().getFullYear();
+                            const data = await ctx.spotifyFetch(`/search?q=year%3A${year}&type=track&limit=12&market=DE`);
+                            return json(res, (data.tracks?.items || []).map(t => ({
+                                id: t.id, name: t.name,
+                                artist: t.artists?.map(a => a.name).join(', ') || '',
+                                image: t.album?.images?.[1]?.url || null,
+                                url: `${t.artists?.[0]?.name || ''} ${t.name}`,
+                            })));
+                        } catch { return json(res, []); }
+                    }
+                }
+
+                // GET /api/discover/popular-artists — Extract real music artists from track charts
+                if (method === 'GET' && urlPath === '/api/discover/popular-artists') {
+                    try {
+                        // Get artists from the track charts (guaranteed real musicians, not audiobooks)
+                        const data = await new Promise((resolve, reject) => {
+                            require('https').get('https://api.deezer.com/chart/0/tracks?limit=25', { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse error')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+                        // Deduplicate artists from chart tracks
+                        const seen = new Set();
+                        const artists = [];
+                        for (const t of (data.data || [])) {
+                            const a = t.artist;
+                            if (!a || seen.has(a.id)) continue;
+                            seen.add(a.id);
+                            artists.push({
+                                id: String(a.id),
+                                name: a.name || '',
+                                image: a.picture_medium || a.picture || null,
+                            });
+                            if (artists.length >= 8) break;
+                        }
+                        return json(res, artists);
+                    } catch { return json(res, []); }
+                }
+
+                // GET /api/discover/global-popular — Most played across all guilds
+                if (method === 'GET' && urlPath === '/api/discover/global-popular') {
+                    try {
+                        return json(res, ctx.db.getMostPlayedGlobal(30, 12));
                     } catch { return json(res, []); }
                 }
 
@@ -442,34 +706,53 @@ function startAPI(ctx, client) {
                 if (method === 'GET' && recsMatch) {
                     const guildId = recsMatch[1];
                     try {
-                        // Get top artists from history
-                        const topArtists = ctx.db.getTopArtistsFromHistory('guild', guildId, 30, 3);
+                        // Get top artists from listening history
+                        const topArtists = ctx.db.getTopArtistsFromHistory('guild', guildId, 30, 5);
                         if (topArtists.length === 0) return json(res, { forYou: [], becauseYouListened: null });
 
-                        // Search Spotify for seed artists
-                        const seedSearches = await Promise.all(
+                        // Find Deezer artist IDs for top 2 artists
+                        const https = require('https');
+                        const deezerGet = (url) => new Promise((resolve, reject) => {
+                            https.get(url, { timeout: 8000 }, (res) => {
+                                let d = ''; res.on('data', c => d += c);
+                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse')); } });
+                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
+                        });
+
+                        const artistSearches = await Promise.allSettled(
                             topArtists.slice(0, 2).map(a =>
-                                ctx.spotifyFetch(`/search?q=${encodeURIComponent(a.artist)}&type=artist&limit=1`)
-                                    .then(d => d.artists?.items?.[0]?.id)
-                                    .catch(() => null)
+                                deezerGet(`https://api.deezer.com/search/artist?q=${encodeURIComponent(a.artist)}&limit=1`)
+                                    .then(d => ({ id: d.data?.[0]?.id, name: a.artist }))
                             )
                         );
-                        const seedArtistIds = seedSearches.filter(Boolean);
+                        const seedArtists = artistSearches.filter(r => r.status === 'fulfilled' && r.value.id).map(r => r.value);
 
-                        if (seedArtistIds.length === 0) return json(res, { forYou: [], becauseYouListened: null });
+                        if (seedArtists.length === 0) return json(res, { forYou: [], becauseYouListened: null });
 
-                        // Get recommendations from Spotify
-                        const recs = await ctx.spotifyFetch(
-                            `/recommendations?seed_artists=${seedArtistIds.join(',')}&limit=10&market=DE`
+                        // Get radio tracks (similar songs) from Deezer for each artist
+                        const radioResults = await Promise.allSettled(
+                            seedArtists.map(a => deezerGet(`https://api.deezer.com/artist/${a.id}/radio`))
                         );
-                        const forYou = (recs.tracks || []).map(t => ({
-                            title: `${t.artists?.[0]?.name || ''} – ${t.name}`,
-                            artist: t.artists?.map(a => a.name).join(', ') || '',
-                            thumbnail: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null,
-                            duration: Math.floor((t.duration_ms || 0) / 1000),
-                            spotifyId: t.id,
-                            searchQuery: `${t.artists?.[0]?.name} ${t.name}`,
-                        }));
+
+                        const seen = new Set();
+                        const forYou = [];
+                        for (const r of radioResults) {
+                            if (r.status !== 'fulfilled') continue;
+                            for (const t of (r.value.data || [])) {
+                                if (seen.has(t.id)) continue;
+                                seen.add(t.id);
+                                forYou.push({
+                                    title: t.title || '',
+                                    artist: t.artist?.name || '',
+                                    artistImage: t.artist?.picture_medium || null,
+                                    thumbnail: t.album?.cover_medium || t.album?.cover || null,
+                                    duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                                    url: `${t.artist?.name || ''} ${t.title || ''}`,
+                                });
+                                if (forYou.length >= 12) break;
+                            }
+                            if (forYou.length >= 12) break;
+                        }
 
                         return json(res, {
                             forYou,
@@ -580,17 +863,28 @@ function startAPI(ctx, client) {
                 // POST /api/guild/:id/play
                 const playMatch = urlPath.match(/^\/api\/guild\/(\d+)\/play$/);
                 if (method === 'POST' && playMatch) {
-                    const { query } = await parseBody(req);
+                    const { query, immediate } = await parseBody(req);
                     if (!query) return json(res, { error: 'Query fehlt' }, 400);
-                    const queue = ctx.queues.get(playMatch[1]);
+                    const guildId = playMatch[1];
+                    const queue = ctx.queues.get(guildId);
                     if (!queue || !queue.connection) return json(res, { error: 'Bot ist nicht verbunden. Nutze /play in Discord.' }, 400);
                     const track = await ctx.searchTrack(query);
                     track.requestedBy = 'Web App';
                     track._requestedById = getUserId();
-                    queue.tracks.push(track);
-                    if (!queue.current) ctx.playNext(playMatch[1]);
-                    broadcast('stateUpdate', getGuildState(playMatch[1]));
-                    return json(res, { track, position: queue.tracks.length });
+
+                    if (immediate && queue.current) {
+                        // Play now: put at front of queue and skip current
+                        queue.tracks.unshift(track);
+                        for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
+                        queue.processes.clear();
+                        queue.player.stop();
+                    } else {
+                        queue.tracks.push(track);
+                        if (!queue.current) ctx.playNext(guildId);
+                    }
+
+                    broadcast('stateUpdate', getGuildState(guildId));
+                    return json(res, { track, position: immediate ? 0 : queue.tracks.length });
                 }
 
                 // POST /api/guild/:id/skip
@@ -633,6 +927,21 @@ function startAPI(ctx, client) {
                     if (queue.player) queue.player.stop(true);
                     ctx.scheduleLeave(stopMatch[1]);
                     broadcast('stateUpdate', getGuildState(stopMatch[1]));
+                    return json(res, { ok: true });
+                }
+
+                // DELETE /api/guild/:id/queue — Clear entire queue
+                const clearMatch = urlPath.match(/^\/api\/guild\/(\d+)\/queue$/);
+                if (method === 'DELETE' && clearMatch) {
+                    const queue = ctx.queues.get(clearMatch[1]);
+                    if (queue) {
+                        queue.tracks = [];
+                        queue.current = null;
+                        if (queue.player) try { queue.player.stop(true); } catch {}
+                        for (const proc of queue.processes) { if (!proc.killed) proc.kill(); }
+                        queue.processes.clear();
+                    }
+                    broadcast('stateUpdate', getGuildState(clearMatch[1]));
                     return json(res, { ok: true });
                 }
 
@@ -685,6 +994,28 @@ function startAPI(ctx, client) {
                     return json(res, { volume: vol });
                 }
 
+                // POST /api/guild/:id/filter — Set audio filter (restarts current song)
+                const filterMatch = urlPath.match(/^\/api\/guild\/(\d+)\/filter$/);
+                if (method === 'POST' && filterMatch) {
+                    const { filter, eqBands } = await parseBody(req);
+                    const guildId = filterMatch[1];
+                    const validFilters = ['off', 'bassboost', 'nightcore', 'slowed', 'custom'];
+                    if (!validFilters.includes(filter)) return json(res, { error: 'Ungültiger Filter' }, 400);
+                    const queue = ctx.getQueue(guildId);
+                    queue.filter = filter;
+                    if (filter === 'custom' && Array.isArray(eqBands) && eqBands.length === 7) {
+                        queue.eqBands = eqBands.map(v => Math.max(-12, Math.min(12, parseInt(v) || 0)));
+                    }
+                    broadcast('stateUpdate', getGuildState(guildId));
+                    return json(res, { ok: true, filter, eqBands: queue.eqBands });
+                }
+
+                // GET /api/guild/:id/filter — Get current filter
+                if (method === 'GET' && urlPath.match(/^\/api\/guild\/(\d+)\/filter$/)) {
+                    const queue = ctx.queues.get(urlPath.match(/^\/api\/guild\/(\d+)\/filter$/)[1]);
+                    return json(res, { filter: queue?.filter || 'off' });
+                }
+
                 // ── Playlist Endpoints ────────────────────────────────
 
                 // GET /api/guild/:id/playlists
@@ -699,7 +1030,7 @@ function startAPI(ctx, client) {
                 if (method === 'POST' && playlistsListMatch) {
                     const guildId = playlistsListMatch[1];
                     const { name } = await parseBody(req);
-                    if (!name || name.length > 50) return json(res, { error: 'Name ungueltig (1-50 Zeichen)' }, 400);
+                    if (!name || name.length > 50) return json(res, { error: 'Name ungültig (1-50 Zeichen)' }, 400);
 
                     const queue = ctx.queues.get(guildId);
                     const tracks = [];
@@ -732,6 +1063,82 @@ function startAPI(ctx, client) {
                     const deleted = ctx.db.deletePlaylist(parseInt(playlistDetailMatch[2]), null);
                     if (!deleted) return json(res, { error: 'Nicht gefunden' }, 404);
                     return json(res, { ok: true });
+                }
+
+                // POST /api/guild/:id/playlists/import — Import playlist from Spotify/YouTube/etc URL
+                const playlistImportMatch = urlPath.match(/^\/api\/guild\/(\d+)\/playlists\/import$/);
+                if (method === 'POST' && playlistImportMatch) {
+                    const guildId = playlistImportMatch[1];
+                    const { url: playlistUrl, name: customName } = await parseBody(req);
+                    if (!playlistUrl) return json(res, { error: 'URL fehlt' }, 400);
+
+                    try {
+                        // Fast import: extract metadata only, no YouTube search
+                        let title = 'Importierte Playlist';
+                        let rawTracks = [];
+
+                        if (ctx.isPlaylistUrl(playlistUrl) && playlistUrl.includes('spotify.com')) {
+                            // Spotify: use embed scraping (fast, no API needed)
+                            const parsed = playlistUrl.match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/);
+                            if (!parsed) throw new Error('Ungültige Spotify-URL');
+                            const { fetchSpotifyEmbed } = ctx;
+
+                            // Try API first, then embed fallback
+                            try {
+                                if (parsed[1] === 'playlist') {
+                                    const data = await ctx.spotifyFetch(`/playlists/${parsed[2]}?market=DE`);
+                                    title = data.name || title;
+                                    rawTracks = (data.tracks?.items || []).filter(i => i.track).map(i => ({
+                                        title: i.track.name,
+                                        url: `${i.track.artists?.[0]?.name || ''} ${i.track.name}`,
+                                        artist: i.track.artists?.map(a => a.name).join(', ') || '',
+                                        thumbnail: i.track.album?.images?.[1]?.url || null,
+                                        duration: `${Math.floor((i.track.duration_ms||0)/60000)}:${String(Math.floor(((i.track.duration_ms||0)%60000)/1000)).padStart(2,'0')}`,
+                                    }));
+                                } else if (parsed[1] === 'album') {
+                                    const data = await ctx.spotifyFetch(`/albums/${parsed[2]}?market=DE`);
+                                    title = `${data.artists?.[0]?.name || ''} – ${data.name || 'Album'}`.trim();
+                                    rawTracks = (data.tracks?.items || []).map(t => ({
+                                        title: t.name,
+                                        url: `${t.artists?.[0]?.name || ''} ${t.name}`,
+                                        artist: t.artists?.map(a => a.name).join(', ') || '',
+                                        thumbnail: data.images?.[1]?.url || null,
+                                        duration: `${Math.floor((t.duration_ms||0)/60000)}:${String(Math.floor(((t.duration_ms||0)%60000)/1000)).padStart(2,'0')}`,
+                                    }));
+                                }
+                            } catch {}
+
+                            // Embed fallback if API fails
+                            if (rawTracks.length === 0) {
+                                const entity = await ctx.fetchSpotifyEmbed(parsed[1], parsed[2]);
+                                title = entity.name || title;
+                                const coverArt = entity.coverArt?.sources?.[0]?.url || null;
+                                rawTracks = (entity.trackList || []).filter(t => t.title).map(t => ({
+                                    title: t.title,
+                                    url: `${t.subtitle || ''} ${t.title}`.trim(),
+                                    artist: t.subtitle || '',
+                                    thumbnail: coverArt,
+                                    duration: t.duration ? `${Math.floor(t.duration/60000)}:${String(Math.floor((t.duration%60000)/1000)).padStart(2,'0')}` : null,
+                                }));
+                            }
+                        } else {
+                            // YouTube/Deezer/Apple Music: use existing searchPlaylist (already has URLs)
+                            const result = await ctx.searchPlaylist(playlistUrl);
+                            title = result.title || title;
+                            rawTracks = result.tracks || [];
+                        }
+
+                        const name = customName?.trim() || title;
+                        const tracks = rawTracks.slice(0, 500);
+                        if (tracks.length === 0) throw new Error('Playlist ist leer');
+
+                        const userId = getUserId() || 'dashboard';
+                        const playlistId = ctx.db.createPlaylist(guildId, userId, name, tracks);
+
+                        return json(res, { ok: true, id: playlistId, name, trackCount: tracks.length, limited: rawTracks.length > tracks.length });
+                    } catch (err) {
+                        return json(res, { error: err.message || 'Import fehlgeschlagen' }, 400);
+                    }
                 }
 
                 // POST /api/guild/:id/playlists/:pid/load
@@ -783,9 +1190,9 @@ function startAPI(ctx, client) {
                     const { from, to } = await parseBody(req);
                     const queue = ctx.queues.get(guildId);
                     if (!queue) return json(res, { error: 'Keine Queue' }, 400);
-                    if (typeof from !== 'number' || typeof to !== 'number') return json(res, { error: 'from und to muessen Zahlen sein' }, 400);
+                    if (typeof from !== 'number' || typeof to !== 'number') return json(res, { error: 'from und to müssen Zahlen sein' }, 400);
                     if (from < 0 || from >= queue.tracks.length || to < 0 || to >= queue.tracks.length) {
-                        return json(res, { error: 'Index ausserhalb der Queue' }, 400);
+                        return json(res, { error: 'Index außerhalb der Queue' }, 400);
                     }
                     const [moved] = queue.tracks.splice(from, 1);
                     queue.tracks.splice(to, 0, moved);
@@ -830,6 +1237,60 @@ function startAPI(ctx, client) {
                     return sess?.user?.id || `guest_${sess?.guildId}`;
                 }
 
+                // GET /api/user/settings
+                if (method === 'GET' && urlPath === '/api/user/settings') {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    return json(res, ctx.db.getUserSettings(uid));
+                }
+
+                // PUT /api/user/settings
+                if (method === 'PUT' && urlPath === '/api/user/settings') {
+                    const uid = getUserId();
+                    if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
+                    const body = await parseBody(req);
+                    ctx.db.saveUserSettings(uid, body);
+                    return json(res, { ok: true });
+                }
+
+                // POST /api/user/profile — public profile data (verified via Discord token)
+                if (method === 'POST' && urlPath === '/api/user/profile') {
+                    const body = await parseBody(req);
+                    if (!body.discordToken) return json(res, { error: 'Discord Token benötigt' }, 400);
+                    try {
+                        const discordRes = await fetch('https://discord.com/api/v10/users/@me', {
+                            headers: { Authorization: `Bearer ${body.discordToken}` },
+                        });
+                        if (!discordRes.ok) return json(res, { error: 'Ungültiger Discord Token' }, 401);
+                        const discordUser = await discordRes.json();
+                        const uid = discordUser.id;
+
+                        const likes = ctx.db.getLikedTracks(uid);
+                        const settings = ctx.db.getUserSettings(uid);
+                        const followedArtists = ctx.db.getFollowedArtists(uid);
+                        const topArtists = ctx.db.getTopArtistsGlobal(uid, 90, 10);
+                        const totalLikeSeconds = likes.reduce((sum, t) => {
+                            if (!t.duration) return sum;
+                            const parts = t.duration.split(':').map(Number);
+                            return sum + (parts.length === 2 ? parts[0] * 60 + parts[1] : parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : 0);
+                        }, 0);
+
+                        return json(res, {
+                            user: { id: uid, username: discordUser.global_name || discordUser.username, avatar: discordUser.avatar },
+                            stats: {
+                                likedCount: likes.length,
+                                followedArtists: followedArtists.length,
+                                totalLikeMinutes: Math.round(totalLikeSeconds / 60),
+                            },
+                            topArtists,
+                            likedTracks: likes.slice(0, 12),
+                            settings,
+                        });
+                    } catch (err) {
+                        return json(res, { error: 'Profil konnte nicht geladen werden' }, 500);
+                    }
+                }
+
                 // GET /api/guild/:id/likes
                 const likesGetMatch = urlPath.match(/^\/api\/guild\/(\d+)\/likes$/);
                 if (method === 'GET' && likesGetMatch) {
@@ -843,7 +1304,7 @@ function startAPI(ctx, client) {
                     const uid = getUserId();
                     if (!uid) return json(res, { error: 'Nicht authentifiziert' }, 401);
                     const track = await parseBody(req);
-                    if (!track.title || !track.url) return json(res, { error: 'title und url benoetigt' }, 400);
+                    if (!track.title || !track.url) return json(res, { error: 'title und url benötigt' }, 400);
                     ctx.db.likeTrack(uid, likesGetMatch[1], track);
                     return json(res, { ok: true }, 201);
                 }

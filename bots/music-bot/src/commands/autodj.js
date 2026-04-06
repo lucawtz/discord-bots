@@ -12,9 +12,10 @@ module.exports = {
         // In DB persistieren
         ctx.db.setGuildSetting(interaction.guildId, 'auto_dj', queue.autoDj ? 1 : 0);
 
-        const status = queue.autoDj ? '**enabled**' : '**disabled**';
+        ctx.updateNowPlayingMsg(queue);
+        const status = queue.autoDj ? 'aktiviert' : 'deaktiviert';
         ctx.autoDelete(
-            interaction.reply({ content: `Auto-DJ ${status}.`, fetchReply: true }),
+            interaction.reply({ content: `-# 🤖 Auto-DJ ${status}`, fetchReply: true }),
             ctx.DELETE_SHORT_MS
         );
 

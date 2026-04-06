@@ -1,33 +1,36 @@
 import { Box, Typography, Link as MuiLink, Stack, Container } from '@mui/material';
 import { Link } from 'react-router-dom';
-
-const columns = [
-    {
-        title: 'Product',
-        links: [
-            { label: 'BeatByte', path: '/bots/music-bot' },
-            { label: 'EarTastic', path: '/bots/soundboard-bot' },
-            { label: 'Commands', path: '/commands' },
-        ],
-    },
-    {
-        title: 'Resources',
-        links: [
-            { label: 'Documentation', path: '/guide' },
-            { label: 'Status', path: '/status' },
-            { label: 'Changelog', path: '/changelog' },
-        ],
-    },
-    {
-        title: 'Legal',
-        links: [
-            { label: 'Impressum', path: '/impressum' },
-            { label: 'Datenschutz', path: '/datenschutz' },
-        ],
-    },
-];
+import { useLanguage } from '../i18n/LanguageContext';
 
 export default function Footer() {
+    const { t } = useLanguage();
+
+    const columns = [
+        {
+            title: t('footer.product'),
+            links: [
+                { label: 'BeatByte', path: '/bots/music-bot' },
+                { label: 'EarTastic', path: '/bots/soundboard-bot' },
+                { label: 'Commands', path: '/commands' },
+            ],
+        },
+        {
+            title: t('footer.resources'),
+            links: [
+                { label: t('footer.documentation'), path: '/guide' },
+                { label: 'Status', path: '/status' },
+                { label: 'Changelog', path: '/changelog' },
+            ],
+        },
+        {
+            title: t('footer.legal'),
+            links: [
+                { label: 'Impressum', path: '/impressum' },
+                { label: 'Datenschutz', path: '/datenschutz' },
+            ],
+        },
+    ];
+
     return (
         <Box component="footer" sx={{ borderTop: '1px solid rgba(255,255,255,0.06)', mt: 'auto' }}>
             <Container maxWidth="lg" sx={{ py: 8 }}>
@@ -35,11 +38,11 @@ export default function Footer() {
                     {/* Brand */}
                     <Box sx={{ minWidth: 160 }}>
                         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-                            <Box component="img" src="/logo.png" alt="" sx={{ width: 24, height: 24, objectFit: 'contain' }} />
+                            <Box component="img" src="/bytebots-favicon.png" alt="ByteBots" sx={{ width: 24, height: 24, objectFit: 'contain' }} />
                             <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>ByteBots</Typography>
                         </Stack>
                         <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                            Professionelle Discord Bots.
+                            {t('footer.tagline')}
                         </Typography>
                     </Box>
 
@@ -67,7 +70,7 @@ export default function Footer() {
 
                 <Box sx={{ mt: 6, pt: 4, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.75rem' }}>
-                        &copy; {new Date().getFullYear()} ByteBots. Alle Rechte vorbehalten.
+                        &copy; {new Date().getFullYear()} {t('footer.copyright')}
                     </Typography>
                 </Box>
             </Container>

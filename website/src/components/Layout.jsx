@@ -4,9 +4,15 @@ import Footer from './Footer';
 import { Box } from '@mui/material';
 import { useEffect } from 'react';
 
+const PAGE_TITLE = 'ByteBots';
+
 export default function Layout() {
     const location = useLocation();
-    useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
+
+    useEffect(() => {
+        window.scrollTo(0, 0);
+        document.title = PAGE_TITLE;
+    }, [location.pathname]);
 
     return (
         <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>

@@ -37,12 +37,16 @@ const upload = multer({
   },
 });
 
-// HTTPS GET als Promise
-function httpsGet(url) {
+// HTTPS GET als Promise (mit Redirect-Limit)
+function httpsGet(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
+    if (redirectCount > MAX_REDIRECTS) {
+      return reject(new Error('Zu viele Redirects'));
+    }
     https.get(url, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        return httpsGet(res.headers.location).then(resolve, reject);
+        res.resume();
+        return httpsGet(res.headers.location, redirectCount + 1).then(resolve, reject);
       }
       if (res.statusCode !== 200) {
         res.resume();
@@ -67,6 +71,9 @@ function downloadToBuffer(url, redirectCount = 0) {
     https.get(url, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         res.resume();
+        if (!isAllowedDownloadUrl(res.headers.location)) {
+          return reject(new Error('Redirect zu nicht erlaubter URL'));
+        }
         return downloadToBuffer(res.headers.location, redirectCount + 1).then(resolve, reject);
       }
       if (res.statusCode !== 200) {

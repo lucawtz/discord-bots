@@ -26,7 +26,14 @@ module.exports = {
             sub.setName('delete')
                 .setDescription('Loescht eine gespeicherte Playlist')
                 .addStringOption(opt =>
-                    opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true))),
+                    opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true)))
+        .addSubcommand(sub =>
+            sub.setName('import')
+                .setDescription('Importiert eine Playlist von Spotify, Apple Music, Deezer oder Amazon Music')
+                .addStringOption(opt =>
+                    opt.setName('url').setDescription('Playlist- oder Album-URL').setRequired(true))
+                .addStringOption(opt =>
+                    opt.setName('name').setDescription('Name zum Speichern (optional, sonst Original-Name)').setMaxLength(50))),
 
     async autocomplete(interaction, ctx) {
         const focused = interaction.options.getFocused();
@@ -163,7 +170,49 @@ module.exports = {
             }
 
             ctx.db.deletePlaylist(playlist.id, interaction.user.id);
-            ctx.autoDelete(interaction.reply({ content: `🗑️ Playlist **${name}** geloescht.`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.autoDelete(interaction.reply({ content: `-# 🗑️ Playlist **${name}** geloescht`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        }
+
+        else if (sub === 'import') {
+            const url = interaction.options.getString('url');
+
+            if (!ctx.isPlaylistUrl(url)) {
+                return interaction.reply({ content: '❌ Ungueltige Playlist-URL. Unterstuetzt: Spotify, Apple Music, Deezer, Amazon Music, YouTube.', ephemeral: true });
+            }
+
+            await interaction.deferReply();
+
+            try {
+                const playlist = await ctx.searchPlaylist(url);
+                const tracks = playlist.tracks;
+
+                if (tracks.length === 0) {
+                    return interaction.editReply({ content: '❌ Konnte keine Songs aus dieser Playlist laden.' });
+                }
+                if (tracks.length > 200) {
+                    tracks.length = 200; // Auf 200 begrenzen
+                }
+
+                const name = interaction.options.getString('name') || playlist.title.substring(0, 50);
+
+                // Pruefen ob Name schon existiert
+                const existing = ctx.db.getPlaylistByName(interaction.guildId, interaction.user.id, name);
+                if (existing) {
+                    return interaction.editReply({ content: `❌ Du hast bereits eine Playlist namens **${name}**. Waehle einen anderen Namen mit der \`name\` Option.` });
+                }
+
+                ctx.db.createPlaylist(interaction.guildId, interaction.user.id, name, tracks);
+
+                const embed = new EmbedBuilder()
+                    .setAuthor({ name: 'Playlist importiert', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setDescription(`**${name}** — ${tracks.length} Song${tracks.length !== 1 ? 's' : ''}`)
+                    .setColor(0x6E41CC)
+                    .setFooter({ text: `Lade mit /playlist load ${name}` });
+                ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
+            } catch (error) {
+                console.error('Playlist import error:', error.message);
+                ctx.autoDelete(interaction.editReply({ content: `❌ ${error.message}` }), ctx.DELETE_ERROR_MS);
+            }
         }
     },
 };

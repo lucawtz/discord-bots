@@ -26,6 +26,46 @@ module.exports = {
             // Playlist erkennen
             const isUrl = query.startsWith('http://') || query.startsWith('https://');
             if (isUrl && ctx.isPlaylistUrl(query)) {
+                // Progressives Loading: Metadaten holen, ersten Song sofort spielen
+                let meta = null;
+                try { meta = await ctx.fetchPlaylistMeta(query); } catch {}
+
+                if (meta && meta.rawTracks.length > 0) {
+                    // Ersten Track sofort auflösen und abspielen
+                    const firstInfo = meta.rawTracks[0];
+                    const firstTrack = await ctx.searchTrack(firstInfo.searchQuery);
+                    firstTrack.title = firstInfo.title;
+                    if (firstInfo.artist) firstTrack.artist = firstInfo.artist;
+                    if (firstInfo.albumArt) firstTrack.albumArt = firstInfo.albumArt;
+                    firstTrack.requestedBy = interaction.user.toString();
+                    firstTrack._requestedById = interaction.user.id;
+
+                    queue.tracks.push(firstTrack);
+                    if (!queue.current) {
+                        ctx.playNext(interaction.guild.id);
+                    }
+
+                    const remaining = meta.rawTracks.length - 1;
+                    const embed = new EmbedBuilder()
+                        .setAuthor({ name: 'Playlist hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                        .setDescription(`**${meta.title}**`)
+                        .addFields(
+                            { name: 'Songs', value: `\`${meta.rawTracks.length}\``, inline: true },
+                            { name: 'Angefragt von', value: interaction.user.toString(), inline: true },
+                        )
+                        .setColor(0x6E41CC)
+                        .setFooter({ text: remaining > 0 ? `Lade ${remaining} weitere Songs im Hintergrund...` : '1 Song in der Warteschlange' });
+
+                    ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
+
+                    // Restliche Tracks im Hintergrund laden
+                    if (remaining > 0) {
+                        ctx.resolvePlaylistInBackground(interaction.guild.id, meta.rawTracks.slice(1), interaction.user);
+                    }
+                    return;
+                }
+
+                // Fallback: YouTube/Amazon Music/andere (kein progressives Loading)
                 const playlist = await ctx.searchPlaylist(query);
                 const tracks = playlist.tracks.map(t => ({ ...t, requestedBy: interaction.user.toString(), _requestedById: interaction.user.id }));
                 queue.tracks.push(...tracks);
@@ -57,14 +97,13 @@ module.exports = {
 
             if (!queue.current) {
                 ctx.playNext(interaction.guild.id);
-            }
-
-            const embed = new EmbedBuilder()
-                .setThumbnail(track.thumbnail)
-                .setDescription(`[${track.title}](${track.url})`);
-
-            if (wasPlaying) {
-                embed.setAuthor({ name: 'Zur Warteschlange hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                // Now Playing Embed wird automatisch von playNext gesendet
+                ctx.autoDelete(interaction.editReply({ content: `-# ▶️ **${track.title}** wird abgespielt` }), ctx.DELETE_SHORT_MS);
+            } else {
+                const embed = new EmbedBuilder()
+                    .setAuthor({ name: 'Zur Warteschlange hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setThumbnail(track.albumArt || track.thumbnail || null)
+                    .setDescription(`[${track.title}](${track.url})`)
                     .addFields(
                         { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
                         { name: 'Position', value: `\`#${queue.tracks.length}\``, inline: true },
@@ -72,16 +111,9 @@ module.exports = {
                     )
                     .setColor(0x6E41CC)
                     .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
-            } else {
-                embed.setAuthor({ name: 'Spielt jetzt', iconURL: interaction.client.user.displayAvatarURL() })
-                    .addFields(
-                        { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
-                        { name: 'Angefragt von', value: track.requestedBy, inline: true },
-                    )
-                    .setColor(0x6E41CC);
-            }
 
-            ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
+                ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
+            }
         } catch (error) {
             console.error('Play error:', error.message);
             if (queue.connection && !queue.current) {

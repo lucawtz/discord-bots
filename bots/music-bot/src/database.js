@@ -46,7 +46,8 @@ async function init() {
     CREATE TABLE IF NOT EXISTS guild_settings (
       guild_id TEXT PRIMARY KEY,
       auto_dj INTEGER DEFAULT 0,
-      default_volume INTEGER DEFAULT 100
+      default_volume INTEGER DEFAULT 100,
+      dj_role_id TEXT DEFAULT NULL
     )
   `);
 
@@ -94,11 +95,25 @@ async function init() {
     )
   `);
 
+  // ── User Settings (cross-server, per user) ────────────────────
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id TEXT PRIMARY KEY,
+      eq_values TEXT DEFAULT '[0,0,0,0,0,0,0]',
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlists_guild ON playlists(guild_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_history_user ON listening_history(user_id, guild_id, played_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_likes_user ON liked_tracks(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_followed_user ON followed_artists(user_id)`);
+
+  // ── Migrations ──────────────────────────────────────────────────
+  try {
+    db.run(`ALTER TABLE guild_settings ADD COLUMN dj_role_id TEXT DEFAULT NULL`);
+  } catch (_) { /* column already exists */ }
 
   db.run("PRAGMA foreign_keys = ON");
 
@@ -213,11 +228,13 @@ function getPlaylist(id) {
 
 function getPlaylists(guildId, userId) {
   const sql = userId
-    ? `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count
+    ? `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count,
+       (SELECT pt2.thumbnail FROM playlist_tracks pt2 WHERE pt2.playlist_id = p.id AND pt2.thumbnail IS NOT NULL ORDER BY pt2.position LIMIT 1) as cover
        FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
        WHERE p.guild_id = :guildId AND (p.user_id = :userId OR p.user_id = 'dashboard')
        GROUP BY p.id ORDER BY p.created_at DESC`
-    : `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count
+    : `SELECT p.id, p.name, p.user_id, p.created_at, COUNT(pt.id) as track_count,
+       (SELECT pt2.thumbnail FROM playlist_tracks pt2 WHERE pt2.playlist_id = p.id AND pt2.thumbnail IS NOT NULL ORDER BY pt2.position LIMIT 1) as cover
        FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
        WHERE p.guild_id = :guildId
        GROUP BY p.id ORDER BY p.created_at DESC`;
@@ -252,11 +269,11 @@ function searchPlaylists(guildId, userId, query) {
 
 function getGuildSettings(guildId) {
   const row = getOne(`SELECT * FROM guild_settings WHERE guild_id = :guildId`, { ':guildId': guildId });
-  return row || { guild_id: guildId, auto_dj: 0, default_volume: 100 };
+  return row || { guild_id: guildId, auto_dj: 0, default_volume: 100, dj_role_id: null };
 }
 
 function setGuildSetting(guildId, key, value) {
-  const allowedColumns = { auto_dj: 'auto_dj', default_volume: 'default_volume' };
+  const allowedColumns = { auto_dj: 'auto_dj', default_volume: 'default_volume', dj_role_id: 'dj_role_id' };
   const column = allowedColumns[key];
   if (!column) return;
 
@@ -375,7 +392,36 @@ function getFollowedArtists(userId) {
   );
 }
 
+// ── User Settings ──────────────────────────────────────────────
+
+function getUserSettings(userId) {
+  const row = getOne(`SELECT * FROM user_settings WHERE user_id = :uid`, { ':uid': userId });
+  if (!row) return { eq_values: [0,0,0,0,0,0,0] };
+  try { row.eq_values = JSON.parse(row.eq_values); } catch { row.eq_values = [0,0,0,0,0,0,0]; }
+  return row;
+}
+
+function saveUserSettings(userId, settings) {
+  const eqValues = JSON.stringify(settings.eq_values || [0,0,0,0,0,0,0]);
+  run(
+    `INSERT INTO user_settings (user_id, eq_values, updated_at) VALUES (:uid, :eq, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET eq_values = :eq, updated_at = datetime('now')`,
+    { ':uid': userId, ':eq': eqValues }
+  );
+}
+
 // ── Stats (for recommendations) ─────────────────────────────────
+
+function getTopArtistsGlobal(userId, days = 90, limit = 10) {
+  return getAll(
+    `SELECT artist, COUNT(*) as play_count
+     FROM listening_history
+     WHERE user_id = :uid AND artist IS NOT NULL
+       AND played_at >= datetime('now', :days)
+     GROUP BY artist ORDER BY play_count DESC LIMIT :limit`,
+    { ':uid': userId, ':days': `-${days} days`, ':limit': limit }
+  );
+}
 
 function getTopArtistsFromHistory(userId, guildId, days = 30, limit = 10) {
   return getAll(
@@ -395,6 +441,16 @@ function getMostPlayedInGuild(guildId, days = 30, limit = 20) {
      WHERE guild_id = :gid AND played_at >= datetime('now', :days)
      GROUP BY track_url ORDER BY play_count DESC LIMIT :limit`,
     { ':gid': guildId, ':days': `-${days} days`, ':limit': limit }
+  );
+}
+
+function getMostPlayedGlobal(days = 30, limit = 12) {
+  return getAll(
+    `SELECT track_title, track_url, artist, thumbnail, duration, COUNT(*) as play_count
+     FROM listening_history
+     WHERE played_at >= datetime('now', :days) AND artist IS NOT NULL
+     GROUP BY track_url ORDER BY play_count DESC LIMIT :limit`,
+    { ':days': `-${days} days`, ':limit': limit }
   );
 }
 
@@ -423,7 +479,12 @@ module.exports = {
   followArtist,
   unfollowArtist,
   getFollowedArtists,
+  // User Settings
+  getUserSettings,
+  saveUserSettings,
+  getTopArtistsGlobal,
   // Stats
   getTopArtistsFromHistory,
   getMostPlayedInGuild,
+  getMostPlayedGlobal,
 };
