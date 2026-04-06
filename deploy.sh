@@ -155,8 +155,18 @@ for SERVICE in discord-bot soundboard-bot dashboard website; do
 done
 echo ""
 
+# Nur discord-bot (Music Bot) ist kritisch — andere sind optional
+CRITICAL_FAILED=""
+for svc in $FAILED_SERVICES; do
+    if [ "$svc" = "discord-bot" ]; then CRITICAL_FAILED="$svc"; fi
+done
+
 if [ -n "$FAILED_SERVICES" ]; then
     echo "!! WARNUNG: Folgende Services sind fehlgeschlagen:$FAILED_SERVICES"
+fi
+
+if [ -n "$CRITICAL_FAILED" ]; then
+    echo "!! KRITISCH: discord-bot ist nicht gestartet!"
     exit 1
 fi
 
