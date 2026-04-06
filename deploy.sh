@@ -21,7 +21,7 @@ else
     # Lokale Aenderungen verwerfen (Runtime-Daten sind in .gitignore)
     git fetch origin
     git reset --hard origin/main
-    git clean -fd --exclude='.env' --exclude='*.db' --exclude='data/' --exclude='sounds/'
+    git clean -fd --exclude='.env' --exclude='*.db' --exclude='data/' --exclude='sounds/' --exclude='cookies.txt'
 fi
 
 COMMIT=$(git rev-parse --short HEAD)
