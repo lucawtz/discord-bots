@@ -80,6 +80,33 @@ if [ "$MISSING_ENV" -eq 1 ]; then
     echo ""
 fi
 
+# Production Overrides automatisch in .env eintragen
+apply_env_overrides() {
+    local ENV_FILE="$1"
+    local PROD_FILE="$2"
+    if [ ! -f "$PROD_FILE" ] || [ ! -f "$ENV_FILE" ]; then return; fi
+    echo ">> Production Overrides anwenden: $(basename $(dirname $ENV_FILE))"
+    while IFS='=' read -r key value; do
+        # Kommentare und leere Zeilen ueberspringen
+        [[ "$key" =~ ^#.*$ ]] && continue
+        [[ -z "$key" ]] && continue
+        key=$(echo "$key" | xargs)
+        value=$(echo "$value" | xargs)
+        if grep -q "^${key}=" "$ENV_FILE"; then
+            # Existiert schon -> updaten
+            sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+        else
+            # Fehlt -> hinzufuegen
+            echo "${key}=${value}" >> "$ENV_FILE"
+        fi
+        echo "   $key=$value"
+    done < "$PROD_FILE"
+}
+
+apply_env_overrides "$REPO_DIR/bots/music-bot/.env" "$REPO_DIR/bots/music-bot/.env.production"
+apply_env_overrides "$REPO_DIR/bots/soundboard-bot/.env" "$REPO_DIR/bots/soundboard-bot/.env.production" 2>/dev/null
+apply_env_overrides "$REPO_DIR/dashboard/.env" "$REPO_DIR/dashboard/.env.production" 2>/dev/null
+
 # ── 5. Systemd Services aktualisieren ────────────────────────
 echo ">> Systemd Services installieren..."
 sudo cp "$REPO_DIR/services/discord-bot.service" /etc/systemd/system/discord-bot.service
