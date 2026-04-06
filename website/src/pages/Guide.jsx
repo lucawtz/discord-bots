@@ -49,7 +49,7 @@ function ContentRenderer({ items }) {
     );
 }
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=64';
+const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=64';
 const EARTASTIC_AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=64';
 
 export default function Guide() {
@@ -113,7 +113,7 @@ export default function Guide() {
                 { type: 'heading', value: t('guide.filtersHeading') },
                 { type: 'text', value: t('guide.filtersText') },
 
-                { type: 'section', value: `COMMANDS (23)` },
+                { type: 'section', value: 'COMMANDS' },
                 { type: 'command', name: '/play <query>', desc: t('commands.beatbyte.play') },
                 { type: 'command', name: '/playnow <query>', desc: t('commands.beatbyte.playnow') },
                 { type: 'command', name: '/skip', desc: t('commands.beatbyte.skip') },
@@ -148,7 +148,7 @@ export default function Guide() {
                 { type: 'heading', value: t('guide.soundUploadHeading') },
                 { type: 'text', value: t('guide.soundUploadText') },
 
-                { type: 'section', value: 'COMMANDS (5)' },
+                { type: 'section', value: 'COMMANDS' },
                 { type: 'command', name: '/sound <name>', desc: t('commands.eartastic.sound') },
                 { type: 'command', name: '/favorite <name>', desc: t('commands.eartastic.favorite') },
                 { type: 'command', name: '/soundboard', desc: t('commands.eartastic.soundboard') },
@@ -163,7 +163,7 @@ export default function Guide() {
     const sidebar = (
         <Box sx={{ width: 220, p: 2 }}>
             <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 2, px: 2, mb: 1, display: 'block', fontSize: '0.65rem' }}>
-                {t('footer.documentation', 'Documentation')}
+                {t('footer.documentation')}
             </Typography>
             <List disablePadding>
                 {navItems.map((s) => (

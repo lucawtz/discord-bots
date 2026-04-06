@@ -4,27 +4,14 @@ import Footer from './Footer';
 import { Box } from '@mui/material';
 import { useEffect } from 'react';
 
-const pageTitles = {
-    '/': 'ByteBots',
-    '/bots': 'Bots | ByteBots',
-    '/bots/music-bot': 'BeatByte | ByteBots',
-    '/bots/soundboard-bot': 'EarTastic | ByteBots',
-    '/commands': 'Commands | ByteBots',
-    '/premium': 'Premium | ByteBots',
-    '/guide': 'Guide | ByteBots',
-    '/profile': 'Profil | ByteBots',
-    '/status': 'Status | ByteBots',
-    '/changelog': 'Changelog | ByteBots',
-    '/impressum': 'Impressum | ByteBots',
-    '/datenschutz': 'Datenschutz | ByteBots',
-};
+const PAGE_TITLE = 'ByteBots';
 
 export default function Layout() {
     const location = useLocation();
 
     useEffect(() => {
         window.scrollTo(0, 0);
-        document.title = pageTitles[location.pathname] || 'ByteBots';
+        document.title = PAGE_TITLE;
     }, [location.pathname]);
 
     return (

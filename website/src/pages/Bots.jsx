@@ -53,7 +53,7 @@ export default function Bots() {
             name: 'BeatByte', subtitle: t('bots.beatbyte.subtitle'), commands: 23, status: 'online',
             description: t('bots.beatbyte.description'),
             discordId: '1488919318472298647',
-            avatarHash: 'f2829ad185e6a0fff4d7d064cdfdbb3e',
+            avatarHash: '4764a9259454d44d47e75034c1f9c03b',
             fallbackIcon: <MusicNoteIcon sx={{ fontSize: 22 }} />,
             highlights: t('bots.beatbyte.highlights'),
             path: '/bots/music-bot', inviteUrl: BEATBYTE_INVITE,
@@ -137,7 +137,7 @@ export default function Bots() {
 
                                     {!bot.comingSoon ? (
                                         <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
-                                            <Button variant="contained" href={bot.inviteUrl} target="_blank"
+                                            <Button variant="contained" href={bot.inviteUrl} target="_blank" rel="noopener"
                                                 onClick={(e) => e.stopPropagation()}
                                                 startIcon={<AddIcon sx={{ fontSize: 16 }} />}
                                                 sx={{

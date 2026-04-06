@@ -38,7 +38,7 @@ export default function Footer() {
                     {/* Brand */}
                     <Box sx={{ minWidth: 160 }}>
                         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-                            <Box component="img" src="/logo.png" alt="" sx={{ width: 24, height: 24, objectFit: 'contain' }} />
+                            <Box component="img" src="/bytebots-favicon.png" alt="ByteBots" sx={{ width: 24, height: 24, objectFit: 'contain' }} />
                             <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>ByteBots</Typography>
                         </Stack>
                         <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>

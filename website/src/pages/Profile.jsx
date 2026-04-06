@@ -15,11 +15,11 @@ const fadeIn = keyframes`
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128';
+const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128';
 const EARTASTIC_AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=128';
 
 export default function Profile() {
-    const { t } = useLanguage();
+    const { t, lang } = useLanguage();
     const navigate = useNavigate();
     const [user, setUser] = useState(null);
 
@@ -53,7 +53,7 @@ export default function Profile() {
             accentRgb: '168,85,247',
             detailsPath: '/bots/music-bot',
             inviteUrl: BEATBYTE_INVITE,
-            appUrl: API_BASE,
+            appUrl: 'https://app.bytebots.de',
             appLabel: 'Web Player',
         },
         {
@@ -114,7 +114,7 @@ export default function Profile() {
                     {createdAt && (
                         <Chip
                             icon={<AccessTimeIcon sx={{ fontSize: 14 }} />}
-                            label={`Discord seit ${createdAt.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}`}
+                            label={`Discord ${t('profile.since')} ${createdAt.toLocaleDateString(lang === 'de' ? 'de-DE' : 'en-US', { month: 'long', year: 'numeric' })}`}
                             size="small"
                             sx={{
                                 mt: 1.5, bgcolor: 'rgba(255,255,255,0.04)', color: '#a1a1aa',

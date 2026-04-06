@@ -106,7 +106,7 @@ export default function Navbar() {
                 }}>
                 <Toolbar sx={{ justifyContent: 'space-between', maxWidth: 1100, mx: 'auto', width: '100%', py: 0.5 }}>
                     <Box component={Link} to="/" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, textDecoration: 'none' }}>
-                        <Box component="img" src="/logo.png" alt="ByteBots" sx={{ width: 30, height: 30, objectFit: 'contain' }} />
+                        <Box component="img" src="/bytebots-favicon.png" alt="ByteBots" sx={{ width: 32, height: 32, objectFit: 'contain' }} />
                         <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: '#fafafa' }}>
                             ByteBots
                         </Typography>
@@ -140,21 +140,21 @@ export default function Navbar() {
                         <Menu anchorEl={langAnchor} open={Boolean(langAnchor)} onClose={() => setLangAnchor(null)}
                             slotProps={{ paper: { sx: {
                                 bgcolor: '#141416', border: '1px solid rgba(255,255,255,0.06)',
-                                mt: 1.5, minWidth: 160, borderRadius: 3, py: 0.5,
-                                boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                                mt: 1, minWidth: 150, borderRadius: 1.5, py: 0.5,
+                                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
                             } } }}>
                             {languages.map((l) => (
                                 <MenuItem key={l.code} onClick={() => handleLangSelect(l.code)}
                                     sx={{
-                                        fontSize: '0.85rem', fontWeight: lang === l.code ? 600 : 400,
+                                        fontSize: '0.82rem', fontWeight: lang === l.code ? 600 : 400,
                                         color: lang === l.code ? '#fafafa' : '#71717a',
-                                        gap: 1.5, py: 1.2, px: 2, mx: 0.5, borderRadius: 1.5,
+                                        gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75,
                                         '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' },
                                     }}>
-                                    <Flag code={l.flagCode} size={18} />
+                                    <Flag code={l.flagCode} size={16} />
                                     {l.label}
                                     {lang === l.code && (
-                                        <Box sx={{ ml: 'auto', width: 6, height: 6, borderRadius: '50%', bgcolor: '#a855f7' }} />
+                                        <Box sx={{ ml: 'auto', width: 5, height: 5, borderRadius: '50%', bgcolor: '#a855f7' }} />
                                     )}
                                 </MenuItem>
                             ))}
@@ -175,14 +175,14 @@ export default function Navbar() {
                                 </Button>
                                 <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}
                                     PaperProps={{
-                                        sx: { bgcolor: '#18181b', border: '1px solid rgba(255,255,255,0.08)', mt: 1, minWidth: 160, borderRadius: 3, py: 0.5 },
+                                        sx: { bgcolor: '#141416', border: '1px solid rgba(255,255,255,0.06)', mt: 1, minWidth: 150, borderRadius: 1.5, py: 0.5, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' },
                                     }}>
                                     <MenuItem onClick={() => { setAnchorEl(null); navigate('/profile'); }}
-                                        sx={{ fontSize: '0.85rem', color: '#a1a1aa', gap: 1.5, mx: 0.5, borderRadius: 1.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' } }}>
+                                        sx={{ fontSize: '0.82rem', color: '#a1a1aa', gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' } }}>
                                         <PersonIcon sx={{ fontSize: 16 }} /> {t('profile.title')}
                                     </MenuItem>
                                     <MenuItem onClick={handleLogout}
-                                        sx={{ fontSize: '0.85rem', color: '#a1a1aa', gap: 1.5, mx: 0.5, borderRadius: 1.5, '&:hover': { bgcolor: 'rgba(239,68,68,0.08)', color: '#ef4444' } }}>
+                                        sx={{ fontSize: '0.82rem', color: '#a1a1aa', gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75, '&:hover': { bgcolor: 'rgba(239,68,68,0.06)', color: '#ef4444' } }}>
                                         <LogoutIcon sx={{ fontSize: 16 }} /> {t('nav.logout')}
                                     </MenuItem>
                                 </Menu>

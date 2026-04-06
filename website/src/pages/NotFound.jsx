@@ -19,10 +19,10 @@ export default function NotFound() {
                     404
                 </Typography>
                 <Typography variant="h4" sx={{ mb: 1.5, fontWeight: 700 }}>
-                    {t('notFound.title', 'Page not found')}
+                    {t('notFound.title')}
                 </Typography>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 5, maxWidth: 360, mx: 'auto' }}>
-                    {t('notFound.subtitle', 'The page you are looking for does not exist or has been moved.')}
+                    {t('notFound.subtitle')}
                 </Typography>
                 <Stack direction="row" spacing={1.5} justifyContent="center">
                     <Button variant="contained" component={Link} to="/" startIcon={<HomeIcon />}
@@ -30,14 +30,14 @@ export default function NotFound() {
                             background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff', px: 3,
                             '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)' },
                         }}>
-                        {t('notFound.home', 'Home')}
+                        {t('notFound.home')}
                     </Button>
                     <Button variant="outlined" onClick={() => window.history.back()} startIcon={<ArrowBackIcon />}
                         sx={{
                             borderColor: 'rgba(255,255,255,0.12)', color: '#a1a1aa', px: 3,
                             '&:hover': { borderColor: 'rgba(255,255,255,0.25)', color: '#fafafa' },
                         }}>
-                        {t('notFound.back', 'Go back')}
+                        {t('notFound.back')}
                     </Button>
                 </Stack>
             </Container>

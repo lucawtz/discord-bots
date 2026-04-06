@@ -1,7 +1,7 @@
 import { Box, Typography, Stack } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=64';
+const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=64';
 
 function DiscordButton({ children, primary, danger, link }) {
     return (
@@ -38,7 +38,7 @@ export default function MusicPlayer() {
                 <Box sx={{ flex: 1, p: 2, pb: 1 }}>
                     {/* Author */}
                     <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1.5 }}>
-                        <Box component="img" src={BEATBYTE_AVATAR} alt=""
+                        <Box component="img" src={BEATBYTE_AVATAR} alt="BeatByte"
                             sx={{ width: 20, height: 20, borderRadius: '50%' }} />
                         <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#fafafa' }}>
                             Now playing

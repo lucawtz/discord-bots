@@ -20,7 +20,7 @@ const fadeIn = keyframes`
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/f2829ad185e6a0fff4d7d064cdfdbb3e.png?size=128';
+const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128';
 const EARTASTIC_AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=128';
 
 export default function Home() {
@@ -79,7 +79,7 @@ export default function Home() {
                 }} />
 
                 <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1 }}>
-                    {/* Bot Avatars floating */}
+                    {/* Bot Avatars */}
                     <Stack direction="row" spacing={-1.5} justifyContent="center" sx={{ mb: 4, animation: `${fadeIn} 0.5s ease` }}>
                         <Avatar src={BEATBYTE_AVATAR} sx={{
                             width: 52, height: 52, borderRadius: 2.5,
@@ -205,7 +205,7 @@ export default function Home() {
                                                 ))}
                                             </Stack>
                                             <Stack direction="row" spacing={1.5} alignItems="center">
-                                                <Button variant="contained" href={bot.inviteUrl} target="_blank"
+                                                <Button variant="contained" href={bot.inviteUrl} target="_blank" rel="noopener"
                                                     onClick={(e) => e.stopPropagation()}
                                                     startIcon={<AddIcon sx={{ fontSize: 16 }} />}
                                                     sx={{
