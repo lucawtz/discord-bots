@@ -6,9 +6,9 @@ set -e
 
 REPO_DIR="$HOME/discord-bots"
 OLD_REPO_DIR="$HOME/Discord-Music-Bot"
-USER_NAME="ubuntu"
 
 echo "=== Discord Bots Deploy ==="
+echo ">> $(date)"
 
 # ── 1. Repo klonen oder pullen ────────────────────────────────
 if [ ! -d "$REPO_DIR" ]; then
@@ -18,10 +18,14 @@ if [ ! -d "$REPO_DIR" ]; then
 else
     echo ">> Pullen..."
     cd "$REPO_DIR"
-    git stash --include-untracked
-    git pull
-    git stash pop || true
+    # Lokale Aenderungen verwerfen (Runtime-Daten sind in .gitignore)
+    git fetch origin
+    git reset --hard origin/main
+    git clean -fd --exclude='.env' --exclude='*.db' --exclude='data/' --exclude='sounds/'
 fi
+
+COMMIT=$(git rev-parse --short HEAD)
+echo ">> Deploying commit: $COMMIT"
 
 # ── 2. Dependencies installieren ─────────────────────────────
 echo ">> Root: npm install..."
@@ -102,25 +106,31 @@ node src/deploy-commands.js
 
 # ── 7. Services neu starten ──────────────────────────────────
 echo ">> Services neu starten..."
-sudo systemctl restart discord-bot
-sudo systemctl restart soundboard-bot
-sudo systemctl restart dashboard
-sudo systemctl restart website
+FAILED_SERVICES=""
 
-sudo systemctl enable discord-bot
-sudo systemctl enable soundboard-bot
-sudo systemctl enable dashboard
-sudo systemctl enable website
+for SERVICE in discord-bot soundboard-bot dashboard website; do
+    sudo systemctl enable "$SERVICE"
+    sudo systemctl restart "$SERVICE"
+    sleep 2
+    if ! sudo systemctl is-active --quiet "$SERVICE"; then
+        echo "!! FEHLER: $SERVICE ist nicht gestartet!"
+        sudo journalctl -u "$SERVICE" --no-pager -n 10
+        FAILED_SERVICES="$FAILED_SERVICES $SERVICE"
+    fi
+done
 
 # ── 8. Status pruefen ────────────────────────────────────────
 echo ""
 echo "=== Status ==="
-sudo systemctl status discord-bot --no-pager -l | head -5
-echo "---"
-sudo systemctl status soundboard-bot --no-pager -l | head -5
-echo "---"
-sudo systemctl status dashboard --no-pager -l | head -5
-echo "---"
-sudo systemctl status website --no-pager -l | head -5
+for SERVICE in discord-bot soundboard-bot dashboard website; do
+    STATUS=$(sudo systemctl is-active "$SERVICE" 2>/dev/null || echo "inactive")
+    echo "$SERVICE: $STATUS"
+done
 echo ""
-echo "=== Deploy abgeschlossen ==="
+
+if [ -n "$FAILED_SERVICES" ]; then
+    echo "!! WARNUNG: Folgende Services sind fehlgeschlagen:$FAILED_SERVICES"
+    exit 1
+fi
+
+echo "=== Deploy $COMMIT abgeschlossen ==="
