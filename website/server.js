@@ -19,14 +19,21 @@ app.use((req, res, next) => {
     next();
 });
 
-// Static files with caching
+// Static assets (JS/CSS with hash in filename) — long cache
+app.use('/assets', express.static(path.join(__dirname, 'dist', 'assets'), {
+    maxAge: '30d',
+    immutable: true,
+}));
+
+// Other static files — no cache so updates show immediately
 app.use(express.static(path.join(__dirname, 'dist'), {
-    maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
+    maxAge: 0,
     etag: true,
 }));
 
 // SPA fallback
 app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
