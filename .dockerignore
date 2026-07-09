@@ -1,0 +1,14 @@
+# Baukontext schlank halten (gilt für alle 3 Dockerfiles, Kontext = Repo-Root)
+**/node_modules
+**/dist
+.git
+.github
+**/.env
+**/.env.*
+**/*.db
+**/data
+**/sounds
+**/cookies.txt
+**/*.md
+# Tauri (Rust) wird für den Web-Build nicht gebraucht
+bots/music-bot/app/src-tauri
