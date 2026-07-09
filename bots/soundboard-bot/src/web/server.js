@@ -410,8 +410,11 @@ function startWebServer(port) {
     next();
   });
 
-  const server = app.listen(port, '127.0.0.1', () => {
-    console.log(`Web-Dashboard laeuft auf http://127.0.0.1:${port}`);
+  // 0.0.0.0, damit der Coolify/Traefik-Proxy den Container erreichen kann.
+  // (127.0.0.1 wäre nur innerhalb des Containers erreichbar.)
+  const host = process.env.WEB_HOST || '0.0.0.0';
+  const server = app.listen(port, host, () => {
+    console.log(`Web-Dashboard laeuft auf http://${host}:${port}`);
   });
 
   return server;
