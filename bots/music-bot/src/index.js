@@ -582,9 +582,9 @@ function parseAmazonMusicUrl(url) {
 
 // ── Piped API (schnelle Suche mit Instance-Rotation + Circuit Breaker) ──
 const PIPED_INSTANCES = [
+    'https://api.piped.private.coffee',
+    'https://pipedapi.reallyaweso.me',
     'https://pipedapi.kavin.rocks',
-    'https://pipedapi.adminforge.de',
-    'https://pipedapi.in.projectsegfau.lt',
 ];
 let pipedInstanceIndex = 0;
 let pipedDownUntil = 0;          // Circuit Breaker: Timestamp bis wann Piped übersprungen wird
@@ -594,7 +594,7 @@ const PIPED_COOLDOWN_MS = 5 * 60_000; // 5 Minuten Cooldown wenn alle Instanzen 
 function pipedFetchSingle(instance, endpoint) {
     return new Promise((resolve, reject) => {
         const url = `${instance}${endpoint}`;
-        const req = https.get(url, { timeout: 2000 }, (res) => {
+        const req = https.get(url, { timeout: 4000 }, (res) => {
             if (res.statusCode >= 400) {
                 res.resume();
                 return reject(new Error(`Piped ${res.statusCode}`));
@@ -742,7 +742,16 @@ async function searchTrack(query) {
         const items = await pipedSearch(query, 1);
         track = pipedToTrack(items[0]);
     } catch {
-        track = await searchTrackYtdlp(`ytsearch1:${query}`);
+        try {
+            track = await searchTrackYtdlp(`ytsearch1:${query}`);
+        } catch (ytErr) {
+            // YouTube blockiert/leer -> SoundCloud als Ausweichquelle
+            try {
+                track = await searchTrackYtdlp(`scsearch1:${query}`);
+            } catch {
+                throw ytErr;
+            }
+        }
     }
     trackCache.set(query, { track, ts: Date.now() });
     return track;
@@ -899,6 +908,13 @@ function searchTrackYtdlp(searchQuery) {
         });
         proc.on('error', (e) => reject(new Error(`yt-dlp konnte nicht gestartet werden: ${e.message}`)));
     });
+}
+
+// ── SoundCloud-Ausweichquelle (wenn YouTube den Server als "Bot" blockt) ──
+// Loest denselben Titel auf SoundCloud auf; SoundCloud hat keine Bot-Sperre.
+function resolveSoundcloudUrl(track) {
+    const query = [track.artist, track.title].filter(Boolean).join(' ').trim() || track.title;
+    return searchTrackYtdlp(`scsearch1:${query}`).then(r => r.url);
 }
 
 function searchTracksYtdlp(query, limit = 5) {
@@ -1583,8 +1599,31 @@ async function playNext(guildId) {
             db.addToHistory(historyUserId, guildId, track);
         } catch { /* non-critical */ }
 
+        // YouTube blockiert den Server -> denselben Titel von SoundCloud streamen
+        if (track._needsSoundcloud) {
+            track._needsSoundcloud = false;
+            try {
+                const scUrl = await resolveSoundcloudUrl(track);
+                if (scUrl) {
+                    track.url = scUrl;
+                    console.log(`SoundCloud-Ausweichquelle für "${track.title}": ${scUrl}`);
+                }
+            } catch (e) {
+                console.error('SoundCloud-Fallback fehlgeschlagen:', e.message);
+            }
+        }
+
         const stream = createStream(track.url, queue, (err) => {
-            if (!track._retried) {
+            const ytBlocked = /not a bot|confirm you.?re not a bot|sign in to confirm/i.test(err.message);
+            const isYtUrl = /youtube\.com|youtu\.be/.test(track.url || '');
+            if (ytBlocked && isYtUrl && !track._scTried) {
+                // Einmalig auf SoundCloud ausweichen (neue Quelle -> Retry erlaubt)
+                track._scTried = true;
+                track._needsSoundcloud = true;
+                track._retried = false;
+                queue._failedTrack = track;
+                console.error(`YouTube blockiert bei "${track.title}" – weiche auf SoundCloud aus`);
+            } else if (!track._retried) {
                 track._retried = true;
                 queue._failedTrack = track;
                 console.error(`Stream-Fehler bei "${track.title}", Retry wird versucht...`);
