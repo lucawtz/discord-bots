@@ -117,6 +117,10 @@ if (fs.existsSync(cookiePath)) {
     console.log('yt-dlp: Keine cookies.txt gefunden (optional)');
 }
 
+// YouTube-Player-Client erzwingen, um die "Sleeping N seconds as required by
+// the site"-Drossel des tv-Clients zu umgehen (betrifft nur den youtube-Extractor).
+const YT_EXTRACTOR_ARGS = ['--extractor-args', 'youtube:player_client=web_safari,default'];
+
 // ── yt-dlp Auto-Update (im Hintergrund, blockiert nicht den Start) ──
 spawn(ytdlpPath, ['-U']).on('close', (code) => {
     if (code === 0) console.log('yt-dlp: Update geprüft');
@@ -879,7 +883,7 @@ function searchTrackYtdlp(searchQuery) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, '--js-runtimes', 'node', searchQuery,
+            ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', searchQuery,
         ]);
 
         let stdout = '';
@@ -922,7 +926,7 @@ function searchTracksYtdlp(query, limit = 5) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, '--js-runtimes', 'node', `ytsearch${limit}:${query}`,
+            ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', `ytsearch${limit}:${query}`,
         ]);
 
         let stdout = '';
@@ -1126,7 +1130,7 @@ async function searchPlaylist(url) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, '--js-runtimes', 'node', url,
+            ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', url,
         ]);
 
         let stdout = '';
@@ -1232,7 +1236,7 @@ function createStream(url, queue, onError, seekSeconds = 0) {
         '-f', 'bestaudio/bestaudio*/best',
         '-o', '-', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
-        ...cookieArgs, '--js-runtimes', 'node', url,
+        ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', url,
     ]);
 
     let filterArgs = AUDIO_FILTERS[queue.filter] || [];
