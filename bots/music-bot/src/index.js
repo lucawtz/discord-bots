@@ -1374,6 +1374,15 @@ async function setupVoiceConnection(guildId, voiceChannel, guild, textChannel) {
         setTimeout(() => playNext(guildId), 200);
     });
 
+    // Sobald die Wiedergabe wirklich startet: "Lädt…"-Platzhalter -> volles Embed
+    player.on(AudioPlayerStatus.Playing, async () => {
+        const q = queues.get(guildId);
+        if (!q || !q._npLoading) return;
+        q._npLoading = false;
+        try { await q._artPromise; } catch { /* egal, dann ohne Cover */ }
+        updateNowPlayingMsg(q);
+    });
+
     player.on('error', (error) => {
         console.error('Player error:', error.message);
         autoDelete(queue.channel?.send(`❌ Wiedergabefehler: ${error.message}`), DELETE_ERROR_MS);
@@ -1529,6 +1538,39 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
     return embed;
 }
 
+// Platzhalter-Embed, solange der Song noch lädt (wird bei Wiedergabestart ersetzt)
+function buildLoadingEmbed(track, clientOrInteraction) {
+    const botUser = clientOrInteraction.user || clientOrInteraction;
+    const lines = [`### ${track.title}`];
+    if (track.artist) lines.push(`*${track.artist}*`);
+    lines.push('');
+    lines.push('-# ⏳ Wird geladen…');
+    return new EmbedBuilder()
+        .setAuthor({ name: 'Lädt…', iconURL: botUser.displayAvatarURL() })
+        .setDescription(lines.join('\n'))
+        .setThumbnail(track.albumArt || track.thumbnail || null)
+        .setColor(0x95a5a6);
+}
+
+// Cover-Bild nachladen (iTunes Search API, kostenlos, kein Key), falls keins da ist
+async function ensureAlbumArt(track) {
+    if (track.albumArt || track.thumbnail) return;
+    const term = [track.artist, track.title].filter(Boolean).join(' ').trim() || track.title;
+    if (!term) return;
+    try {
+        const data = await new Promise((resolve, reject) => {
+            https.get(`https://itunes.apple.com/search?media=music&limit=1&term=${encodeURIComponent(term)}`,
+                { timeout: 5000 }, (res) => {
+                    let d = '';
+                    res.on('data', c => d += c);
+                    res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('parse')); } });
+                }).on('error', reject).on('timeout', function () { this.destroy(); reject(new Error('timeout')); });
+        });
+        const art = data?.results?.[0]?.artworkUrl100;
+        if (art) track.albumArt = art.replace('100x100bb', '300x300bb').replace('100x100', '300x300');
+    } catch { /* egal, dann halt ohne Cover */ }
+}
+
 // ── Now Playing Nachricht aktualisieren ──────────────────────────
 function updateNowPlayingMsg(queue) {
     if (!queue._nowPlayingMsg || !queue.current) return Promise.resolve();
@@ -1632,14 +1674,23 @@ async function playNext(guildId) {
             return;
         }
 
-        // Alte "Now Playing"-Nachricht stehen lassen, erst nach 24h entfernen
-        releaseNowPlaying(queue);
+        // Vorherige Nachricht: echtes Now-Playing 24h behalten, "Lädt…"-Platzhalter sofort weg
+        if (queue._npLoading && queue._nowPlayingMsg) {
+            queue._nowPlayingMsg.delete().catch(() => {});
+            queue._nowPlayingMsg = null;
+        } else {
+            releaseNowPlaying(queue);
+        }
+        queue._npLoading = false;
 
         const track = queue.tracks.shift();
         queue.current = track;
         queue.skipVotes.clear();
         queue._playbackStart = Date.now();
         queue._seekOffset = 0;
+        // Cover schon mal im Hintergrund nachladen (falls keins vorhanden), damit
+        // es beim Umschalten aufs volle Embed bereitsteht.
+        queue._artPromise = ensureAlbumArt(track).catch(() => {});
 
         // Reset Auto-DJ counter when user manually queued a track
         if (track.requestedBy && track.requestedBy !== '\uD83E\uDD16 Auto-DJ') {
@@ -1690,13 +1741,16 @@ async function playNext(guildId) {
         queue.player.play(resource);
         updateActivity(guildId);
 
-        // "Now Playing"-Nachricht mit Buttons senden
+        // Erst "Lädt…"-Platzhalter senden; der Playing-Handler ersetzt ihn durch
+        // das volle Embed, sobald die Wiedergabe tatsächlich startet.
         if (queue.channel) {
-            const rows = createPlayerButtons(queue.loopMode, false);
-            const npEmbed = buildNowPlayingEmbed(track, queue, client);
-
-            queue.channel.send({ embeds: [npEmbed], components: rows })
-                .then(msg => { queue._nowPlayingMsg = msg; })
+            queue._npLoading = true;
+            queue.channel.send({ embeds: [buildLoadingEmbed(track, client)] })
+                .then(msg => {
+                    queue._nowPlayingMsg = msg;
+                    // Falls der Song beim Ankommen der Nachricht schon läuft: sofort umschalten
+                    if (!queue._npLoading) updateNowPlayingMsg(queue);
+                })
                 .catch(e => console.error('Now-Playing-Embed konnte nicht gesendet werden:', e?.message || e));
         } else {
             console.error('Now-Playing: queue.channel ist nicht gesetzt – kein Embed gesendet');
