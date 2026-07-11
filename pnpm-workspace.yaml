@@ -1,5 +1,9 @@
 packages:
   - "bots/*"
   - "bots/music-bot/app"
-  - "dashboard"
   - "website"
+
+onlyBuiltDependencies:
+  - esbuild
+  - ffmpeg-static
+  - youtube-dl-exec

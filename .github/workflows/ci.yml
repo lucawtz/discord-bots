@@ -28,8 +28,6 @@ jobs:
           find bots/music-bot/src -name "*.js" -exec node --check {} +
           echo ">> Soundboard Bot"
           find bots/soundboard-bot/src -name "*.js" -exec node --check {} +
-          echo ">> Dashboard"
-          node --check dashboard/server.js
 
       - name: Build music-bot webapp
         run: pnpm --filter discord-music-bot-app build
