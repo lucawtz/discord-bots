@@ -1500,12 +1500,12 @@ async function renderNetworkPage(app) {
   // Use first server
   let ports = [];
   try {
-    const data = await api.get('/servers/oracle-prod-01/network');
+    const data = await api.get('/servers/coolify-prod-01/network');
     ports = data.ports;
   } catch {}
 
   let srv;
-  try { srv = await api.get('/servers/oracle-prod-01'); } catch { srv = null; }
+  try { srv = await api.get('/servers/coolify-prod-01'); } catch { srv = null; }
 
   app.innerHTML = `
     <div class="page-header">
@@ -1661,7 +1661,7 @@ async function loadUptime() {
 async function renderStoragePage(app) {
   setBreadcrumb({ label: 'Storage' });
   let srv;
-  try { srv = await api.get('/servers/oracle-prod-01'); } catch { srv = null; }
+  try { srv = await api.get('/servers/coolify-prod-01'); } catch { srv = null; }
 
   app.innerHTML = `
     <div class="page-header">
@@ -1670,7 +1670,7 @@ async function renderStoragePage(app) {
 
     ${srv ? `
     <div class="settings-card" style="margin-bottom:24px">
-      <div class="settings-card__header">Disk Overview — oracle-prod-01</div>
+      <div class="settings-card__header">Disk Overview — coolify-prod-01</div>
       <div class="settings-card__body">
         <div style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;margin-bottom:8px">
@@ -2540,7 +2540,7 @@ function renderSearchResults(query) {
     { label: 'Storage', hint: '#/storage', icon: 'box', group: 'Pages' },
     { label: 'Audit Log', hint: '#/audit', icon: 'file', group: 'Pages' },
     { label: 'Settings', hint: '#/settings', icon: 'settings', group: 'Pages' },
-    { label: 'oracle-prod-01', hint: '#/servers/oracle-prod-01', icon: 'server', group: 'Servers' },
+    { label: 'coolify-prod-01', hint: '#/servers/coolify-prod-01', icon: 'server', group: 'Servers' },
     { label: 'BeatByte', hint: '#/bots/beatbyte', icon: 'bot', group: 'Bots' },
     { label: 'Monitoring Bot', hint: '#/bots/monitoring', icon: 'bot', group: 'Bots' },
     { label: 'Soundboard Bot', hint: '#/bots/soundboard', icon: 'bot', group: 'Bots' },

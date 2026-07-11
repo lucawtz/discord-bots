@@ -1527,7 +1527,7 @@ class DistributedRoomState {
 | FFmpeg (pro Stream) | 5-10% | ~15 MB |
 | **Pro Room** | **~10-22%** | **~105 MB** |
 
-**Hochrechnung auf deinem Oracle Cloud Server (4 CPU, 24 GB RAM):**
+**Hochrechnung auf einem Server (4 CPU, 24 GB RAM):**
 
 | Rooms | CPU-Last | RAM-Nutzung | Machbar? |
 |-------|----------|-------------|----------|

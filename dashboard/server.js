@@ -1012,7 +1012,7 @@ const server = http.createServer(async (req, res) => {
         // Servers list
         if (method === 'GET' && p === '/api/servers') {
             const sys = latestSystemInfo;
-            const bots = config.bots.filter(b => b.server === 'oracle-prod-01');
+            const bots = config.bots.filter(b => b.server === 'coolify-prod-01');
             const botStatuses = await Promise.all(bots.map(async b => ({ ...b, ...(await getBotStatus(b.service)) })));
             const running = botStatuses.filter(b => b.running).length;
             const crashed = botStatuses.filter(b => b.status === 'crashed').length;
@@ -1717,7 +1717,7 @@ wss.on('connection', (ws, req) => {
         return;
     }
 
-    // Parse target server from URL query: ws://host/terminal?server=oracle-prod-01
+    // Parse target server from URL query: ws://host/terminal?server=coolify-prod-01
     const wsUrl = new URL(req.url, `http://localhost:${PORT}`);
     const serverId = wsUrl.searchParams.get('server');
     const srv = config.servers.find(s => s.id === serverId);

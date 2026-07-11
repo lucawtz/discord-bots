@@ -123,7 +123,7 @@
 
 **Top Bar (56px Hoehe):**
 - Links: Hamburger-Icon (Sidebar toggle) + Logo/Produktname
-- Mitte: Breadcrumb-Navigation (z.B. `Servers > oracle-prod-01 > Logs`)
+- Mitte: Breadcrumb-Navigation (z.B. `Servers > coolify-prod-01 > Logs`)
 - Rechts: Globale Suche (`Ctrl+K`), Notification-Bell mit Badge-Count, Dark/Light-Toggle, User-Avatar mit Dropdown
 
 **Sidebar (240px / 64px collapsed):**
@@ -157,8 +157,8 @@
 +-----------------------------------+-------------------------------+
 |                                   |                               |
 |  +-----------------------------+  |  +-------------------------+  |
-|  | oracle-prod-01        [*ON] |  |  | hetzner-dev-02    [OFF] |  |
-|  | 130.61.88.80     Ubuntu 22  |  |  | 168.119.x.x  Debian 12 |  |
+|  | coolify-prod-01        [*ON] |  |  | hetzner-dev-02    [OFF] |  |
+|  | —     Ubuntu 22  |  |  | 168.119.x.x  Debian 12 |  |
 |  |                             |  |  |                         |  |
 |  | CPU [========--]  78%       |  |  | CPU [----------]   0%   |  |
 |  | RAM [======----]  61%       |  |  | RAM [----------]   0%   |  |
@@ -193,7 +193,7 @@
 +------------------------------------------------------------------+
 | Name            | IP            | Status | CPU | RAM | DSK | Bots |
 +------------------------------------------------------------------+
-| oracle-prod-01  | 130.61.88.80  | * ON   | 78% | 61% | 42% | 4/4 |
+| coolify-prod-01  | —  | * ON   | 78% | 61% | 42% | 4/4 |
 | backup-srv-04   | 10.0.0.5      | * ON   | 18% | 29% | 89% | 1/1 |
 | local-test-03   | 192.168.1.50  | * ON   | 32% | 51% | 72% | 2/3 |
 | hetzner-dev-02  | 168.119.x.x  | - OFF  |  -  |  -  | 34% | 0/0 |
@@ -228,8 +228,8 @@
 
 ```
 +------------------------------------------------------------------+
-| <- Back   oracle-prod-01                 [Restart] [SSH] [Power] |
-|           130.61.88.80 | Ubuntu 22.04 | Uptime: 34d 12h         |
+| <- Back   coolify-prod-01                 [Restart] [SSH] [Power] |
+|           — | Ubuntu 22.04 | Uptime: 34d 12h         |
 |           Tags: [Production] [Docker]    Status: * Online        |
 +------------------------------------------------------------------+
 |                                                                   |
@@ -324,13 +324,13 @@
 | == Terminal Tab ===================================================|
 |                                                                    |
 | +----------------------------------------------------------------+|
-| | ubuntu@oracle-prod-01:~$                                       ||
-| | ubuntu@oracle-prod-01:~$ htop                                  ||
-| | ubuntu@oracle-prod-01:~$ docker ps                             ||
+| | ubuntu@coolify-prod-01:~$                                       ||
+| | ubuntu@coolify-prod-01:~$ htop                                  ||
+| | ubuntu@coolify-prod-01:~$ docker ps                             ||
 | | CONTAINER ID   IMAGE          STATUS         NAMES             ||
 | | a1b2c3d4e5f6   music-bot      Up 34 days     music-bot         ||
 | | f6e5d4c3b2a1   mod-bot        Up 34 days     moderation-bot    ||
-| | ubuntu@oracle-prod-01:~$ _                                     ||
+| | ubuntu@coolify-prod-01:~$ _                                     ||
 | |                                                                ||
 | +----------------------------------------------------------------+|
 |                                                                    |
@@ -355,7 +355,7 @@
 |                                                                   |
 | +-----------------------------+  +-----------------------------+  |
 | | music-bot             * RUN |  | moderation-bot        * RUN |  |
-| | Server: oracle-prod-01      |  | Server: oracle-prod-01      |  |
+| | Server: coolify-prod-01      |  | Server: coolify-prod-01      |  |
 | | Method: Docker              |  | Method: PM2                 |  |
 | | Port: 3001                  |  | Port: --                    |  |
 | | Uptime: 34d 12h             |  | Uptime: 34d 12h             |  |
@@ -367,7 +367,7 @@
 |                                                                   |
 | +-----------------------------+  +-----------------------------+  |
 | | soundboard-bot        * RUN |  | test-bot            X CRASH |  |
-| | Server: oracle-prod-01      |  | Server: local-test-03       |  |
+| | Server: coolify-prod-01      |  | Server: local-test-03       |  |
 | | Method: Docker              |  | Method: PM2                 |  |
 | | Port: 3002                  |  | Port: 3005                  |  |
 | | Uptime: 12d 5h              |  | Crashed: 15 min ago         |  |
@@ -383,7 +383,7 @@
 ```
 +------------------------------------------------------------------+
 | <- Back   music-bot                      [Stop] [Restart] [Edit] |
-|           Server: oracle-prod-01 | Docker | Port: 3001           |
+|           Server: coolify-prod-01 | Docker | Port: 3001           |
 |           Status: * Running | Uptime: 34d 12h                   |
 +------------------------------------------------------------------+
 |                                                                   |
@@ -467,7 +467,7 @@
 
 ```
 +------------------------------------------------------------------+
-| Storage & Files — oracle-prod-01                                 |
+| Storage & Files — coolify-prod-01                                 |
 +------------------------------------------------------------------+
 |                                                                   |
 | +---Storage Overview---------------------------------------------+|
@@ -529,7 +529,7 @@
 
 ```
 +------------------------------------------------------------------+
-| Networking — oracle-prod-01                                      |
+| Networking — coolify-prod-01                                      |
 +------------------------------------------------------------------+
 |                                                                   |
 | +---Bandwidth (24h)---------------------------------------------+|
@@ -609,7 +609,7 @@
 | +----------------------------------------------------------------+|
 |                                                                   |
 | +---WARNING------------------------------------------------------+|
-| | !  CPU spike 92% on oracle-prod-01                             ||
+| | !  CPU spike 92% on coolify-prod-01                             ||
 | |    Triggered: 4h ago (resolved briefly, re-triggered)          ||
 | |    Threshold: 80% | Current: 78% (recovering)                 ||
 | |    [View Server] [Acknowledge]                                 ||
@@ -691,12 +691,12 @@
 |                                                                   |
 | Today, 5. April 2026                                             |
 | +----------------------------------------------------------------+|
-| | 14:15  music-bot restarted on oracle-prod-01                   ||
+| | 14:15  music-bot restarted on coolify-prod-01                   ||
 | |        By: Luca (manual) | Reason: Config update               ||
 | |        Duration: 2.1s | Status: * Success                     ||
 | |        [View Diff] [Rollback]                                  ||
 | +----------------------------------------------------------------+|
-| | 10:30  soundboard-bot deployed on oracle-prod-01               ||
+| | 10:30  soundboard-bot deployed on coolify-prod-01               ||
 | |        By: GitHub Actions (auto) | Commit: a1b2c3d            ||
 | |        Image: soundboard-bot:1.4.2 -> 1.4.3                   ||
 | |        Duration: 14.2s | Status: * Success                    ||
@@ -810,7 +810,7 @@
 | [=]  Server Overview          [Search] [Bell] [Avatar]           |
 +------------------------------------------------------------------+
 |                                                                   |
-| +---oracle-prod-01---+ +---hetzner-dev-02---+                    |
+| +---coolify-prod-01---+ +---hetzner-dev-02---+                    |
 | | * ON    CPU: 78%   | | - OFF              |                    |
 | | RAM: 61% DSK: 42%  | | Last: 2h ago       |                    |
 | | Bots: 4 running    | | Bots: 0            |                    |
@@ -839,8 +839,8 @@
 | Tags: [All] [Prod] [Dev] [>] |
 |                               |
 | +---------------------------+ |
-| | oracle-prod-01      * ON  | |
-| | 130.61.88.80              | |
+| | coolify-prod-01      * ON  | |
+| | —              | |
 | |                           | |
 | | CPU 78%  [========--]     | |
 | | RAM 61%  [======----]     | |
@@ -912,12 +912,12 @@
 ```
   +--------------------------------------------+
   | * Deploy successful                    [X] |    bg: #22C55E/10%  border-left: #22C55E
-  | music-bot v1.4.3 on oracle-prod-01         |
+  | music-bot v1.4.3 on coolify-prod-01         |
   +--------------------------------------------+
 
   +--------------------------------------------+
   | ! Alert triggered                      [X] |    bg: #EF4444/10%  border-left: #EF4444
-  | CPU > 80% on oracle-prod-01                |
+  | CPU > 80% on coolify-prod-01                |
   +--------------------------------------------+
 ```
 
@@ -932,14 +932,14 @@
 | > Search servers, bots, commands...        |
 +--------------------------------------------+
 | Servers                                    |
-|   oracle-prod-01         130.61.88.80      |
+|   coolify-prod-01         —      |
 |   local-test-03          192.168.1.50      |
 | Bots                                       |
-|   music-bot              oracle-prod-01    |
-|   moderation-bot         oracle-prod-01    |
+|   music-bot              coolify-prod-01    |
+|   moderation-bot         coolify-prod-01    |
 | Commands                                   |
 |   Restart music-bot                        |
-|   Open SSH to oracle-prod-01               |
+|   Open SSH to coolify-prod-01               |
 |   View system logs                         |
 +--------------------------------------------+
 ```
@@ -952,7 +952,7 @@
 +--------------------------------------------+
 |                                            |
 |  This will stop the bot on                 |
-|  oracle-prod-01. Connected users           |
+|  coolify-prod-01. Connected users           |
 |  will be disconnected.                     |
 |                                            |
 |  Type "music-bot" to confirm:              |

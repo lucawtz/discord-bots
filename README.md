@@ -1,6 +1,6 @@
 # Discord Bots
 
-A collection of Discord bots running on Oracle Cloud.
+A collection of Discord bots running on Coolify.
 
 ## Bots
 
@@ -30,4 +30,4 @@ npm start
 
 ## Hosting
 
-All bots are hosted on an Oracle Cloud VM (Always Free Tier) and managed via systemd services.
+All bots are hosted via Coolify, each service running in its own Docker container.
