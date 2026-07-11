@@ -916,10 +916,50 @@ function searchTrackYtdlp(searchQuery) {
 }
 
 // ── SoundCloud-Ausweichquelle (wenn YouTube den Server als "Bot" blockt) ──
-// Loest denselben Titel auf SoundCloud auf; SoundCloud hat keine Bot-Sperre.
-function resolveSoundcloudUrl(track) {
+// Rohe SoundCloud-Suche (Liste mit Titel/Uploader/Dauer)
+function soundcloudSearchRaw(query, limit = 5) {
+    return new Promise((resolve, reject) => {
+        const proc = spawn(ytdlpPath, [
+            '--dump-single-json', '--no-playlist', '--no-check-certificates',
+            '--no-warnings', '--flat-playlist', '--force-ipv4',
+            `scsearch${limit}:${query}`,
+        ]);
+        let stdout = '', stderr = '';
+        proc.stdout.on('data', d => stdout += d);
+        proc.stderr.on('data', d => stderr += d);
+        proc.on('close', (code) => {
+            if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp exited ${code}`));
+            try {
+                const data = JSON.parse(stdout);
+                const entries = data.entries || [data];
+                resolve(entries.filter(Boolean).map(i => ({
+                    title: i.title || '',
+                    url: i.webpage_url || i.url,
+                    uploader: i.uploader || i.channel || '',
+                    duration: i.duration || 0,
+                })));
+            } catch { reject(new Error('SoundCloud parse error')); }
+        });
+        proc.on('error', (e) => reject(e));
+    });
+}
+
+// Loest denselben Titel auf SoundCloud auf; filtert Sped-Up/Nightcore/Remix/Preview
+// aus und bevorzugt Treffer mit passender Laenge (nahe der Originaldauer).
+async function resolveSoundcloudUrl(track) {
     const query = [track.artist, track.title].filter(Boolean).join(' ').trim() || track.title;
-    return searchTrackYtdlp(`scsearch1:${query}`).then(r => r.url);
+    let results = [];
+    try { results = await soundcloudSearchRaw(query, 5); } catch { results = []; }
+    if (!results.length) return searchTrackYtdlp(`scsearch1:${query}`).then(r => r.url);
+
+    const bad = /sped\s?-?\s?up|spedup|nightcore|slowed|reverb|8d\s?audio|\bremix\b|mashup|preview|snippet|karaoke|instrumental/i;
+    const orig = track.durationSec || 0;
+    const durOk = (d) => !orig || !d || Math.abs(d - orig) <= orig * 0.25;
+
+    const pick = results.find(r => !bad.test(r.title) && durOk(r.duration))
+              || results.find(r => !bad.test(r.title))
+              || results[0];
+    return pick.url;
 }
 
 function searchTracksYtdlp(query, limit = 5) {
