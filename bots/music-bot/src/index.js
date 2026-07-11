@@ -117,13 +117,18 @@ if (fs.existsSync(cookiePath)) {
     console.log('yt-dlp: Keine cookies.txt gefunden (optional)');
 }
 
-// YouTube-Zugriff über bgutil PO-Token-Provider (löst die "Sign in to confirm
-// you're not a bot"-Sperre auf Rechenzentrums-IPs). Der web-Client nutzt die
-// Proof-of-Origin-Tokens des Providers und liefert direkt streambares Opus.
-const POT_PROVIDER_URL = process.env.POT_PROVIDER_URL
-    || 'http://yo3lh67zyi7a4b3k2wixengt.167.233.237.112.sslip.io';
+// YouTube auf einer Rechenzentrums-IP funktioniert nur dreifach abgesichert:
+//  1) --proxy WARP            -> saubere Cloudflare-IP (umgeht den harten IP-Block)
+//  2) POT-Token (fetch_pot=always) via bgutil-Provider -> "kein Bot"-Nachweis
+//  3) --remote-components ejs  -> löst die neue YouTube JS-Signatur / n-challenge
+// Hinweis: Der POT-Request an den Provider läuft NICHT über den Proxy (das
+// bgutil-Plugin umgeht ihn), daher reicht der interne Alias pot-provider:4416.
+const POT_PROVIDER_URL = process.env.POT_PROVIDER_URL || 'http://pot-provider:4416';
+const YTDLP_PROXY = process.env.YTDLP_PROXY || 'socks5://warp:1080';
 const YT_EXTRACTOR_ARGS = [
-    '--extractor-args', 'youtube:player_client=web',
+    '--proxy', YTDLP_PROXY,
+    '--remote-components', 'ejs:github',
+    '--extractor-args', 'youtube:player_client=web;fetch_pot=always',
     '--extractor-args', `youtubepot-bgutilhttp:base_url=${POT_PROVIDER_URL}`,
 ];
 
@@ -957,7 +962,7 @@ async function resolveSoundcloudUrl(track) {
     try { results = await soundcloudSearchRaw(query, 5); } catch { results = []; }
     if (!results.length) return searchTrackYtdlp(`scsearch1:${query}`).then(r => r.url);
 
-    const bad = /sped\s?-?\s?up|spedup|nightcore|slowed|reverb|8d\s?audio|\bremix\b|mashup|preview|snippet|karaoke|instrumental/i;
+    const bad = /sped\s?-?\s?up|spedup|nightcore|slowed|reverb|8d\s?audio|\bremix\b|mashup|preview|snippet|karaoke|instrumental|chipmunk|pitched/i;
     const orig = track.durationSec || 0;
     const durOk = (d) => !orig || !d || Math.abs(d - orig) <= orig * 0.25;
 
