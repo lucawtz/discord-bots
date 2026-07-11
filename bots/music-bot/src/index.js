@@ -1697,7 +1697,9 @@ async function playNext(guildId) {
 
             queue.channel.send({ embeds: [npEmbed], components: rows })
                 .then(msg => { queue._nowPlayingMsg = msg; })
-                .catch(() => {});
+                .catch(e => console.error('Now-Playing-Embed konnte nicht gesendet werden:', e?.message || e));
+        } else {
+            console.error('Now-Playing: queue.channel ist nicht gesetzt – kein Embed gesendet');
         }
     } catch (error) {
         console.error('Playback error:', error.message);
