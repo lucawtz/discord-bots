@@ -1485,7 +1485,7 @@ function createPlayerButtons(loopMode, isPaused = false) {
     const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('music_loop').setEmoji(loopEmoji).setStyle(loopStyle),
-        new ButtonBuilder().setCustomId('music_app').setLabel('Web Player').setEmoji('🎧').setStyle(ButtonStyle.Link).setURL('https://app.bytebots.de'),
+        new ButtonBuilder().setLabel('Web Player').setEmoji('🎧').setStyle(ButtonStyle.Link).setURL('https://app.bytebots.de'),
     );
     return [row1, row2];
 }
