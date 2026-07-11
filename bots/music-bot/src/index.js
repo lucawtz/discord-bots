@@ -701,12 +701,15 @@ async function pipedSearch(query, limit = 5) {
 }
 
 function pipedToTrack(item) {
+    // Piped liefert nur Proxy-Bild-URLs (proxy.<instanz>), die Discord oft nicht
+    // laedt. Stattdessen direkt das offizielle YouTube-Thumbnail aus der Video-ID.
+    const videoId = (item.url.match(/[?&]v=([\w-]{11})/) || [])[1];
     return {
         title: item.title || 'Unbekannter Titel',
         url: `https://www.youtube.com${item.url}`,
         duration: formatDuration(item.duration),
         durationSec: item.duration || 0,
-        thumbnail: item.thumbnail || null,
+        thumbnail: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : (item.thumbnail || null),
         artist: item.uploaderName || item.uploader || null,
     };
 }
@@ -1380,7 +1383,6 @@ async function setupVoiceConnection(guildId, voiceChannel, guild, textChannel) {
         if (!q || !q._npLoading) return;
         q._npLoading = false;
         try { await q._artPromise; } catch { /* egal, dann ohne Cover */ }
-        console.log(`DEBUG-Cover "${q.current?.title}" thumb=${q.current?.thumbnail} art=${q.current?.albumArt}`);
         updateNowPlayingMsg(q);
     });
 
