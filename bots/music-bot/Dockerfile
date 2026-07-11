@@ -16,8 +16,12 @@ RUN npm run build
 # ── 2) Laufzeit: Discord-Bot + API (Port 3001) ────────────────
 FROM node:22-bookworm-slim
 # ffmpeg + python3 als robuste Basis für yt-dlp/Audio (youtube-dl-exec & @ffmpeg-installer
-# bringen zwar eigene Binaries mit, das hier ist die Absicherung auf PATH)
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 ca-certificates \
+# bringen zwar eigene Binaries mit, das hier ist die Absicherung auf PATH).
+# Zusaetzlich system-yt-dlp + bgutil PO-Token-Plugin per pip: der Bot bevorzugt
+# ein yt-dlp auf PATH (siehe index.js), und nur die pip-Variante laedt das Plugin,
+# das YouTube die "Proof of Origin"-Tokens liefert -> keine Bot-Sperre auf Server-IP.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 python3-pip ca-certificates \
+    && pip3 install --no-cache-dir --break-system-packages -U yt-dlp bgutil-ytdlp-pot-provider \
     && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ENV API_PORT=3001

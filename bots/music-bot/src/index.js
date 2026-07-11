@@ -117,10 +117,15 @@ if (fs.existsSync(cookiePath)) {
     console.log('yt-dlp: Keine cookies.txt gefunden (optional)');
 }
 
-// YouTube: festen tv-Client erzwingen. Nur tv/web nutzen die Cookies; ohne
-// feste Wahl greift yt-dlp mal zu android_vr (ignoriert Cookies -> Bot-Sperre).
-// tv liefert zudem ein direkt streambares Opus-Format (korrekte Geschwindigkeit).
-const YT_EXTRACTOR_ARGS = ['--extractor-args', 'youtube:player_client=tv'];
+// YouTube-Zugriff über bgutil PO-Token-Provider (löst die "Sign in to confirm
+// you're not a bot"-Sperre auf Rechenzentrums-IPs). Der web-Client nutzt die
+// Proof-of-Origin-Tokens des Providers und liefert direkt streambares Opus.
+const POT_PROVIDER_URL = process.env.POT_PROVIDER_URL
+    || 'http://yo3lh67zyi7a4b3k2wixengt.167.233.237.112.sslip.io';
+const YT_EXTRACTOR_ARGS = [
+    '--extractor-args', 'youtube:player_client=web',
+    '--extractor-args', `youtubepot-bgutilhttp:base_url=${POT_PROVIDER_URL}`,
+];
 
 // ── yt-dlp Auto-Update (im Hintergrund, blockiert nicht den Start) ──
 spawn(ytdlpPath, ['-U']).on('close', (code) => {
