@@ -14,6 +14,7 @@ const db = require('./database');
 const DELETE_SHORT_MS = 30_000;     // 30 Sekunden (skip, pause, stop, join)
 const DELETE_EMBED_MS = 60_000;     // 60 Sekunden (play, queue, nowplaying)
 const DELETE_ERROR_MS = 10_000;     // 10 Sekunden (Fehler)
+const DELETE_NOWPLAYING_MS = 24 * 60 * 60_000; // 24 Stunden ("Now Playing" bleibt stehen)
 const LEAVE_TIMEOUT_MS = 5 * 60_000; // 5 Minuten
 const CONNECT_TIMEOUT_MS = 30_000;  // 30 Sekunden
 const DISCONNECT_CHECK_MS = 5_000;  // 5 Sekunden
@@ -62,7 +63,7 @@ function destroyQueue(guildId) {
     if (!queue) return;
     clearTimeout(queue.leaveTimer);
     clearTimeout(queue._leaveWarningTimer);
-    if (queue._nowPlayingMsg) queue._nowPlayingMsg.delete().catch(() => {});
+    releaseNowPlaying(queue);
     for (const proc of queue.processes) {
         if (!proc.killed) proc.kill();
     }
@@ -1631,11 +1632,8 @@ async function playNext(guildId) {
             return;
         }
 
-        // Alte "Now Playing"-Nachricht löschen
-        if (queue._nowPlayingMsg) {
-            queue._nowPlayingMsg.delete().catch(() => {});
-            queue._nowPlayingMsg = null;
-        }
+        // Alte "Now Playing"-Nachricht stehen lassen, erst nach 24h entfernen
+        releaseNowPlaying(queue);
 
         const track = queue.tracks.shift();
         queue.current = track;
@@ -1719,6 +1717,14 @@ function autoDelete(msgPromise, ms = DELETE_EMBED_MS) {
         .catch(() => {});
 }
 
+// "Now Playing"-Nachricht nicht sofort löschen, sondern erst nach 24h entfernen.
+// (Löst queue._nowPlayingMsg ab und lässt die alte Nachricht stehen.)
+function releaseNowPlaying(queue) {
+    const msg = queue._nowPlayingMsg;
+    queue._nowPlayingMsg = null;
+    if (msg) setTimeout(() => msg.delete().catch(() => {}), DELETE_NOWPLAYING_MS);
+}
+
 // ── Commands laden ────────────────────────────────────────────────
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
@@ -1787,7 +1793,7 @@ async function handleButton(interaction) {
             queue.current = null;
             queue._failedTrack = null;
             queue.stopped = true;
-            if (queue._nowPlayingMsg) { queue._nowPlayingMsg.delete().catch(() => {}); queue._nowPlayingMsg = null; }
+            releaseNowPlaying(queue);
             if (queue.player) queue.player.stop(true);
             scheduleLeave(interaction.guildId);
             break;
