@@ -6,6 +6,7 @@ const { spawn, execFileSync } = require('child_process'); // execFileSync für y
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 require('dotenv').config();
 const { startAPI } = require('./api');
 const db = require('./database');
@@ -64,6 +65,12 @@ function destroyQueue(guildId) {
     clearTimeout(queue.leaveTimer);
     clearTimeout(queue._leaveWarningTimer);
     releaseNowPlaying(queue);
+    if (queue._prefetch) {
+        const pf = queue._prefetch;
+        queue._prefetch = null;
+        if (pf.proc && !pf.proc.killed) pf.proc.kill();
+        fs.unlink(pf.file, () => {});
+    }
     for (const proc of queue.processes) {
         if (!proc.killed) proc.kill();
     }
@@ -1286,8 +1293,9 @@ const AUDIO_FILTERS = {
 };
 
 // ── Audio-Stream (yt-dlp → FFmpeg → OggOpus) ────────────────────
-function createStream(url, queue, onError, seekSeconds = 0) {
-    const ytdlp = spawn(ytdlpPath, [
+function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
+    // localFile: vorgeladene Audio-Datei (Prefetch) -> yt-dlp entfaellt komplett
+    const ytdlp = localFile ? null : spawn(ytdlpPath, [
         '-f', 'bestaudio/bestaudio*/best',
         '-o', '-', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
@@ -1304,7 +1312,7 @@ function createStream(url, queue, onError, seekSeconds = 0) {
 
     const ffmpeg = spawn(ffmpegPath, [
         ...(seekSeconds > 0 ? ['-ss', String(seekSeconds)] : []),
-        '-i', 'pipe:0',
+        '-i', localFile || 'pipe:0',
         '-analyzeduration', '0',
         '-loglevel', 'error',
         ...filterArgs,
@@ -1315,33 +1323,72 @@ function createStream(url, queue, onError, seekSeconds = 0) {
         'pipe:1',
     ]);
 
-    ytdlp.stdout.pipe(ffmpeg.stdin);
-    ffmpeg.stdin.on('error', () => {}); // Broken pipe ignorieren
-
     let hasData = false;
-    let stderrOutput = '';
     ffmpeg.stdout.on('data', () => { hasData = true; });
 
-    ytdlp.stderr.on('data', (d) => { stderrOutput += d.toString(); });
-    ytdlp.on('close', (code) => {
-        queue.processes.delete(ytdlp);
-        if (stderrOutput.trim()) console.error('yt-dlp stderr:', stderrOutput.trim());
-        if (code !== 0 && !hasData) {
-            ffmpeg.kill();
-            const lastLine = stderrOutput.trim().split('\n').pop();
-            onError?.(new Error(lastLine || `yt-dlp Fehler (Code ${code})`));
-        }
-    });
+    if (ytdlp) {
+        ytdlp.stdout.pipe(ffmpeg.stdin);
+        ffmpeg.stdin.on('error', () => {}); // Broken pipe ignorieren
+
+        let stderrOutput = '';
+        ytdlp.stderr.on('data', (d) => { stderrOutput += d.toString(); });
+        ytdlp.on('close', (code) => {
+            queue.processes.delete(ytdlp);
+            if (stderrOutput.trim()) console.error('yt-dlp stderr:', stderrOutput.trim());
+            if (code !== 0 && !hasData) {
+                ffmpeg.kill();
+                const lastLine = stderrOutput.trim().split('\n').pop();
+                onError?.(new Error(lastLine || `yt-dlp Fehler (Code ${code})`));
+            }
+        });
+        ytdlp.on('error', (e) => { console.error('yt-dlp spawn error:', e.message); onError?.(e); });
+        queue.processes.add(ytdlp);
+    }
 
     ffmpeg.stderr.on('data', (d) => console.error('ffmpeg stderr:', d.toString().trim()));
-    ffmpeg.on('close', () => { queue.processes.delete(ffmpeg); });
-
-    ytdlp.on('error', (e) => { console.error('yt-dlp spawn error:', e.message); onError?.(e); });
+    ffmpeg.on('close', () => {
+        queue.processes.delete(ffmpeg);
+        if (localFile) fs.unlink(localFile, () => {}); // Prefetch-Datei aufraeumen
+    });
     ffmpeg.on('error', (e) => { console.error('ffmpeg spawn error:', e.message); onError?.(e); });
 
-    queue.processes.add(ytdlp);
     queue.processes.add(ffmpeg);
     return ffmpeg.stdout;
+}
+
+// ── Naechsten Track vorladen (macht /skip nahezu verzoegerungsfrei) ──
+// Laedt queue.tracks[0] im Hintergrund komplett herunter (inkl. YouTubes
+// 4s-Zwangspause und Extraktion). Beim Abspielen wird die Datei direkt
+// an ffmpeg gegeben statt neu ueber yt-dlp zu streamen.
+function prefetchNext(guildId) {
+    const queue = queues.get(guildId);
+    if (!queue) return;
+    const next = queue.tracks[0];
+
+    // Bestehenden Prefetch verwerfen, wenn er nicht (mehr) zum naechsten Track passt
+    if (queue._prefetch && queue._prefetch.url !== next?.url) {
+        const old = queue._prefetch;
+        queue._prefetch = null;
+        if (old.proc && !old.proc.killed) old.proc.kill();
+        fs.unlink(old.file, () => {});
+    }
+    if (!next || !next.url || queue._prefetch) return;
+
+    const file = path.join(os.tmpdir(), `prefetch-${guildId}`);
+    const proc = spawn(ytdlpPath, [
+        '-f', 'bestaudio/bestaudio*/best',
+        '-o', file, '--force-overwrites', '--no-check-certificates', '--no-warnings',
+        '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
+        ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', next.url,
+    ]);
+    const pf = { url: next.url, file, proc, done: false };
+    queue._prefetch = pf;
+    proc.on('close', (code) => {
+        if (queue._prefetch !== pf) return;
+        if (code === 0) pf.done = true;
+        else { queue._prefetch = null; fs.unlink(file, () => {}); }
+    });
+    proc.on('error', () => { if (queue._prefetch === pf) queue._prefetch = null; });
 }
 
 // ── Voice-Verbindung aufbauen (gemeinsame Logik) ─────────────────
@@ -1555,23 +1602,42 @@ function buildLoadingEmbed(track, clientOrInteraction) {
         .setColor(0x95a5a6);
 }
 
-// Cover-Bild nachladen (iTunes Search API, kostenlos, kein Key), falls keins da ist
+// Quadratisches Album-Cover nachladen (Deezer, dann iTunes — beides ohne Key).
+// YouTube-Thumbnails sind letterboxed (schwarze Balken); echte Album-Art sieht
+// im Embed groesser und sauberer aus. Mit Titel-Abgleich gegen falsche Treffer.
 async function ensureAlbumArt(track) {
-    if (track.albumArt || track.thumbnail) return;
+    if (track.albumArt) return;
     const term = [track.artist, track.title].filter(Boolean).join(' ').trim() || track.title;
     if (!term) return;
+    const norm = s => (s || '').toLowerCase();
+
+    // 1) Deezer (gute Trefferquote, 500x500-Cover)
+    try {
+        const data = await deezerFetch(`/search?q=${encodeURIComponent(term)}&limit=3`);
+        const hit = (data?.data || []).find(h =>
+            fuzzyMatch(norm(track.title), norm(h.title)) >= 0.5 ||
+            (h.artist?.name && norm(term).includes(norm(h.artist.name))));
+        const art = hit?.album?.cover_big || hit?.album?.cover_medium;
+        if (art) { track.albumArt = art; return; }
+    } catch { /* weiter mit iTunes */ }
+
+    // 2) iTunes-Fallback (600x600)
     try {
         const data = await new Promise((resolve, reject) => {
-            https.get(`https://itunes.apple.com/search?media=music&limit=1&term=${encodeURIComponent(term)}`,
+            https.get(`https://itunes.apple.com/search?media=music&limit=3&term=${encodeURIComponent(term)}`,
                 { timeout: 5000 }, (res) => {
                     let d = '';
                     res.on('data', c => d += c);
                     res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('parse')); } });
                 }).on('error', reject).on('timeout', function () { this.destroy(); reject(new Error('timeout')); });
         });
-        const art = data?.results?.[0]?.artworkUrl100;
-        if (art) track.albumArt = art.replace('100x100bb', '300x300bb').replace('100x100', '300x300');
-    } catch { /* egal, dann halt ohne Cover */ }
+        const hit = (data?.results || []).find(r =>
+            fuzzyMatch(norm(track.title), norm(r.trackName)) >= 0.5 ||
+            (r.artistName && norm(term).includes(norm(r.artistName))));
+        if (hit?.artworkUrl100) {
+            track.albumArt = hit.artworkUrl100.replace(/100x100(bb)?/, '600x600$1');
+        }
+    } catch { /* egal, dann halt YouTube-Thumbnail */ }
 }
 
 // ── Now Playing Nachricht aktualisieren ──────────────────────────
@@ -1602,17 +1668,21 @@ async function findAutoDjTrack(lastTrack, queue) {
 
     // Artist extrahieren (Text vor " - " oder " – ")
     const artistMatch = cleanTitle.match(/^(.+?)\s*[-–]\s*/);
-    const searchQuery = artistMatch
-        ? `${artistMatch[1]} mix`
-        : `${cleanTitle} similar songs`;
 
-    const results = await searchTracks(searchQuery, 5);
+    // Shuffle-Verhalten: zufaelliges Suchmuster + zufaellige Auswahl aus allen
+    // Kandidaten, damit der Auto-DJ nicht immer dieselben Empfehlungen spielt.
+    const patterns = artistMatch
+        ? [`${artistMatch[1]} mix`, `${artistMatch[1]} beste songs`, `${artistMatch[1]} playlist`, `${cleanTitle} similar songs`]
+        : [`${cleanTitle} similar songs`, `${cleanTitle} mix`, `${cleanTitle} radio`];
+    const searchQuery = patterns[Math.floor(Math.random() * patterns.length)];
+
+    const results = await searchTracks(searchQuery, 8);
 
     // Bereits gespielte URLs filtern
     const candidates = results.filter(t => !queue._djHistory.has(t.url));
 
-    // Aus Top 3 zufaellig waehlen
-    const pool = candidates.length > 0 ? candidates.slice(0, 3) : results.slice(0, 3);
+    // Komplett zufaellig aus allen passenden Kandidaten waehlen
+    const pool = candidates.length > 0 ? candidates : results;
     const picked = pool[Math.floor(Math.random() * pool.length)];
 
     // History aktualisieren (max 50 Eintraege)
@@ -1720,6 +1790,21 @@ async function playNext(guildId) {
             }
         }
 
+        // Vorgeladenen Track nutzen, falls er zum aktuellen passt und fertig ist
+        let localFile = null;
+        if (queue._prefetch) {
+            const pf = queue._prefetch;
+            if (pf.url === track.url && pf.done) {
+                localFile = pf.file;
+                queue._prefetch = null;
+            } else if (pf.url === track.url) {
+                // Laeuft noch -> abbrechen und normal streamen
+                queue._prefetch = null;
+                if (pf.proc && !pf.proc.killed) pf.proc.kill();
+                fs.unlink(pf.file, () => {});
+            }
+        }
+
         const stream = createStream(track.url, queue, (err) => {
             const ytBlocked = /not a bot|confirm you.?re not a bot|sign in to confirm/i.test(err.message);
             const isYtUrl = /youtube\.com|youtu\.be/.test(track.url || '');
@@ -1737,12 +1822,15 @@ async function playNext(guildId) {
             } else {
                 autoDelete(queue.channel?.send(`❌ Stream-Fehler bei **${track.title}**: ${err.message}`), DELETE_ERROR_MS);
             }
-        });
+        }, 0, localFile);
         const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
         resource.volume.setVolume(queue.volume);
         queue._resource = resource;
         queue.player.play(resource);
         updateActivity(guildId);
+
+        // Naechsten Track im Hintergrund vorladen (macht /skip nahezu sofort)
+        setTimeout(() => prefetchNext(guildId), 1500);
 
         // Erst "Lädt…"-Platzhalter senden; der Playing-Handler ersetzt ihn durch
         // das volle Embed, sobald die Wiedergabe tatsächlich startet.
