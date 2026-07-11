@@ -1380,6 +1380,7 @@ async function setupVoiceConnection(guildId, voiceChannel, guild, textChannel) {
         if (!q || !q._npLoading) return;
         q._npLoading = false;
         try { await q._artPromise; } catch { /* egal, dann ohne Cover */ }
+        console.log(`DEBUG-Cover "${q.current?.title}" thumb=${q.current?.thumbnail} art=${q.current?.albumArt}`);
         updateNowPlayingMsg(q);
     });
 
