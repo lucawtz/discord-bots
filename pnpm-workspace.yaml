@@ -3,7 +3,18 @@ packages:
   - "bots/music-bot/app"
   - "website"
 
+# Postinstall-Scripts, die laufen duerfen (laden Binaries: yt-dlp, ffmpeg, esbuild).
+# Ohne Freigabe bricht "pnpm install --frozen-lockfile" seit pnpm 10 mit Exit 1 ab.
+allowBuilds:
+  '@ffmpeg-installer/darwin-arm64': true
+  '@ffmpeg-installer/linux-x64': true
+  esbuild: true
+  ffmpeg-static: true
+  youtube-dl-exec: true
+
 onlyBuiltDependencies:
+  - '@ffmpeg-installer/darwin-arm64'
+  - '@ffmpeg-installer/linux-x64'
   - esbuild
   - ffmpeg-static
   - youtube-dl-exec
