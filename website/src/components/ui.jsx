@@ -61,7 +61,7 @@ export function BrandLogo({ size = 34 }) {
                 </linearGradient>
             </defs>
             <circle cx="256" cy="256" r="248" fill="url(#bb-lg1)" />
-            <circle cx="256" cy="256" r="245" stroke="#a855f7" strokeOpacity="0.4" strokeWidth="6" />
+            <circle cx="256" cy="256" r="245" stroke="#a855f7" strokeOpacity="0.4" strokeWidth="5" />
             <rect x="214" y="118" width="56" height="256" rx="28" fill="url(#bb-lb1)" transform="rotate(20 242 246)" />
             <rect x="298" y="318" width="52" height="52" rx="13" fill="url(#bb-lb1)" />
         </Box>

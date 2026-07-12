@@ -5,6 +5,10 @@ Fortlaufendes Log aller Änderungen — auch solche, die NICHT im Code landen
 Neueste Einträge oben. Format: `## YYYY-MM-DD`, ein Bullet pro Änderung,
 mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
+## 2026-07-13
+
+- **website:** Favicon durch das offizielle ByteBots-Logo (Variante **1c „Slash-Befehl"** aus dem Claude-Design-Projekt „ByteBots Website Redesign") ersetzt — vorher war es noch der alte blaue Roboter-Kopf. Kanonischen Vektor `assets/bytebots-logo.svg`/`logo-c-slash.svg` aus dem Design per Design-MCP importiert und als `public/favicon.svg` abgelegt (radialer Tile-Hintergrund + Gradient-Slash/Byte-Cursor, Ring `stroke-width` 5). Daraus die PNG-Fallbacks gerendert: `bytebots-favicon.png` 512×512 (OpenGraph/Twitter), `bytebots-favicon-180.png` (apple-touch), `bytebots-favicon-32.png` (Tab). `index.html`: SVG als primäres Icon (skaliert scharf) + PNG-Fallbacks, `sizes`-Angaben korrigiert. `BrandLogo` in `src/components/ui.jsx` an die kanonische Spec angeglichen (Ring `strokeWidth` 6 → 5), damit In-Page-Logo und Favicon pixelgleich sind. Die ungenutzten alten Roboter-Assets `public/favicon.png` + `public/logo.png` bleiben vorerst liegen (nirgends referenziert).
+
 ## 2026-07-12
 
 - **bots:** Env-Dateien konsolidiert — lokale Dev-Config jetzt in **einer** Root-`.env.local` (gitignored, committete Vorlage: `.env.local.example`): Variablen mit Präfix `MUSIC_`/`SOUNDBOARD_`, die neue `libs/loadEnv.js` mappt sie beim Start auf die echten Namen. Bereits gesetzte Umgebungsvariablen (= Coolify/Prod) gewinnen immer; eine `bots/<bot>/.env` wird als Ausnahmefall weiter gelesen. Gelöscht: die zwei lokalen `bots/*/.env`, beide `bots/*/.env.example` und die tote `bots/music-bot/.env.production` (wurde von nichts mehr gelesen, `.dockerignore` blockte sie ohnehin). `.gitignore` um `.env.local` ergänzt, CLAUDE.md angepasst. Getestet: Präfix-Mapping beider Bots, Coolify-Vorrang, `npm run deploy` beider Bots läuft bis zur Discord-API (sauberer 401 mit Platzhalter-Token).
