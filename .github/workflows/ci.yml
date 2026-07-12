@@ -1,6 +1,10 @@
 name: CI
 
+# push auf coolify-deploy ist der Deploy-Weg (Coolify baut von diesem Branch) —
+# ohne den Trigger liefe die CI faktisch nie, da PRs gegen main die Ausnahme sind.
 on:
+  push:
+    branches: [coolify-deploy, main]
   pull_request:
     branches: [main]
 
@@ -11,9 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Gleiche Node-Version wie die Prod-Container (node:22-bookworm-slim)
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - uses: pnpm/action-setup@v4
         with:
