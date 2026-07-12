@@ -118,8 +118,14 @@ function gracefulShutdown(signal) {
   disconnectAll();
   console.log('Voice-Connections getrennt.');
 
-  db.saveNow();
-  console.log('Datenbank gespeichert.');
+  // Flush darf den Shutdown nie blockieren (eine Exception hier wuerde vom
+  // uncaughtException-Handler geschluckt und process.exit nie erreicht)
+  try {
+    db.saveNow();
+    console.log('Datenbank gespeichert.');
+  } catch (err) {
+    console.error('DB-Flush beim Shutdown fehlgeschlagen:', err);
+  }
 
   if (webServer) {
     webServer.close(() => {

@@ -4,7 +4,9 @@
 # mit dem Stand des letzten Docker-Builds — und YouTube bricht alte Versionen
 # regelmaessig. Fehler werden toleriert, damit der Bot auch offline startet.
 echo "Entrypoint: aktualisiere yt-dlp + POT-Plugin..."
-pip3 install --no-cache-dir --break-system-packages -U yt-dlp bgutil-ytdlp-pot-provider \
+# --retries/--timeout knapp halten: bis zum "exec node" ist sh PID 1 ohne
+# Signal-Handling — ein haengendes pip wuerde Start UND docker stop blockieren.
+pip3 install --no-cache-dir --break-system-packages --retries 2 --timeout 10 -U yt-dlp bgutil-ytdlp-pot-provider \
     || echo "Entrypoint: Update fehlgeschlagen (offline?) — starte mit vorhandener Version"
 
 exec node src/index.js

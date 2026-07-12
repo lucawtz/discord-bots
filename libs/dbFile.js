@@ -30,7 +30,11 @@ function backupDaily(filePath, keep = 7) {
     if (fs.existsSync(backupPath)) return;
 
     fs.mkdirSync(dir, { recursive: true });
-    fs.copyFileSync(filePath, backupPath);
+    // Auch das Backup atomar anlegen — sonst hinterlaesst ein Kill mitten in
+    // der Kopie ein Fragment, das der existsSync-Check den ganzen Tag fuer
+    // ein gueltiges Backup haelt.
+    fs.copyFileSync(filePath, backupPath + '.tmp');
+    fs.renameSync(backupPath + '.tmp', backupPath);
 
     const backups = fs.readdirSync(dir)
         .filter(f => f.startsWith(base + '-') && f.endsWith(ext))
