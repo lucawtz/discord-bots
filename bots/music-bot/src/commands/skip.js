@@ -30,17 +30,15 @@ module.exports = {
 
             if (queue.skipVotes.size < needed) {
                 return interaction.reply({
-                    content: `-# 🗳️ Skip-Vote: **${queue.skipVotes.size}/${needed}** — noch ${needed - queue.skipVotes.size} noetig`,
+                    content: `-# 🗳️ Skip-Vote: **${queue.skipVotes.size}/${needed}** — noch ${needed - queue.skipVotes.size} nötig`,
                 });
             }
         }
 
-        const skipped = queue.current;
-
-        // Skip ausführen — Now Playing Embed fuer naechsten Song kommt von playNext
+        // Skip ausführen — Now Playing Embed für nächsten Song kommt von playNext
         killQueueProcesses(queue);
         queue.player.stop();
 
-        ctx.autoDelete(interaction.reply({ content: `-# ⏭️ **${skipped.title}** uebersprungen`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        interaction.deferReply().then(() => interaction.deleteReply()).catch(() => {});
     },
 };

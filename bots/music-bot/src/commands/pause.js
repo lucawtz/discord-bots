@@ -16,12 +16,12 @@ module.exports = {
             queue._playbackStart = Date.now() - (queue._pausedElapsed || 0) * 1000;
             queue.player.unpause();
             ctx.updateNowPlayingMsg(queue);
-            ctx.autoDelete(interaction.reply({ content: `-# ▶️ Fortgesetzt`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+            interaction.deferReply().then(() => interaction.deleteReply()).catch(() => {});
         } else {
             queue._pausedElapsed = Math.floor((Date.now() - queue._playbackStart) / 1000) + (queue._seekOffset || 0);
             queue.player.pause();
             ctx.updateNowPlayingMsg(queue);
-            ctx.autoDelete(interaction.reply({ content: `-# ⏸️ Pausiert`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+            interaction.deferReply().then(() => interaction.deleteReply()).catch(() => {});
         }
     },
 };

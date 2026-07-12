@@ -35,7 +35,7 @@ module.exports = {
             // Sofort abspielen — Now Playing Embed kommt von playNext
             ctx.playNext(interaction.guild.id);
 
-            ctx.autoDelete(interaction.editReply({ content: `-# ⏭️ **${track.title}** wird abgespielt` }), ctx.DELETE_SHORT_MS);
+            interaction.deleteReply().catch(() => {});
         } catch (error) {
             console.error('PlayNow error:', error.message);
             if (queue.connection && !queue.current) {

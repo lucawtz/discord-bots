@@ -47,7 +47,7 @@ module.exports = {
 
                     const remaining = meta.rawTracks.length - 1;
                     const embed = new EmbedBuilder()
-                        .setAuthor({ name: 'Playlist hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                        .setAuthor({ name: 'Playlist hinzugefügt', iconURL: interaction.client.user.displayAvatarURL() })
                         .setDescription(`**${meta.title}**`)
                         .addFields(
                             { name: 'Songs', value: `\`${meta.rawTracks.length}\``, inline: true },
@@ -75,7 +75,7 @@ module.exports = {
                 }
 
                 const embed = new EmbedBuilder()
-                    .setAuthor({ name: 'Playlist hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setAuthor({ name: 'Playlist hinzugefügt', iconURL: interaction.client.user.displayAvatarURL() })
                     .setDescription(`**${playlist.title}**`)
                     .addFields(
                         { name: 'Songs', value: `\`${tracks.length}\``, inline: true },
@@ -97,15 +97,15 @@ module.exports = {
 
             if (!queue.current) {
                 ctx.playNext(interaction.guild.id);
-                // Now Playing Embed wird automatisch von playNext gesendet
-                ctx.autoDelete(interaction.editReply({ content: `-# ▶️ **${track.title}** wird abgespielt` }), ctx.DELETE_SHORT_MS);
+                // Kein Einzeiler — das "Lädt…"/Now-Playing-Embed ist das Feedback
+                interaction.deleteReply().catch(() => {});
             } else {
                 // Sofort vorladen, damit /skip direkt wechseln kann
                 ctx.prefetchNext(interaction.guild.id);
                 // Quadratisches Cover fuer das Embed nachladen (statt letterboxed Thumb)
                 try { await ctx.ensureAlbumArt(track); } catch { /* dann halt Thumbnail */ }
                 const embed = new EmbedBuilder()
-                    .setAuthor({ name: 'Zur Warteschlange hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setAuthor({ name: 'Zur Warteschlange hinzugefügt', iconURL: interaction.client.user.displayAvatarURL() })
                     .setThumbnail(track.albumArt || track.thumbnail || null)
                     .setDescription(`[${track.title}](${track.url})`)
                     .addFields(

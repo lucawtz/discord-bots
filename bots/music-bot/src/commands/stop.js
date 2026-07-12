@@ -19,15 +19,12 @@ module.exports = {
         queue.current = null;
         queue._failedTrack = null;
         queue.stopped = true;
-        if (queue._nowPlayingMsg) {
-            queue._nowPlayingMsg.delete().catch(() => {});
-            queue._nowPlayingMsg = null;
-        }
+        ctx.releaseNowPlaying(queue); // Embed 24h stehen lassen (wie beim Stop-Button)
         if (queue.player) queue.player.stop(true);
 
         // Nach Timeout den Channel verlassen
         ctx.scheduleLeave(interaction.guildId);
 
-        ctx.autoDelete(interaction.reply({ content: `-# ⏹️ Wiedergabe gestoppt`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+        interaction.deferReply().then(() => interaction.deleteReply()).catch(() => {});
     },
 };

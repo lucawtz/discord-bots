@@ -23,7 +23,7 @@ module.exports = {
                 `Der Code ist **7 Tage** gueltig.`,
             ].join('\n'))
             .setColor(0x6E41CC)
-            .setFooter({ text: 'Nur fuer dich sichtbar' });
+            .setFooter({ text: 'Nur für dich sichtbar' });
 
         const row = new ActionRowBuilder();
         row.addComponents(

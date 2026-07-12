@@ -11,7 +11,7 @@ module.exports = {
                     opt.setName('name').setDescription('Name der Playlist').setRequired(true).setMaxLength(50)))
         .addSubcommand(sub =>
             sub.setName('load')
-                .setDescription('Laedt eine gespeicherte Playlist in die Queue')
+                .setDescription('Lädt eine gespeicherte Playlist in die Queue')
                 .addStringOption(opt =>
                     opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true)))
         .addSubcommand(sub =>
@@ -24,7 +24,7 @@ module.exports = {
                     opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true)))
         .addSubcommand(sub =>
             sub.setName('delete')
-                .setDescription('Loescht eine gespeicherte Playlist')
+                .setDescription('Löscht eine gespeicherte Playlist')
                 .addStringOption(opt =>
                     opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true)))
         .addSubcommand(sub =>
@@ -116,7 +116,7 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setAuthor({ name: 'Playlist geladen', iconURL: interaction.client.user.displayAvatarURL() })
-                .setDescription(`**${full.name}** — ${tracks.length} Song${tracks.length !== 1 ? 's' : ''} zur Queue hinzugefuegt`)
+                .setDescription(`**${full.name}** — ${tracks.length} Song${tracks.length !== 1 ? 's' : ''} zur Queue hinzugefügt`)
                 .setColor(0x6E41CC)
                 .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
             ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }));
@@ -170,7 +170,7 @@ module.exports = {
             }
 
             ctx.db.deletePlaylist(playlist.id, interaction.user.id);
-            ctx.autoDelete(interaction.reply({ content: `-# 🗑️ Playlist **${name}** geloescht`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.autoDelete(interaction.reply({ content: `-# 🗑️ Playlist **${name}** gelöscht`, fetchReply: true }), ctx.DELETE_SHORT_MS);
         }
 
         else if (sub === 'import') {
@@ -198,7 +198,7 @@ module.exports = {
                 // Pruefen ob Name schon existiert
                 const existing = ctx.db.getPlaylistByName(interaction.guildId, interaction.user.id, name);
                 if (existing) {
-                    return interaction.editReply({ content: `❌ Du hast bereits eine Playlist namens **${name}**. Waehle einen anderen Namen mit der \`name\` Option.` });
+                    return interaction.editReply({ content: `❌ Du hast bereits eine Playlist namens **${name}**. Wähle einen anderen Namen mit der \`name\` Option.` });
                 }
 
                 ctx.db.createPlaylist(interaction.guildId, interaction.user.id, name, tracks);

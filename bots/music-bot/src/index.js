@@ -1906,7 +1906,7 @@ for (const file of commandFiles) {
 const ctx = {
     db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, preResolveTrack, spotifyFetch, searchPlaylist, isPlaylistUrl, fetchPlaylistMeta, resolvePlaylistInBackground, fetchSpotifyEmbed,
     playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
-    prefetchNext, ensureAlbumArt,
+    prefetchNext, ensureAlbumArt, releaseNowPlaying,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,

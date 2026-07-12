@@ -26,7 +26,7 @@ module.exports = {
                 .setAuthor({ name: 'Lyrics', iconURL: interaction.client.user.displayAvatarURL() })
                 .setDescription(
                     `**${query}**\n\n` +
-                    `Lyrics koennen aus rechtlichen Gruenden nicht direkt angezeigt werden.\n\n` +
+                    `Lyrics können aus rechtlichen Gründen nicht direkt angezeigt werden.\n\n` +
                     `[Google Suche](${searchUrl})\n` +
                     `[Genius](https://genius.com/search?q=${encodeURIComponent(query)})\n` +
                     `[AZLyrics](https://search.azlyrics.com/search.php?q=${encodeURIComponent(query)})`
