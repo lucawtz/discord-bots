@@ -7,7 +7,7 @@ const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-require('dotenv').config();
+require('../../../libs/loadEnv').loadEnv('MUSIC', path.join(__dirname, '..'));
 const { startAPI } = require('./api');
 const db = require('./database');
 

@@ -6,9 +6,10 @@ const path = require('path');
  * Registriert Slash Commands fuer einen Bot.
  * @param {string} commandsDir - Absoluter Pfad zum commands-Ordner
  * @param {string} botName - Name des Bots (fuer Logging)
+ * @param {string} envPrefix - Praefix in der Root-.env.local ('MUSIC'/'SOUNDBOARD')
  */
-async function deployCommands(commandsDir, botName = 'Bot') {
-    require('dotenv').config({ path: path.join(commandsDir, '..', '..', '.env') });
+async function deployCommands(commandsDir, botName = 'Bot', envPrefix = botName.toUpperCase()) {
+    require('./loadEnv').loadEnv(envPrefix, path.join(commandsDir, '..', '..'));
 
     const commands = [];
     const commandFiles = fs.readdirSync(commandsDir).filter(f => f.endsWith('.js'));

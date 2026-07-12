@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('../../../libs/loadEnv').loadEnv('SOUNDBOARD', require('path').join(__dirname, '..'));
 
 const { Client, Collection, GatewayIntentBits, Events, MessageFlags } = require('discord.js');
 const fs = require('fs');
