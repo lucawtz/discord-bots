@@ -1650,6 +1650,16 @@ function updateNowPlayingMsg(queue) {
     return queue._nowPlayingMsg.edit({ embeds: [embed], components: rows }).catch(() => {});
 }
 
+// ── Live-Progress: laufende Now-Playing-Embeds alle 10s aktualisieren ──
+// (10s = Discord-Edit-freundlich und entspricht ~1 Segment des 20er-Balkens)
+setInterval(() => {
+    for (const queue of queues.values()) {
+        if (!queue._nowPlayingMsg || !queue.current || queue._npLoading) continue;
+        if (queue.player?.state?.status !== AudioPlayerStatus.Playing) continue;
+        updateNowPlayingMsg(queue);
+    }
+}, 10_000);
+
 // ── Wiedergabe ────────────────────────────────────────────────────
 // ── Auto-DJ: Aehnlichen Track finden ─────────────────────────────
 async function findAutoDjTrack(lastTrack, queue) {
