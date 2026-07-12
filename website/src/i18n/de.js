@@ -111,6 +111,7 @@ export default {
         offline: 'Offline',
         checking: 'Prüfe…',
         mockToday: 'heute um 21:47',
+        mockEphemeral: 'Nur du kannst das sehen',
         beatbyte: {
             subtitle: 'Musik-Bot',
             blurb: 'Musik aus YouTube, Spotify, Apple Music & Deezer — direkt im Voice-Channel, mit Live-Fortschritt und Album-Cover.',

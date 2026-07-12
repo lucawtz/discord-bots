@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Box, Typography, Button, Card, Stack, Container, keyframes,
@@ -6,32 +7,53 @@ import { BEATBYTE_INVITE, SOUNDBOARD_INVITE } from '../config';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useLiveStatus } from '../hooks/useLiveStatus';
 import {
-    PageHead, BotAvatar, CmdChip, ACCENTS, MONO_FONT, DISPLAY_FONT, GHOST_BTN_SX,
+    PageHead, BotAvatar, ACCENTS, MONO_FONT, DISPLAY_FONT, GHOST_BTN_SX,
 } from '../components/ui';
-
-const prog = keyframes`
-    0% { width: 12%; }
-    92% { width: 86%; }
-    100% { width: 86%; }
-`;
-
-const eq = keyframes`
-    0%, 100% { transform: scaleY(0.28); }
-    50% { transform: scaleY(1); }
-`;
 
 const floaty = keyframes`
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-11px); }
 `;
 
-const blink = keyframes`
-    50% { opacity: 0; }
-`;
-
 const pulse = keyframes`
     50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
 `;
+
+// Discord-Dark-Theme-Farben, damit die Mockups exakt wie in Discord aussehen
+const DC = {
+    chat: '#313338',
+    embed: '#2b2d31',
+    text: '#dbdee1',
+    heading: '#f2f3f5',
+    muted: '#949ba4',
+    code: '#1e1f22',
+    blurple: '#5865f2',
+    secondary: '#4e5058',
+    danger: '#da373c',
+    success: '#248046',
+};
+
+// Discord-Button (32px hoch, 3px Radius) in den vier echten ButtonStyles
+function DcBtn({ variant = 'secondary', emoji, label, disabled, link }) {
+    const bg = { primary: DC.blurple, secondary: DC.secondary, danger: DC.danger, success: DC.success }[variant];
+    return (
+        <Box sx={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 0.75,
+            height: 32, minWidth: label ? 60 : 44, px: label ? 1.75 : 1,
+            borderRadius: '3px', bgcolor: bg, color: '#fff',
+            fontSize: '0.82rem', fontWeight: 500, whiteSpace: 'nowrap',
+            opacity: disabled ? 0.45 : 1, cursor: 'default',
+        }}>
+            {emoji && <Box component="span" sx={{ fontSize: '1rem', lineHeight: 1 }}>{emoji}</Box>}
+            {label}
+            {link && (
+                <Box component="svg" viewBox="0 0 24 24" sx={{ width: 14, height: 14, opacity: 0.9 }}>
+                    <path fill="currentColor" d="M10 5V3H5.375C4.06 3 3 4.06 3 5.375v13.25C3 19.94 4.06 21 5.375 21h13.25C19.94 21 21 19.94 21 18.625V14h-2v5H5V5h5Zm3-2v2h4.586l-7.293 7.293 1.414 1.414L19 6.414V11h2V3h-8Z" />
+                </Box>
+            )}
+        </Box>
+    );
+}
 
 function LiveChip({ state, t }) {
     const cfg = {
@@ -54,27 +76,28 @@ function LiveChip({ state, t }) {
     );
 }
 
-// Discord-Nachricht als Rahmen fuer die Bot-Mockups
+// Discord-Nachricht als Rahmen fuer die Bot-Mockups — Chat-Hintergrund und
+// Typografie entsprechen dem Discord-Dark-Theme
 function DiscordMsg({ bot, name, t, children, delay = 0, ring }) {
     return (
         <Box sx={{ animation: `${floaty} 7s ease-in-out infinite`, animationDelay: `${delay}s` }}>
             <Box sx={{
-                bgcolor: '#1e1f24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px',
+                bgcolor: DC.chat, border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px',
                 p: { xs: 2, sm: 2.5 },
                 boxShadow: `0 44px 90px -34px rgba(0,0,0,0.85), 0 0 0 1px ${ring}`,
             }}>
                 <Stack direction="row" spacing={1.5}>
                     <BotAvatar bot={bot} size={40} sx={{ border: 'none', boxShadow: 'none' }} />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                            <Typography sx={{ fontWeight: 600, fontSize: '0.92rem', color: '#fafafa' }}>{name}</Typography>
+                        <Stack direction="row" alignItems="center" spacing={0.9} sx={{ mb: 0.75 }}>
+                            <Typography sx={{ fontWeight: 500, fontSize: '0.94rem', color: DC.heading }}>{name}</Typography>
                             <Box component="span" sx={{
-                                fontSize: '0.6rem', fontWeight: 700, bgcolor: '#5865f2', color: '#fff',
-                                px: 0.75, py: 0.1, borderRadius: '4px', letterSpacing: '0.02em',
+                                fontSize: '0.6rem', fontWeight: 700, bgcolor: DC.blurple, color: '#fff',
+                                px: 0.6, py: 0.1, borderRadius: '3px', letterSpacing: '0.02em', lineHeight: 1.5,
                             }}>
                                 BOT
                             </Box>
-                            <Typography sx={{ fontSize: '0.68rem', color: '#72767d' }}>{t('bots.mockToday')}</Typography>
+                            <Typography sx={{ fontSize: '0.7rem', color: DC.muted }}>{t('bots.mockToday')}</Typography>
                         </Stack>
                         {children}
                     </Box>
@@ -84,115 +107,155 @@ function DiscordMsg({ bot, name, t, children, delay = 0, ring }) {
     );
 }
 
-// Now-Playing-Embed des Music-Bots
+// Now-Playing-Embed des Music-Bots — 1:1 nach buildNowPlayingEmbed:
+// Author-Zeile "Now playing", Titel als H3 in der Description, Text-Fortschrittsbalken
+// (20 Segmente ━ ● ─, Zeiten als Inline-Code), Subtext-Zeile, Quadrat-Cover als Thumbnail,
+// Farbe #6E41CC, Buttons [⏸️|⏭️|⏹️] + [🔀|🔁|🎧 Web Player]. Balken tickt wie das
+// echte 10-Sekunden-Live-Update.
+const TRACK_LEN = 637; // 10:37
+const TRACK_START = 221; // 3:41
+
+function fmtTime(s) {
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+}
+
 function BeatMockup({ t }) {
+    const [elapsed, setElapsed] = useState(TRACK_START);
+    useEffect(() => {
+        const id = setInterval(() => {
+            setElapsed((e) => (e + 32 >= TRACK_LEN ? TRACK_START : e + 32));
+        }, 1200);
+        return () => clearInterval(id);
+    }, []);
+    const filled = Math.round((elapsed / TRACK_LEN) * 20);
+    const bar = '━'.repeat(filled) + '●' + '─'.repeat(Math.max(0, 20 - filled));
+
     return (
         <DiscordMsg bot="beat" name="BeatByte" t={t} ring="rgba(168,85,247,0.16)">
-            <Box sx={{ bgcolor: '#141419', borderRadius: '10px', borderLeft: '4px solid #a855f7', p: 2 }}>
-                <Typography sx={{
-                    fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.14em',
-                    textTransform: 'uppercase', color: '#a855f7', mb: 1.25,
-                }}>
-                    Now Playing
-                </Typography>
-                <Stack direction="row" spacing={1.75}>
+            <Box sx={{ bgcolor: DC.embed, borderRadius: '4px', borderLeft: '4px solid #6E41CC', p: '12px 16px 14px 12px', maxWidth: 480 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 2 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                        {/* Author-Zeile */}
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                            <BotAvatar bot="beat" size={22} sx={{ border: 'none', boxShadow: 'none' }} />
+                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: DC.heading }}>Now playing</Typography>
+                        </Stack>
+                        {/* Description: ### Titel, *Artist* */}
+                        <Typography sx={{ fontSize: '1.22rem', fontWeight: 700, color: DC.heading, mt: 1, lineHeight: 1.25 }}>
+                            Strobe
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.88rem', fontStyle: 'italic', color: DC.text }}>deadmau5</Typography>
+                        {/* `3:41` ━━━●─── `10:37` */}
+                        <Stack direction="row" alignItems="center" spacing={0.9} sx={{ mt: 1.25, minWidth: 0 }}>
+                            <Box component="code" sx={{
+                                fontFamily: MONO_FONT, fontSize: '0.72rem', color: DC.text,
+                                bgcolor: DC.code, px: 0.5, py: 0.2, borderRadius: '3px', flexShrink: 0,
+                            }}>
+                                {fmtTime(elapsed)}
+                            </Box>
+                            <Typography sx={{
+                                fontSize: '0.76rem', color: DC.text, letterSpacing: '-0.04em',
+                                whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0,
+                            }}>
+                                {bar}
+                            </Typography>
+                            <Box component="code" sx={{
+                                fontFamily: MONO_FONT, fontSize: '0.72rem', color: DC.text,
+                                bgcolor: DC.code, px: 0.5, py: 0.2, borderRadius: '3px', flexShrink: 0,
+                            }}>
+                                10:37
+                            </Box>
+                        </Stack>
+                        {/* -# Subtext: @Mention · 📋 5 in Queue */}
+                        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.9 }}>
+                            <Box component="span" sx={{
+                                fontSize: '0.72rem', fontWeight: 500, color: '#c9cdfb',
+                                bgcolor: 'rgba(88,101,242,0.3)', px: 0.5, py: 0.1, borderRadius: '3px',
+                            }}>
+                                @Luca
+                            </Box>
+                            <Typography sx={{ fontSize: '0.72rem', color: DC.muted }}>·</Typography>
+                            <Typography sx={{ fontSize: '0.72rem', color: DC.muted }}>📋 5 in Queue</Typography>
+                        </Stack>
+                    </Box>
+                    {/* Quadrat-Cover als Thumbnail rechts */}
                     <Box sx={{
-                        width: 66, height: 66, borderRadius: '9px', position: 'relative', overflow: 'hidden', flexShrink: 0,
-                        background: 'repeating-linear-gradient(45deg, #2b2140, #2b2140 7px, #231b36 7px, #231b36 14px)',
+                        width: 80, height: 80, borderRadius: '4px', position: 'relative', overflow: 'hidden', flexShrink: 0,
+                        background: 'repeating-linear-gradient(45deg, #2b2140, #2b2140 8px, #231b36 8px, #231b36 16px)',
                     }}>
                         <Box sx={{
                             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontFamily: MONO_FONT, fontSize: '0.5rem', color: '#8b7bb0', letterSpacing: '0.1em',
+                            fontFamily: MONO_FONT, fontSize: '0.55rem', color: '#8b7bb0', letterSpacing: '0.1em',
                         }}>
                             COVER
                         </Box>
                     </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: '1.06rem' }}>Strobe</Typography>
-                        <Typography sx={{ fontSize: '0.81rem', color: 'text.secondary' }}>deadmau5 · Progressive House</Typography>
-                        <Box sx={{ height: 6, borderRadius: '4px', bgcolor: 'rgba(255,255,255,0.1)', overflow: 'hidden', mt: 1 }}>
-                            <Box sx={{
-                                height: '100%', borderRadius: '4px',
-                                background: 'linear-gradient(90deg, #a855f7, #d946ef)',
-                                animation: `${prog} 9s linear infinite`,
-                            }} />
-                        </Box>
-                        <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.6 }}>
-                            <Typography sx={{ fontFamily: MONO_FONT, fontSize: '0.66rem', color: '#72767d' }}>3:41</Typography>
-                            <Typography sx={{ fontFamily: MONO_FONT, fontSize: '0.66rem', color: '#72767d' }}>10:37</Typography>
-                        </Stack>
-                    </Box>
-                </Stack>
-                <Stack direction="row" alignItems="center" spacing={1.1} sx={{ mt: 1.75, flexWrap: 'wrap', useFlexGap: true }}>
-                    {['⏮', '⏸', '⏭', '🔀', '🔁'].map((icon, i) => (
-                        <Box key={icon} sx={{
-                            width: 34, height: 34, borderRadius: '9px', fontSize: '0.8rem',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c9c9d1',
-                            bgcolor: i === 1 ? 'rgba(168,85,247,0.18)' : 'rgba(255,255,255,0.06)',
-                            border: i === 1 ? '1px solid rgba(168,85,247,0.4)' : '1px solid rgba(255,255,255,0.09)',
-                        }}>
-                            {icon}
-                        </Box>
-                    ))}
-                    <Stack direction="row" alignItems="flex-end" spacing="3px" sx={{ height: 24, ml: 'auto !important' }}>
-                        {[0, 0.3, 0.6, 0.15, 0.45].map((delay) => (
-                            <Box key={delay} sx={{
-                                width: 4, height: '100%', borderRadius: '2px',
-                                background: 'linear-gradient(#a855f7, #22d3ee)',
-                                transformOrigin: 'bottom',
-                                animation: `${eq} 1s ease-in-out infinite`,
-                                animationDelay: `${delay}s`,
-                            }} />
-                        ))}
-                    </Stack>
-                </Stack>
+                </Box>
             </Box>
+            {/* Button-Reihen wie createPlayerButtons */}
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                <DcBtn variant="primary" emoji="⏸️" />
+                <DcBtn variant="secondary" emoji="⏭️" />
+                <DcBtn variant="danger" emoji="⏹️" />
+            </Stack>
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                <DcBtn variant="secondary" emoji="🔀" />
+                <DcBtn variant="secondary" emoji="🔁" />
+                <DcBtn variant="secondary" emoji="🎧" label="Web Player" link />
+            </Stack>
         </DiscordMsg>
     );
 }
 
-// Soundboard-Panel des Soundboard-Bots
+// /soundboard-Panel des Soundboard-Bots — 1:1 nach buildSoundboardPanel:
+// blurple Embed mit Titel/Description/Footer, Kategorie-Select, Sound-Buttons
+// (max 5 pro Reihe, Favoriten blurple), Nav-Reihe [◀|▶|⏹ Stop|🔄 Aktualisieren].
 function EarMockup({ t }) {
-    const sounds = [
-        { name: 'Airhorn', len: '0:02' }, { name: 'Vine Boom', len: '0:01' },
-        { name: 'Bruh', len: '0:01' }, { name: 'Drop', len: '0:02' },
-        { name: 'Tada', len: '0:01' }, { name: 'Applaus', len: '0:03' },
-        { name: 'Trommel', len: '0:02' }, { name: 'Quack', len: '0:01' },
-    ];
+    const row1 = ['Airhorn', 'Vine Boom', 'Bruh', 'Drop', 'Tada'];
+    const row2 = ['Applaus', 'Trommel', 'Quack'];
     return (
         <DiscordMsg bot="ear" name="EarTastic" t={t} delay={0.8} ring="rgba(34,211,238,0.16)">
-            <Box sx={{ bgcolor: '#141419', borderRadius: '10px', borderLeft: '4px solid #22d3ee', p: 2 }}>
-                <Typography sx={{
-                    fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.14em',
-                    textTransform: 'uppercase', color: '#5fd6e8', mb: 1.25,
-                }}>
-                    Soundboard
+            <Box sx={{ bgcolor: DC.embed, borderRadius: '4px', borderLeft: `4px solid ${DC.blurple}`, p: '12px 16px 14px 12px', maxWidth: 480 }}>
+                <Typography sx={{ fontSize: '0.94rem', fontWeight: 700, color: DC.heading }}>
+                    Soundboard - Vorgegebene Sounds
                 </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1 }}>
-                    {sounds.map((s, i) => (
-                        <Box key={s.name} sx={{
-                            px: 0.5, py: 1.1, borderRadius: '10px', textAlign: 'center',
-                            background: 'linear-gradient(180deg, #1b1b22, #141419)',
-                            border: i === 0 ? '1px solid rgba(34,211,238,0.5)' : '1px solid rgba(255,255,255,0.08)',
-                            fontSize: '0.7rem', fontWeight: 600,
-                            color: i === 0 ? '#fff' : '#c9c9d1',
-                            cursor: 'default', transition: 'all 0.15s',
-                            '&:hover': { borderColor: 'rgba(34,211,238,0.5)', color: '#fff', transform: 'translateY(-2px)' },
-                        }}>
-                            {s.name}
-                            <Box component="small" sx={{ display: 'block', fontFamily: MONO_FONT, fontSize: '0.55rem', color: '#5fd6e8', mt: 0.4 }}>
-                                {s.len}
-                            </Box>
-                        </Box>
-                    ))}
-                </Box>
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.75 }}>
-                    <CmdChip sx={{ color: '#5fd6e8', bgcolor: 'rgba(34,211,238,0.1)', borderColor: 'rgba(34,211,238,0.24)' }}>
-                        /sound airhorn
-                    </CmdChip>
-                    <Box sx={{ width: 2, height: 16, bgcolor: '#5fd6e8', animation: `${blink} 1.1s step-end infinite` }} />
-                </Stack>
+                <Typography sx={{ fontSize: '0.85rem', color: DC.text, mt: 0.75 }}>
+                    Klicke auf einen Button um den Sound abzuspielen!
+                </Typography>
+                <Typography sx={{ fontSize: '0.7rem', color: DC.muted, mt: 1 }}>
+                    Seite 1/1 | 8 Sounds
+                </Typography>
             </Box>
+            {/* Kategorie-Select */}
+            <Box sx={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                mt: 1, maxWidth: 480, height: 40, px: 1.5, borderRadius: '3px',
+                bgcolor: DC.code, border: '1px solid #111214',
+            }}>
+                <Typography sx={{ fontSize: '0.85rem', color: DC.text }}>🎵 Vorgegebene Sounds</Typography>
+                <Box component="span" sx={{ color: DC.muted, fontSize: '0.7rem' }}>▼</Box>
+            </Box>
+            {/* Sound-Buttons: 5 + 3, Favorit blurple */}
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                {row1.map((name, i) => (
+                    <DcBtn key={name} variant={i === 1 ? 'primary' : 'secondary'} emoji="🔊" label={name} />
+                ))}
+            </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                {row2.map((name) => (
+                    <DcBtn key={name} variant="secondary" emoji="🔊" label={name} />
+                ))}
+            </Stack>
+            {/* Nav-Reihe */}
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                <DcBtn variant="secondary" label="◀" disabled />
+                <DcBtn variant="secondary" label="▶" disabled />
+                <DcBtn variant="danger" emoji="⏹" label="Stop" />
+                <DcBtn variant="success" emoji="🔄" label="Aktualisieren" />
+            </Stack>
+            <Typography sx={{ fontSize: '0.72rem', color: DC.muted, mt: 1.25 }}>
+                👁️ {t('bots.mockEphemeral')}
+            </Typography>
         </DiscordMsg>
     );
 }
