@@ -1,230 +1,158 @@
-import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-    Box, Typography, Container, Stack, Chip, List, ListItemButton,
-    ListItemText, ListItemIcon, Drawer, IconButton, useMediaQuery, useTheme,
-    Avatar,
+    Box, Typography, Container, Stack, Card, Button,
 } from '@mui/material';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
-import MenuIcon from '@mui/icons-material/Menu';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+    PageHead, Kicker, CmdChip, DISPLAY_FONT, PRIMARY_BTN_SX, GHOST_BTN_SX,
+} from '../components/ui';
 
-function ContentRenderer({ items }) {
+function StepNum({ children }) {
     return (
-        <Stack spacing={2}>
-            {items.map((item, i) => {
-                if (item.type === 'heading') {
-                    return <Typography key={i} variant="h6" sx={{ fontSize: '1.05rem', fontWeight: 600, mt: i > 0 ? 2 : 0 }}>{item.value}</Typography>;
-                }
-                if (item.type === 'section') {
-                    return (
-                        <Typography key={i} variant="overline" sx={{
-                            color: '#a855f7', letterSpacing: 3, fontSize: '0.65rem',
-                            mt: i > 0 ? 4 : 1, display: 'block', pb: 1,
-                            borderBottom: '1px solid rgba(168,85,247,0.1)',
-                        }}>
-                            {item.value}
-                        </Typography>
-                    );
-                }
-                if (item.type === 'command') {
-                    return (
-                        <Box key={i} sx={{
-                            display: 'flex', gap: 2, p: 2, borderRadius: 3,
-                            bgcolor: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.06)',
-                            flexDirection: { xs: 'column', sm: 'row' },
-                        }}>
-                            <Typography sx={{
-                                fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem',
-                                fontWeight: 600, color: 'primary.light', whiteSpace: 'nowrap', minWidth: 200,
-                            }}>
-                                {item.name}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">{item.desc}</Typography>
-                        </Box>
-                    );
-                }
-                return <Typography key={i} variant="body2" color="text.secondary" sx={{ lineHeight: 1.8 }}>{item.value}</Typography>;
-            })}
-        </Stack>
+        <Box sx={{
+            width: 46, height: 46, borderRadius: '13px',
+            background: 'linear-gradient(135deg, #7c3aed, #d946ef)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1.25rem', color: '#fff',
+            boxShadow: '0 10px 26px -10px rgba(168,85,247,0.6)',
+        }}>
+            {children}
+        </Box>
     );
 }
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=64';
-const EARTASTIC_AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=64';
+function TopicCard({ title, text }) {
+    return (
+        <Card elevation={0} sx={{ p: 3 }}>
+            <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: '1.03rem', mb: 0.75 }}>{title}</Typography>
+            <Typography sx={{ color: 'text.secondary', fontSize: '0.895rem', lineHeight: 1.65 }}>{text}</Typography>
+        </Card>
+    );
+}
 
 export default function Guide() {
     const { t } = useLanguage();
-    const [activeSection, setActiveSection] = useState('getting-started');
-    const [mobileOpen, setMobileOpen] = useState(false);
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-    const navItems = [
-        {
-            id: 'getting-started',
-            label: t('guide.gettingStarted'),
-            icon: <MenuBookIcon sx={{ fontSize: 18 }} />,
-        },
-        {
-            id: 'beatbyte',
-            label: 'BeatByte',
-            icon: <Avatar src={BEATBYTE_AVATAR} sx={{ width: 22, height: 22, borderRadius: 1 }} />,
-        },
-        {
-            id: 'eartastic',
-            label: 'EarTastic',
-            icon: <Avatar src={EARTASTIC_AVATAR} sx={{ width: 22, height: 22, borderRadius: 1 }} />,
-        },
+    const setupTopics = [
+        { title: t('guide.djRole'), text: t('guide.djRoleText') },
+        { title: t('guide.webPlayerAccess'), text: t('guide.webPlayerAccessText') },
+        { title: t('guide.autoDjHeading'), text: t('guide.autoDjText') },
+        { title: t('guide.filtersHeading'), text: t('guide.filtersText') },
+        { title: t('guide.soundboardDashboard'), text: t('guide.soundboardDashboardText') },
+        { title: t('guide.soundUploadHeading'), text: t('guide.soundUploadText') },
     ];
 
-    const sections = {
-        'getting-started': {
-            title: t('guide.gettingStartedTitle'),
-            body: [
-                { type: 'text', value: t('guide.gettingStartedIntro') },
-                { type: 'heading', value: t('guide.inviteBot') },
-                { type: 'text', value: t('guide.inviteBotText') },
-                { type: 'heading', value: t('guide.permissions') },
-                { type: 'text', value: t('guide.permissionsText') },
-                { type: 'heading', value: t('guide.getStarted') },
-                { type: 'text', value: t('guide.getStartedText') },
-
-                { type: 'section', value: 'TROUBLESHOOTING' },
-                { type: 'heading', value: t('guide.botNotResponding') },
-                { type: 'text', value: t('guide.botNotRespondingText') },
-                { type: 'heading', value: t('guide.noSound') },
-                { type: 'text', value: t('guide.noSoundText') },
-                { type: 'heading', value: t('guide.webPlayerNotConnecting') },
-                { type: 'text', value: t('guide.webPlayerNotConnectingText') },
-                { type: 'heading', value: t('guide.uploadFails') },
-                { type: 'text', value: t('guide.uploadFailsText') },
-            ],
-        },
-        'beatbyte': {
-            title: 'BeatByte',
-            body: [
-                { type: 'section', value: 'SETUP' },
-                { type: 'heading', value: t('guide.djRole') },
-                { type: 'text', value: t('guide.djRoleText') },
-                { type: 'heading', value: t('guide.webPlayerAccess') },
-                { type: 'text', value: t('guide.webPlayerAccessText') },
-                { type: 'heading', value: t('guide.autoDjHeading') },
-                { type: 'text', value: t('guide.autoDjText') },
-                { type: 'heading', value: t('guide.filtersHeading') },
-                { type: 'text', value: t('guide.filtersText') },
-
-                { type: 'section', value: 'COMMANDS' },
-                { type: 'command', name: '/play <query>', desc: t('commands.beatbyte.play') },
-                { type: 'command', name: '/playnow <query>', desc: t('commands.beatbyte.playnow') },
-                { type: 'command', name: '/skip', desc: t('commands.beatbyte.skip') },
-                { type: 'command', name: '/pause', desc: t('commands.beatbyte.pause') },
-                { type: 'command', name: '/stop', desc: t('commands.beatbyte.stop') },
-                { type: 'command', name: '/queue', desc: t('commands.beatbyte.queue') },
-                { type: 'command', name: '/nowplaying', desc: t('commands.beatbyte.nowplaying') },
-                { type: 'command', name: '/clear', desc: t('commands.beatbyte.clear') },
-                { type: 'command', name: '/remove <pos>', desc: t('commands.beatbyte.remove') },
-                { type: 'command', name: '/shuffle', desc: t('commands.beatbyte.shuffle') },
-                { type: 'command', name: '/loop [modus]', desc: t('commands.beatbyte.loop') },
-                { type: 'command', name: '/seek <zeit>', desc: t('commands.beatbyte.seek') },
-                { type: 'command', name: '/volume [%]', desc: t('commands.beatbyte.volume') },
-                { type: 'command', name: '/join', desc: t('commands.beatbyte.join') },
-                { type: 'command', name: '/lyrics [query]', desc: t('commands.beatbyte.lyrics') },
-                { type: 'command', name: '/app', desc: t('commands.beatbyte.app') },
-                { type: 'command', name: '/autodj', desc: t('commands.beatbyte.autodj') },
-                { type: 'command', name: '/disconnect', desc: t('commands.beatbyte.disconnect') },
-                { type: 'command', name: '/filter <filter>', desc: t('commands.beatbyte.filter') },
-                { type: 'command', name: '/move <von> <nach>', desc: t('commands.beatbyte.move') },
-                { type: 'command', name: '/playlist <action>', desc: t('commands.beatbyte.playlist') },
-                { type: 'command', name: '/replay', desc: t('commands.beatbyte.replay') },
-                { type: 'command', name: '/setrole [rolle]', desc: t('commands.beatbyte.setrole') },
-            ],
-        },
-        'eartastic': {
-            title: 'EarTastic',
-            body: [
-                { type: 'section', value: 'SETUP' },
-                { type: 'heading', value: t('guide.soundboardDashboard') },
-                { type: 'text', value: t('guide.soundboardDashboardText') },
-                { type: 'heading', value: t('guide.soundUploadHeading') },
-                { type: 'text', value: t('guide.soundUploadText') },
-
-                { type: 'section', value: 'COMMANDS' },
-                { type: 'command', name: '/sound <name>', desc: t('commands.eartastic.sound') },
-                { type: 'command', name: '/favorite <name>', desc: t('commands.eartastic.favorite') },
-                { type: 'command', name: '/soundboard', desc: t('commands.eartastic.soundboard') },
-                { type: 'command', name: '/dashboard', desc: t('commands.eartastic.dashboard') },
-                { type: 'command', name: '/volume <prozent>', desc: t('commands.eartastic.volume') },
-            ],
-        },
-    };
-
-    const current = sections[activeSection];
-
-    const sidebar = (
-        <Box sx={{ width: 220, p: 2 }}>
-            <Typography variant="overline" sx={{ color: 'text.disabled', letterSpacing: 2, px: 2, mb: 1, display: 'block', fontSize: '0.65rem' }}>
-                {t('footer.documentation')}
-            </Typography>
-            <List disablePadding>
-                {navItems.map((s) => (
-                    <ListItemButton
-                        key={s.id}
-                        selected={activeSection === s.id}
-                        onClick={() => { setActiveSection(s.id); setMobileOpen(false); }}
-                        sx={{
-                            borderRadius: 2, mb: 0.25, py: 0.8,
-                            '&.Mui-selected': { bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' },
-                            '&:hover': { bgcolor: 'rgba(168,85,247,0.06)' },
-                        }}
-                    >
-                        <ListItemIcon sx={{ minWidth: 34, color: activeSection === s.id ? 'primary.light' : 'text.disabled' }}>
-                            {s.icon}
-                        </ListItemIcon>
-                        <ListItemText primary={s.label} primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: activeSection === s.id ? 600 : 400 }} />
-                    </ListItemButton>
-                ))}
-            </List>
-        </Box>
-    );
+    const troubleTopics = [
+        { title: t('guide.botNotResponding'), text: t('guide.botNotRespondingText') },
+        { title: t('guide.noSound'), text: t('guide.noSoundText') },
+        { title: t('guide.webPlayerNotConnecting'), text: t('guide.webPlayerNotConnectingText') },
+        { title: t('guide.uploadFails'), text: t('guide.uploadFailsText') },
+    ];
 
     return (
-        <Box sx={{ pt: 10, pb: 10, px: 3 }}>
-            <Container maxWidth="lg">
-                <Stack direction="row" spacing={4}>
-                    {!isMobile && (
-                        <Box sx={{
-                            position: 'sticky', top: 80, height: 'fit-content',
-                            borderRight: '1px solid rgba(168,85,247,0.06)', pr: 2, flexShrink: 0,
-                        }}>
-                            {sidebar}
-                        </Box>
-                    )}
+        <Box sx={{ pb: { xs: 8, md: 10 } }}>
+            <PageHead kicker="Guide" title={t('guide.pageTitle')} titleAccent={t('guide.pageTitleAccent')} lead={t('guide.lead')} />
 
-                    {isMobile && (
-                        <IconButton onClick={() => setMobileOpen(true)}
-                            sx={{
-                                position: 'fixed', bottom: 24, right: 24, zIndex: 100,
-                                bgcolor: '#a855f7', color: '#fff', width: 48, height: 48,
-                                boxShadow: '0 8px 24px rgba(168,85,247,0.4)',
-                                '&:hover': { bgcolor: '#6b4fe0' },
-                            }}>
-                            <MenuIcon />
-                        </IconButton>
-                    )}
-
-                    <Drawer anchor="left" open={mobileOpen} onClose={() => setMobileOpen(false)}
-                        PaperProps={{ sx: { bgcolor: '#0e1025', borderRight: '1px solid rgba(168,85,247,0.1)' } }}>
-                        {sidebar}
-                    </Drawer>
-
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Chip label="Guide" size="small" sx={{ mb: 2, bgcolor: 'rgba(168,85,247,0.1)', color: 'primary.light' }} />
-                        <Typography variant="h3" sx={{ mb: 4, fontSize: { xs: '1.75rem', md: '2.25rem' } }}>
-                            {current?.title}
+            <Container maxWidth="lg" sx={{ mt: 4.5 }}>
+                {/* 3 Schritte */}
+                <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' } }}>
+                    <Card elevation={0} sx={{ p: 3.5 }}>
+                        <StepNum>1</StepNum>
+                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: '1.19rem', mt: 2.25, mb: 1 }}>
+                            {t('guide.step1Title')}
                         </Typography>
-                        {current && <ContentRenderer items={current.body} />}
+                        <Typography sx={{ color: 'text.secondary', fontSize: '0.895rem', lineHeight: 1.6 }}>
+                            {t('guide.step1Text')}
+                        </Typography>
+                        <Box sx={{ mt: 2 }}>
+                            <Button component={Link} to="/bots" sx={{ ...PRIMARY_BTN_SX, height: 38, px: 1.9, fontSize: '0.85rem', borderRadius: '10px' }}>
+                                {t('guide.step1Button')}
+                            </Button>
+                        </Box>
+                    </Card>
+                    <Card elevation={0} sx={{ p: 3.5 }}>
+                        <StepNum>2</StepNum>
+                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: '1.19rem', mt: 2.25, mb: 1 }}>
+                            {t('guide.step2Title')}
+                        </Typography>
+                        <Typography sx={{ color: 'text.secondary', fontSize: '0.895rem', lineHeight: 1.6 }}>
+                            {t('guide.step2Text')}
+                        </Typography>
+                        <Stack spacing={1} alignItems="flex-start" sx={{ mt: 2 }}>
+                            <Box component="a" href="https://beatbyte.bytebots.de" target="_blank" rel="noopener" sx={{ textDecoration: 'none' }}>
+                                <CmdChip>beatbyte.bytebots.de</CmdChip>
+                            </Box>
+                            <Box component="a" href="https://soundboard.bytebots.de" target="_blank" rel="noopener" sx={{ textDecoration: 'none' }}>
+                                <CmdChip>soundboard.bytebots.de</CmdChip>
+                            </Box>
+                        </Stack>
+                    </Card>
+                    <Card elevation={0} sx={{ p: 3.5 }}>
+                        <StepNum>3</StepNum>
+                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: '1.19rem', mt: 2.25, mb: 1 }}>
+                            {t('guide.step3Title')}
+                        </Typography>
+                        <Typography sx={{ color: 'text.secondary', fontSize: '0.895rem', lineHeight: 1.6 }}>
+                            {t('guide.step3Text')}
+                        </Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+                            <CmdChip>/play</CmdChip>
+                            <CmdChip>/sound</CmdChip>
+                            <CmdChip>/soundboard</CmdChip>
+                        </Stack>
+                    </Card>
+                </Box>
+
+                {/* Setup-Themen */}
+                <Box sx={{ mt: { xs: 6, md: 8 } }}>
+                    <Kicker>Setup</Kicker>
+                    <Typography variant="h2" sx={{ fontSize: { xs: '1.6rem', md: '1.9rem' }, mt: 1.25, mb: 3 }}>
+                        {t('guide.setupTitle')}
+                    </Typography>
+                    <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+                        {setupTopics.map((topic) => (
+                            <TopicCard key={topic.title} title={topic.title} text={topic.text} />
+                        ))}
                     </Box>
-                </Stack>
+                </Box>
+
+                {/* Troubleshooting */}
+                <Box sx={{ mt: { xs: 6, md: 8 } }}>
+                    <Kicker>Troubleshooting</Kicker>
+                    <Typography variant="h2" sx={{ fontSize: { xs: '1.6rem', md: '1.9rem' }, mt: 1.25, mb: 3 }}>
+                        {t('guide.troubleTitle')}
+                    </Typography>
+                    <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+                        {troubleTopics.map((topic) => (
+                            <TopicCard key={topic.title} title={topic.title} text={topic.text} />
+                        ))}
+                    </Box>
+                </Box>
+
+                {/* Support */}
+                <Card elevation={0} sx={{ mt: { xs: 6, md: 8 }, px: 3.75, py: 3.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" useFlexGap>
+                        <Box sx={{
+                            width: 44, height: 44, borderRadius: '12px', fontSize: 20, flexShrink: 0,
+                            bgcolor: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.26)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            💬
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 240 }}>
+                            <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: '1.19rem', mb: 0.5 }}>
+                                {t('guide.supportTitle')}
+                            </Typography>
+                            <Typography sx={{ color: 'text.secondary', fontSize: '0.895rem', lineHeight: 1.6 }}>
+                                {t('guide.supportText')}
+                            </Typography>
+                        </Box>
+                        <Button href="mailto:kontakt@bytebots.de"
+                            sx={{ ...GHOST_BTN_SX, height: 38, px: 1.9, fontSize: '0.85rem', borderRadius: '10px' }}>
+                            {t('guide.supportButton')}
+                        </Button>
+                    </Stack>
+                </Card>
             </Container>
         </Box>
     );

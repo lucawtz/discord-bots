@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     AppBar, Toolbar, Typography, Button, IconButton, Box, Drawer,
-    List, ListItem, ListItemButton, ListItemText, useScrollTrigger,
+    List, ListItem, ListItemButton, ListItemText,
     Avatar, Menu, MenuItem, Stack, Divider,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -11,6 +11,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import { useLanguage } from '../i18n/LanguageContext';
 import { DISCORD_LOGIN_URL } from '../config';
+import { BrandLogo, DISPLAY_FONT, PRIMARY_BTN_SX } from './ui';
 
 function DiscordIcon(props) {
     return (
@@ -37,7 +38,6 @@ export default function Navbar() {
     const [langAnchor, setLangAnchor] = useState(null);
     const location = useLocation();
     const navigate = useNavigate();
-    const scrolled = useScrollTrigger({ disableHysteresis: true, threshold: 30 });
     const { t, lang, setLang } = useLanguage();
     const currentLang = languages.find(l => l.code === lang) ?? languages[0];
 
@@ -45,6 +45,7 @@ export default function Navbar() {
         { label: t('nav.bots'), path: '/bots' },
         { label: t('nav.commands'), path: '/commands' },
         { label: t('nav.docs'), path: '/guide' },
+        { label: t('nav.status'), path: '/status' },
     ];
 
     // Handle Discord OAuth callback
@@ -99,47 +100,57 @@ export default function Navbar() {
         <>
             <AppBar position="fixed" elevation={0}
                 sx={{
-                    background: scrolled ? 'rgba(9,9,11,0.85)' : 'transparent',
-                    backdropFilter: scrolled ? 'blur(16px) saturate(180%)' : 'none',
-                    borderBottom: scrolled ? '1px solid rgba(255,255,255,0.06)' : 'none',
-                    transition: 'all 0.3s ease',
+                    background: 'rgba(8,8,11,0.7)',
+                    backdropFilter: 'blur(16px)',
+                    borderBottom: '1px solid rgba(255,255,255,0.07)',
                 }}>
-                <Toolbar sx={{ justifyContent: 'space-between', maxWidth: 1100, mx: 'auto', width: '100%', py: 0.5 }}>
-                    <Box component={Link} to="/" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, textDecoration: 'none' }}>
-                        <Box component="img" src="/bytebots-favicon.png" alt="ByteBots" sx={{ width: 32, height: 32, objectFit: 'contain' }} />
-                        <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: '#fafafa' }}>
+                <Toolbar sx={{ justifyContent: 'space-between', maxWidth: 1200, mx: 'auto', width: '100%', minHeight: { xs: 64, md: 72 }, px: { xs: 2, md: 4 } }}>
+                    <Box component={Link} to="/" sx={{ display: 'flex', alignItems: 'center', gap: 1.25, textDecoration: 'none' }}>
+                        <BrandLogo size={34} />
+                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1.19rem', letterSpacing: '-0.01em', color: '#fafafa' }}>
                             ByteBots
                         </Typography>
                     </Box>
 
-                    <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, alignItems: 'center' }}>
-                        {navItems.map((item) => (
-                            <Button key={item.path} component={Link} to={item.path} size="small"
-                                sx={{
-                                    color: location.pathname.startsWith(item.path) ? '#fafafa' : '#a1a1aa',
-                                    fontSize: '0.875rem', fontWeight: 500, px: 2,
-                                    '&:hover': { color: '#fafafa', bgcolor: 'transparent' },
-                                }}>
-                                {item.label}
-                            </Button>
-                        ))}
+                    <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 3, alignItems: 'center' }}>
+                        {navItems.map((item) => {
+                            const active = location.pathname.startsWith(item.path);
+                            return (
+                                <Box key={item.path} component={Link} to={item.path}
+                                    sx={{
+                                        position: 'relative', textDecoration: 'none',
+                                        color: active ? '#fafafa' : '#a1a1aa',
+                                        fontSize: '0.94rem', fontWeight: 500,
+                                        transition: 'color 0.15s', py: 3,
+                                        '&:hover': { color: '#fafafa' },
+                                        '&::after': active ? {
+                                            content: '""', position: 'absolute', left: 0, right: 0, bottom: 16,
+                                            height: 2, borderRadius: 2,
+                                            background: 'linear-gradient(90deg, #a855f7, #22d3ee)',
+                                        } : {},
+                                    }}>
+                                    {item.label}
+                                </Box>
+                            );
+                        })}
                     </Box>
 
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
+                    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
                         {/* Language Selector */}
                         <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
                             sx={{
-                                color: '#a1a1aa', fontSize: '0.825rem', fontWeight: 500,
-                                textTransform: 'none', px: 1.5, py: 0.6, gap: 0.75, minWidth: 0,
-                                borderRadius: 1.5,
-                                '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.04)' },
+                                color: '#a1a1aa', fontSize: '0.82rem', fontWeight: 600,
+                                textTransform: 'none', px: 1.5, height: 34, gap: 0.75, minWidth: 0,
+                                borderRadius: '9px', bgcolor: 'rgba(255,255,255,0.05)',
+                                border: '1px solid rgba(255,255,255,0.09)',
+                                '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.08)' },
                             }}>
                             <Flag code={currentLang.flagCode} size={16} />
-                            {currentLang.label}
+                            {currentLang.code.toUpperCase()}
                         </Button>
                         <Menu anchorEl={langAnchor} open={Boolean(langAnchor)} onClose={() => setLangAnchor(null)}
                             slotProps={{ paper: { sx: {
-                                bgcolor: '#141416', border: '1px solid rgba(255,255,255,0.06)',
+                                bgcolor: '#141419', border: '1px solid rgba(255,255,255,0.07)',
                                 mt: 1, minWidth: 150, borderRadius: 1.5, py: 0.5,
                                 boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
                             } } }}>
@@ -175,7 +186,7 @@ export default function Navbar() {
                                 </Button>
                                 <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}
                                     PaperProps={{
-                                        sx: { bgcolor: '#141416', border: '1px solid rgba(255,255,255,0.06)', mt: 1, minWidth: 150, borderRadius: 1.5, py: 0.5, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' },
+                                        sx: { bgcolor: '#141419', border: '1px solid rgba(255,255,255,0.07)', mt: 1, minWidth: 150, borderRadius: 1.5, py: 0.5, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' },
                                     }}>
                                     <MenuItem onClick={() => { setAnchorEl(null); navigate('/profile'); }}
                                         sx={{ fontSize: '0.82rem', color: '#a1a1aa', gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' } }}>
@@ -189,15 +200,21 @@ export default function Navbar() {
                             </>
                         ) : (
                             <Button size="small" href={DISCORD_LOGIN_URL}
-                                startIcon={<DiscordIcon />}
+                                startIcon={<DiscordIcon width={16} height={16} />}
                                 sx={{
-                                    bgcolor: '#5865F2', color: '#fff', px: 2, py: 0.7,
-                                    fontSize: '0.82rem', fontWeight: 600,
-                                    '&:hover': { bgcolor: '#4752C4' },
+                                    bgcolor: '#5865F2', color: '#fff', px: 1.9, height: 38,
+                                    fontSize: '0.85rem', fontWeight: 600, borderRadius: '10px',
+                                    transition: 'all 0.18s',
+                                    '&:hover': { bgcolor: '#4954e0', transform: 'translateY(-1px)' },
                                 }}>
                                 {t('nav.login')}
                             </Button>
                         )}
+
+                        <Button size="small" component={Link} to="/bots"
+                            sx={{ ...PRIMARY_BTN_SX, height: 38, px: 1.9, fontSize: '0.85rem', borderRadius: '10px' }}>
+                            {t('nav.invite')}
+                        </Button>
                     </Stack>
 
                     <IconButton sx={{ display: { md: 'none' }, color: '#fafafa' }} onClick={() => setMobileOpen(true)}>
@@ -207,23 +224,40 @@ export default function Navbar() {
             </AppBar>
 
             <Drawer anchor="right" open={mobileOpen} onClose={() => setMobileOpen(false)}
-                PaperProps={{ sx: { bgcolor: '#09090b', width: 280, borderLeft: '1px solid rgba(255,255,255,0.06)' } }}>
+                PaperProps={{ sx: { bgcolor: '#0d0d12', width: 290, borderLeft: '1px solid rgba(255,255,255,0.07)' } }}>
                 <Box sx={{ p: 2 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, pl: 1 }}>
+                            <BrandLogo size={28} />
+                            <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1rem' }}>ByteBots</Typography>
+                        </Box>
                         <IconButton onClick={() => setMobileOpen(false)} sx={{ color: '#a1a1aa' }}><CloseIcon /></IconButton>
                     </Box>
                     <List>
-                        {navItems.map((item) => (
-                            <ListItem key={item.path} disablePadding>
-                                <ListItemButton component={Link} to={item.path} onClick={() => setMobileOpen(false)}
-                                    sx={{ borderRadius: 1.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' } }}>
-                                    <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: '0.9rem' }} />
-                                </ListItemButton>
-                            </ListItem>
-                        ))}
+                        {navItems.map((item) => {
+                            const active = location.pathname.startsWith(item.path);
+                            return (
+                                <ListItem key={item.path} disablePadding>
+                                    <ListItemButton component={Link} to={item.path} onClick={() => setMobileOpen(false)}
+                                        sx={{
+                                            borderRadius: 1.5, mb: 0.25,
+                                            bgcolor: active ? 'rgba(168,85,247,0.1)' : 'transparent',
+                                            '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+                                        }}>
+                                        <ListItemText primary={item.label}
+                                            primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: active ? 600 : 400, color: active ? '#c084fc' : '#fafafa' }} />
+                                    </ListItemButton>
+                                </ListItem>
+                            );
+                        })}
                     </List>
 
-                    <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.06)' }} />
+                    <Button fullWidth component={Link} to="/bots" onClick={() => setMobileOpen(false)}
+                        sx={{ ...PRIMARY_BTN_SX, mt: 1, height: 42 }}>
+                        {t('nav.invite')}
+                    </Button>
+
+                    <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.07)' }} />
 
                     {/* Mobile Language Select */}
                     {languages.map((l) => (
@@ -231,7 +265,7 @@ export default function Navbar() {
                             onClick={() => setLang(l.code)}
                             sx={{
                                 color: lang === l.code ? '#fafafa' : '#a1a1aa',
-                                justifyContent: 'flex-start', px: 2, mb: 0.5,
+                                justifyContent: 'flex-start', px: 2, mb: 0.5, gap: 1.25,
                                 bgcolor: lang === l.code ? 'rgba(168,85,247,0.1)' : 'transparent',
                                 '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
                             }}>
@@ -241,7 +275,7 @@ export default function Navbar() {
 
                     {/* Mobile Discord Login */}
                     {user ? (
-                        <Stack spacing={1}>
+                        <Stack spacing={1} sx={{ mt: 1 }}>
                             <Stack direction="row" alignItems="center" spacing={1.5} sx={{ px: 2, py: 1 }}>
                                 <Avatar src={user.avatar} sx={{ width: 28, height: 28 }}>{user.username?.[0]}</Avatar>
                                 <Typography sx={{ fontSize: '0.9rem', color: '#fafafa' }}>{user.username}</Typography>
@@ -260,13 +294,16 @@ export default function Navbar() {
                     ) : (
                         <Button fullWidth href={DISCORD_LOGIN_URL}
                             startIcon={<DiscordIcon />}
-                            sx={{ bgcolor: '#5865F2', color: '#fff', '&:hover': { bgcolor: '#4752C4' } }}>
+                            sx={{
+                                mt: 1, bgcolor: '#5865F2', color: '#fff', height: 42, borderRadius: '10px',
+                                '&:hover': { bgcolor: '#4954e0' },
+                            }}>
                             {t('nav.login')}
                         </Button>
                     )}
                 </Box>
             </Drawer>
-            <Toolbar />
+            <Toolbar sx={{ minHeight: { xs: 64, md: 72 } }} />
         </>
     );
 }

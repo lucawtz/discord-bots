@@ -1,118 +1,147 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-    Box, Typography, Container, Stack, Chip, Tabs, Tab, keyframes,
+    Box, Typography, Container, Stack, InputBase, Card,
 } from '@mui/material';
-import MusicNoteIcon from '@mui/icons-material/MusicNote';
-import GraphicEqIcon from '@mui/icons-material/GraphicEq';
+import SearchIcon from '@mui/icons-material/Search';
 import { useLanguage } from '../i18n/LanguageContext';
+import { PageHead, CmdChip } from '../components/ui';
 
-const fadeIn = keyframes`
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-`;
+const BEATBYTE_COMMANDS = [
+    { name: '/play <query>', key: 'play' },
+    { name: '/playnow <query>', key: 'playnow' },
+    { name: '/skip', key: 'skip' },
+    { name: '/pause', key: 'pause' },
+    { name: '/stop', key: 'stop' },
+    { name: '/queue', key: 'queue' },
+    { name: '/nowplaying', key: 'nowplaying' },
+    { name: '/clear', key: 'clear' },
+    { name: '/remove <pos>', key: 'remove' },
+    { name: '/shuffle', key: 'shuffle' },
+    { name: '/loop [modus]', key: 'loop' },
+    { name: '/seek <zeit>', key: 'seek' },
+    { name: '/volume [%]', key: 'volume' },
+    { name: '/join', key: 'join' },
+    { name: '/lyrics [query]', key: 'lyrics' },
+    { name: '/app', key: 'app' },
+    { name: '/autodj', key: 'autodj' },
+    { name: '/disconnect', key: 'disconnect' },
+    { name: '/filter <filter>', key: 'filter' },
+    { name: '/move <von> <nach>', key: 'move' },
+    { name: '/playlist <action>', key: 'playlist' },
+    { name: '/replay', key: 'replay' },
+    { name: '/setrole [rolle]', key: 'setrole' },
+];
+
+const EARTASTIC_COMMANDS = [
+    { name: '/sound <name>', key: 'sound' },
+    { name: '/favorite <name>', key: 'favorite' },
+    { name: '/soundboard', key: 'soundboard' },
+    { name: '/dashboard', key: 'dashboard' },
+    { name: '/volume <prozent>', key: 'volume' },
+];
+
+const CAT_STYLES = {
+    musik: { bg: 'rgba(168,85,247,0.14)', color: '#c084fc' },
+    sound: { bg: 'rgba(34,211,238,0.14)', color: '#5fd6e8' },
+};
 
 export default function Commands() {
     const { t } = useLanguage();
-    const [tab, setTab] = useState(0);
+    const [query, setQuery] = useState('');
+    const [cat, setCat] = useState('alle');
 
-    const botCommands = [
-        {
-            bot: 'BeatByte',
-            icon: <MusicNoteIcon sx={{ fontSize: 18 }} />,
-            commands: [
-                { name: '/play <query>', desc: t('commands.beatbyte.play') },
-                { name: '/playnow <query>', desc: t('commands.beatbyte.playnow') },
-                { name: '/skip', desc: t('commands.beatbyte.skip') },
-                { name: '/pause', desc: t('commands.beatbyte.pause') },
-                { name: '/stop', desc: t('commands.beatbyte.stop') },
-                { name: '/queue', desc: t('commands.beatbyte.queue') },
-                { name: '/nowplaying', desc: t('commands.beatbyte.nowplaying') },
-                { name: '/clear', desc: t('commands.beatbyte.clear') },
-                { name: '/remove <pos>', desc: t('commands.beatbyte.remove') },
-                { name: '/shuffle', desc: t('commands.beatbyte.shuffle') },
-                { name: '/loop [modus]', desc: t('commands.beatbyte.loop') },
-                { name: '/seek <zeit>', desc: t('commands.beatbyte.seek') },
-                { name: '/volume [%]', desc: t('commands.beatbyte.volume') },
-                { name: '/join', desc: t('commands.beatbyte.join') },
-                { name: '/lyrics [query]', desc: t('commands.beatbyte.lyrics') },
-                { name: '/app', desc: t('commands.beatbyte.app') },
-                { name: '/autodj', desc: t('commands.beatbyte.autodj') },
-                { name: '/disconnect', desc: t('commands.beatbyte.disconnect') },
-                { name: '/filter <filter>', desc: t('commands.beatbyte.filter') },
-                { name: '/move <von> <nach>', desc: t('commands.beatbyte.move') },
-                { name: '/playlist <action>', desc: t('commands.beatbyte.playlist') },
-                { name: '/replay', desc: t('commands.beatbyte.replay') },
-                { name: '/setrole [rolle]', desc: t('commands.beatbyte.setrole') },
-            ],
-        },
-        {
-            bot: 'EarTastic',
-            icon: <GraphicEqIcon sx={{ fontSize: 18 }} />,
-            commands: [
-                { name: '/sound <name>', desc: t('commands.eartastic.sound') },
-                { name: '/favorite <name>', desc: t('commands.eartastic.favorite') },
-                { name: '/soundboard', desc: t('commands.eartastic.soundboard') },
-                { name: '/dashboard', desc: t('commands.eartastic.dashboard') },
-                { name: '/volume <prozent>', desc: t('commands.eartastic.volume') },
-            ],
-        },
+    const allCommands = useMemo(() => [
+        ...BEATBYTE_COMMANDS.map((c) => ({ ...c, cat: 'musik', desc: t(`commands.beatbyte.${c.key}`), catLabel: t('commands.tagMusic') })),
+        ...EARTASTIC_COMMANDS.map((c) => ({ ...c, cat: 'sound', desc: t(`commands.eartastic.${c.key}`), catLabel: t('commands.tagSound') })),
+    ], [t]);
+
+    const cats = [
+        { id: 'alle', label: t('commands.catAll') },
+        { id: 'musik', label: 'Musik · BeatByte' },
+        { id: 'sound', label: 'Soundboard · EarTastic' },
     ];
 
-    const current = botCommands[tab];
+    const q = query.trim().toLowerCase();
+    const filtered = allCommands.filter((c) =>
+        (cat === 'alle' || c.cat === cat) &&
+        (c.name.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q))
+    );
 
     return (
-        <Box sx={{ py: 10, px: 3 }}>
-            <Container maxWidth="md">
-                <Box sx={{ mb: 5 }}>
-                    <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.25rem' }, mb: 1 }}>
-                        {t('commands.title')}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        {t('commands.subtitle')}
-                    </Typography>
+        <Box sx={{ pb: { xs: 8, md: 10 } }}>
+            <PageHead kicker={t('commands.kicker')} title={t('commands.pageTitle')} titleAccent={t('commands.pageTitleAccent')} lead={t('commands.lead')} />
+
+            <Container maxWidth="md" sx={{ mt: 4 }}>
+                {/* Suche */}
+                <Box sx={{
+                    display: 'flex', alignItems: 'center', gap: 1.4, height: 52, px: 2.25,
+                    borderRadius: '13px', bgcolor: '#0d0d12', border: '1px solid rgba(255,255,255,0.12)',
+                    '&:focus-within': { borderColor: 'rgba(168,85,247,0.5)' },
+                }}>
+                    <SearchIcon sx={{ fontSize: 20, color: '#71717a' }} />
+                    <InputBase value={query} onChange={(e) => setQuery(e.target.value)}
+                        placeholder={t('commands.searchPlaceholder')}
+                        sx={{ flex: 1, color: '#fafafa', fontSize: '0.94rem', '& input::placeholder': { color: '#71717a', opacity: 1 } }} />
                 </Box>
 
-                <Tabs value={tab} onChange={(_, v) => setTab(v)}
-                    sx={{
-                        mb: 4, minHeight: 40,
-                        '& .MuiTab-root': {
-                            minHeight: 40, textTransform: 'none', fontWeight: 600,
-                            fontSize: '0.9rem', color: '#71717a', px: 2,
-                            '&.Mui-selected': { color: '#fafafa' },
-                        },
-                        '& .MuiTabs-indicator': {
-                            background: 'linear-gradient(90deg, #7c3aed, #a855f7)', borderRadius: 1, height: 2,
-                        },
-                    }}>
-                    {botCommands.map((b, i) => (
-                        <Tab key={i} icon={b.icon} iconPosition="start" label={`${b.bot} (${b.commands.length})`} />
-                    ))}
-                </Tabs>
-
-                <Stack spacing={1}>
-                    {current.commands.map((cmd, i) => (
-                        <Box key={cmd.name} sx={{
-                            display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' },
-                            flexDirection: { xs: 'column', sm: 'row' },
-                            gap: { xs: 0.5, sm: 2 },
-                            p: 2, borderRadius: 2, bgcolor: '#18181b',
-                            border: '1px solid rgba(255,255,255,0.06)',
-                            transition: 'border-color 0.15s',
-                            animation: `${fadeIn} 0.25s ease ${i * 0.02}s both`,
-                            '&:hover': { borderColor: 'rgba(168,85,247,0.15)' },
-                        }}>
-                            <Typography sx={{
-                                fontFamily: "'JetBrains Mono', monospace", fontSize: '0.825rem',
-                                fontWeight: 600, color: '#a855f7', whiteSpace: 'nowrap', minWidth: 180,
+                {/* Kategorien */}
+                <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+                    {cats.map((c) => {
+                        const active = cat === c.id;
+                        return (
+                            <Box key={c.id} component="button" onClick={() => setCat(c.id)} sx={{
+                                fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600,
+                                px: 1.9, py: 0.9, borderRadius: '9px', cursor: 'pointer',
+                                bgcolor: active ? 'rgba(168,85,247,0.16)' : 'rgba(255,255,255,0.05)',
+                                border: active ? '1px solid rgba(168,85,247,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                                color: active ? '#c084fc' : '#a1a1aa',
+                                transition: 'all 0.15s',
+                                '&:hover': { color: active ? '#c084fc' : '#fafafa' },
                             }}>
-                                {cmd.name}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-                                {cmd.desc}
+                                {c.label}
+                            </Box>
+                        );
+                    })}
+                </Stack>
+
+                {/* Command-Liste */}
+                <Card elevation={0} sx={{ mt: 2, overflow: 'hidden' }}>
+                    {filtered.map((c, i) => {
+                        const style = CAT_STYLES[c.cat];
+                        return (
+                            <Box key={`${c.cat}-${c.name}`} sx={{
+                                display: 'grid',
+                                gridTemplateColumns: { xs: '150px 1fr', sm: '220px 1fr 120px' },
+                                gap: 2.25, alignItems: 'center', px: 2.5, py: 1.9,
+                                borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                                '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' },
+                            }}>
+                                <CmdChip sx={{ justifySelf: 'start', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</CmdChip>
+                                <Typography sx={{ fontSize: '0.91rem', color: 'text.secondary' }}>{c.desc}</Typography>
+                                <Box component="span" sx={{
+                                    display: { xs: 'none', sm: 'inline-block' },
+                                    fontSize: '0.72rem', fontWeight: 600, px: 1.25, py: 0.4,
+                                    borderRadius: '6px', textAlign: 'center', justifySelf: 'start',
+                                    bgcolor: style.bg, color: style.color,
+                                }}>
+                                    {c.catLabel}
+                                </Box>
+                            </Box>
+                        );
+                    })}
+                    {filtered.length === 0 && (
+                        <Box sx={{ textAlign: 'center', py: 6, px: 3 }}>
+                            <Typography sx={{ fontSize: '1.6rem', mb: 1 }}>🔍</Typography>
+                            <Typography sx={{ color: 'text.secondary' }}>
+                                {t('commands.noResults')} „{query}“
                             </Typography>
                         </Box>
-                    ))}
-                </Stack>
+                    )}
+                </Card>
+
+                <Typography sx={{ fontSize: '0.81rem', color: '#71717a', mt: 1.75 }}>
+                    {filtered.length} {t('commands.countLine')}
+                </Typography>
             </Container>
         </Box>
     );

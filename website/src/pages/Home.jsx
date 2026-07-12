@@ -1,327 +1,361 @@
 import { Link } from 'react-router-dom';
 import {
-    Box, Typography, Button, Card, CardContent,
-    Stack, Container, Avatar, keyframes, Chip,
+    Box, Typography, Button, Card, Stack, Container, keyframes,
 } from '@mui/material';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import AddIcon from '@mui/icons-material/Add';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import WebIcon from '@mui/icons-material/Web';
-import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows';
-import SecurityIcon from '@mui/icons-material/Security';
-import SpeedIcon from '@mui/icons-material/Speed';
-import PeopleIcon from '@mui/icons-material/People';
-import UpdateIcon from '@mui/icons-material/Update';
-import { BEATBYTE_INVITE, SOUNDBOARD_INVITE } from '../config';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+    Kicker, GradText, CmdChip, ACCENTS, MONO_FONT, DISPLAY_FONT,
+    PRIMARY_BTN_SX, GHOST_BTN_SX,
+} from '../components/ui';
 
 const fadeIn = keyframes`
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128';
-const EARTASTIC_AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=128';
+const floaty = keyframes`
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-13px); }
+`;
+
+const blink = keyframes`
+    50% { opacity: 0; }
+`;
+
+function BotPill({ color, bg, children }) {
+    return (
+        <Box component="span" sx={{
+            fontSize: '0.69rem', fontWeight: 700, px: 1.1, py: 0.4, borderRadius: '6px',
+            color, bgcolor: bg, whiteSpace: 'nowrap', flexShrink: 0,
+        }}>
+            {children}
+        </Box>
+    );
+}
+
+function CommandBarMockup({ t }) {
+    const rows = [
+        { cmd: '/play <link>', desc: t('home.mockPlayDesc'), pill: 'BeatByte', color: '#c084fc', bg: 'rgba(168,85,247,0.14)', selected: true },
+        { cmd: '/sound <name>', desc: t('home.mockSoundDesc'), pill: 'EarTastic', color: '#5fd6e8', bg: 'rgba(34,211,238,0.14)' },
+        { cmd: '/autodj', desc: t('home.mockDjDesc'), pill: 'BeatByte', color: '#c084fc', bg: 'rgba(168,85,247,0.14)' },
+    ];
+
+    return (
+        <Box sx={{ animation: `${floaty} 6.5s ease-in-out infinite` }}>
+            <Box sx={{
+                bgcolor: '#1e1f24', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px',
+                boxShadow: '0 44px 90px -34px rgba(0,0,0,0.85), 0 0 0 1px rgba(168,85,247,0.14)',
+                overflow: 'hidden',
+            }}>
+                <Stack direction="row" alignItems="center" spacing={1.4}
+                    sx={{ px: 2.25, py: 2, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                    <Box sx={{
+                        width: 28, height: 28, borderRadius: '8px',
+                        background: 'linear-gradient(135deg, #a855f7, #22d3ee)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#0a0a0a', fontWeight: 800, fontFamily: MONO_FONT, fontSize: '1rem',
+                    }}>
+                        /
+                    </Box>
+                    <Typography sx={{ fontFamily: MONO_FONT, fontSize: '0.94rem', color: '#e4e4e7' }}>play</Typography>
+                    <Box sx={{ width: 2, height: 20, bgcolor: '#c084fc', animation: `${blink} 1.1s step-end infinite` }} />
+                    <Box sx={{
+                        ml: 'auto !important', display: 'inline-flex', alignItems: 'center', height: 26, px: 1.4,
+                        borderRadius: '999px', bgcolor: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.8rem', color: '#a1a1aa',
+                    }}>
+                        ↵ Enter
+                    </Box>
+                </Stack>
+                {rows.map((row, i) => (
+                    <Box key={row.cmd} sx={{
+                        display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 1.5, alignItems: 'center',
+                        px: 2.25, py: 1.6,
+                        bgcolor: row.selected ? 'rgba(168,85,247,0.1)' : 'transparent',
+                        borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                    }}>
+                        <CmdChip>{row.cmd}</CmdChip>
+                        <Typography sx={{ fontSize: '0.845rem', color: '#a1a1aa', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {row.desc}
+                        </Typography>
+                        <BotPill color={row.color} bg={row.bg}>{row.pill}</BotPill>
+                    </Box>
+                ))}
+            </Box>
+        </Box>
+    );
+}
+
+function FlowSteps({ steps }) {
+    return (
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.75} alignItems="stretch">
+            {steps.map((step, i) => (
+                <Card key={i} elevation={0} sx={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: 1.75, px: 2.75, py: 2.5,
+                }}>
+                    <Box sx={{
+                        width: 36, height: 36, borderRadius: '10px', flexShrink: 0,
+                        bgcolor: 'rgba(168,85,247,0.14)', border: '1px solid rgba(168,85,247,0.3)',
+                        color: '#c084fc', fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1.06rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        {i + 1}
+                    </Box>
+                    <Box>
+                        <Typography sx={{ fontWeight: 600, fontSize: '0.95rem' }}>{step.title}</Typography>
+                        <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary', lineHeight: 1.55 }}>{step.text}</Typography>
+                    </Box>
+                </Card>
+            ))}
+        </Stack>
+    );
+}
+
+function SectionHeader({ kicker, title, action }) {
+    return (
+        <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap spacing={1.5} sx={{ mb: 3 }}>
+            <Box>
+                <Kicker>{kicker}</Kicker>
+                <Typography variant="h2" sx={{ fontSize: { xs: '1.6rem', md: '1.9rem' }, mt: 1.25 }}>{title}</Typography>
+            </Box>
+            {action}
+        </Stack>
+    );
+}
 
 export default function Home() {
     const { t } = useLanguage();
 
-    const bots = [
-        {
-            name: 'BeatByte',
-            subtitle: t('bots.beatbyte.subtitle'),
-            description: t('bots.beatbyte.description'),
-            avatar: BEATBYTE_AVATAR,
-            stats: ['23 Commands', '5 Platforms', 'Web Player'],
-            path: '/bots/music-bot',
-            inviteUrl: BEATBYTE_INVITE,
-            accent: '#a855f7',
-        },
-        {
-            name: 'EarTastic',
-            subtitle: t('bots.eartastic.subtitle'),
-            description: t('bots.eartastic.description'),
-            avatar: EARTASTIC_AVATAR,
-            stats: ['5 Commands', '10 Categories', 'Dashboard'],
-            path: '/bots/soundboard-bot',
-            inviteUrl: SOUNDBOARD_INVITE,
-            accent: '#38bdf8',
-        },
+    const whatTiles = [
+        { icon: '🤖', title: t('home.what1Title'), text: t('home.what1Text') },
+        { icon: '🌐', title: t('home.what2Title'), text: t('home.what2Text') },
+        { icon: '✦', title: t('home.what3Title'), text: t('home.what3Text') },
     ];
 
-    const whyUs = [
-        { icon: <WebIcon />, title: t('home.whyUs.webApps'), text: t('home.whyUs.webAppsText') },
-        { icon: <DesktopWindowsIcon />, title: t('home.whyUs.desktopApps'), text: t('home.whyUs.desktopAppsText') },
-        { icon: <SecurityIcon />, title: t('home.whyUs.selfHosted'), text: t('home.whyUs.selfHostedText') },
-        { icon: <SpeedIcon />, title: t('home.whyUs.uptime'), text: t('home.whyUs.uptimeText') },
-        { icon: <PeopleIcon />, title: t('home.whyUs.easyToUse'), text: t('home.whyUs.easyToUseText') },
-        { icon: <UpdateIcon />, title: t('home.whyUs.updates'), text: t('home.whyUs.updatesText') },
+    const steps = [
+        { title: t('home.step1Title'), text: t('home.step1Text') },
+        { title: t('home.step2Title'), text: t('home.step2Text') },
+        { title: t('home.step3Title'), text: t('home.step3Text') },
+    ];
+
+    const teasers = [
+        {
+            name: 'BeatByte', role: t('home.roleMusic'), text: t('home.beatTeaser'),
+            path: '/bots/music-bot', accent: ACCENTS.beat,
+            icon: <Box component="span" sx={{ fontSize: 26, color: '#fff', lineHeight: 1 }}>♫</Box>,
+        },
+        {
+            name: 'EarTastic', role: t('home.roleSound'), text: t('home.earTeaser'),
+            path: '/bots/soundboard-bot', accent: ACCENTS.ear,
+            icon: (
+                <Box component="svg" viewBox="0 0 512 512" sx={{ width: 26, height: 26 }}>
+                    <path fill="#fff" d="M280 96 176 190H104a24 24 0 0 0-24 24v84a24 24 0 0 0 24 24h72l104 94a16 16 0 0 0 26-12V108a16 16 0 0 0-26-12z" />
+                    <path d="M360 200a72 72 0 0 1 0 112" stroke="#fff" strokeWidth="30" fill="none" strokeLinecap="round" />
+                </Box>
+            ),
+        },
     ];
 
     return (
         <Box>
             {/* ──── Hero ──── */}
-            <Box sx={{
-                minHeight: '85vh', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', textAlign: 'center', px: 3,
-                position: 'relative', overflow: 'hidden',
-            }}>
-                <Box sx={{
-                    position: 'absolute', inset: 0, opacity: 0.3,
-                    backgroundImage: 'radial-gradient(rgba(168,85,247,0.08) 1px, transparent 1px)',
-                    backgroundSize: '32px 32px', pointerEvents: 'none',
-                }} />
-                <Box sx={{
-                    position: 'absolute', top: '-20%', left: '50%', transform: 'translateX(-50%)',
-                    width: 600, height: 600, borderRadius: '50%', opacity: 0.12,
-                    background: 'radial-gradient(circle, #a855f7 0%, transparent 70%)',
-                    filter: 'blur(80px)', pointerEvents: 'none',
-                }} />
+            <Box sx={{ position: 'relative', pt: { xs: 8, md: 11.5 }, pb: { xs: 8, md: 10 }, overflow: 'hidden' }}>
+                {/* Background: Glows + Grid */}
+                <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    <Box sx={{
+                        position: 'absolute', width: 640, height: 640, left: -140, top: -180,
+                        background: 'radial-gradient(circle, rgba(168,85,247,0.3), transparent 62%)',
+                    }} />
+                    <Box sx={{
+                        position: 'absolute', width: 560, height: 560, right: -120, top: 20,
+                        background: 'radial-gradient(circle, rgba(34,211,238,0.15), transparent 62%)',
+                    }} />
+                    <Box sx={{
+                        position: 'absolute', inset: 0,
+                        backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
+                        backgroundSize: '56px 56px',
+                        WebkitMask: 'radial-gradient(circle at 46% 28%, #000, transparent 72%)',
+                        mask: 'radial-gradient(circle at 46% 28%, #000, transparent 72%)',
+                    }} />
+                </Box>
 
-                <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1 }}>
-                    {/* Bot Avatars */}
-                    <Stack direction="row" spacing={-1.5} justifyContent="center" sx={{ mb: 4, animation: `${fadeIn} 0.5s ease` }}>
-                        <Avatar src={BEATBYTE_AVATAR} sx={{
-                            width: 52, height: 52, borderRadius: 2.5,
-                            border: '3px solid #09090b',
-                            boxShadow: '0 4px 16px rgba(168,85,247,0.3)',
-                        }} />
-                        <Avatar src={EARTASTIC_AVATAR} sx={{
-                            width: 52, height: 52, borderRadius: 2.5,
-                            border: '3px solid #09090b',
-                            boxShadow: '0 4px 16px rgba(56,189,248,0.3)',
-                        }} />
-                    </Stack>
-
-                    <Typography variant="h1" sx={{
-                        fontSize: { xs: '2.25rem', sm: '3rem', md: '3.75rem' },
-                        fontWeight: 800, lineHeight: 1.1, mb: 2.5, letterSpacing: '-0.02em',
-                        animation: `${fadeIn} 0.5s ease 0.05s both`,
-                    }}>
-                        {t('home.heroTitle1')}{' '}
-                        <Box component="span" sx={{
-                            background: 'linear-gradient(135deg, #a855f7 0%, #d946ef 50%, #38bdf8 100%)',
-                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                        }}>
-                            {t('home.heroTitle2')}
-                        </Box>
-                    </Typography>
-
-                    <Typography color="text.secondary" sx={{
-                        mb: 5, maxWidth: 480, mx: 'auto', lineHeight: 1.8, fontSize: '1.05rem',
-                        animation: `${fadeIn} 0.5s ease 0.1s both`,
-                    }}>
-                        {t('home.heroSubtitle')}
-                    </Typography>
-
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center"
-                        sx={{ animation: `${fadeIn} 0.5s ease 0.15s both` }}>
-                        <Button variant="contained" href="#bots" size="large"
-                            onClick={(e) => { e.preventDefault(); document.getElementById('bots')?.scrollIntoView({ behavior: 'smooth' }); }}
-                            sx={{
-                                background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff',
-                                px: 4, py: 1.5, fontSize: '0.95rem', fontWeight: 600,
-                                boxShadow: '0 8px 32px rgba(168,85,247,0.3)',
-                                '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)', boxShadow: '0 12px 40px rgba(168,85,247,0.4)' },
-                            }}>
-                            {t('home.discoverBots')}
-                        </Button>
-                        <Button variant="outlined" component={Link} to="/guide" size="large"
-                            sx={{
-                                borderColor: 'rgba(255,255,255,0.1)', color: '#a1a1aa',
-                                px: 4, py: 1.5, fontSize: '0.95rem',
-                                '&:hover': { borderColor: 'rgba(255,255,255,0.25)', color: '#fafafa', bgcolor: 'rgba(255,255,255,0.03)' },
-                            }}>
-                            {t('home.documentation')}
-                        </Button>
-                    </Stack>
-                </Container>
-            </Box>
-
-            {/* ──── Bots ──── */}
-            <Box id="bots" sx={{ py: 14, px: 3 }}>
-                <Container maxWidth="lg">
-                    <Box sx={{ textAlign: 'center', mb: 8 }}>
-                        <Typography variant="overline" sx={{ color: '#a855f7', letterSpacing: 3, fontSize: '0.7rem', mb: 1.5, display: 'block' }}>
-                            {t('home.ourBots')}
-                        </Typography>
-                        <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, fontWeight: 700 }}>
-                            {t('home.chooseBotTitle')}
-                        </Typography>
-                    </Box>
-
-                    <Stack spacing={3}>
-                        {bots.map((bot, i) => (
-                            <Card key={i}
-                                component={Link} to={bot.path}
-                                sx={{
-                                    bgcolor: '#18181b', textDecoration: 'none',
-                                    border: '1px solid rgba(255,255,255,0.06)',
-                                    borderRadius: 4, overflow: 'hidden',
-                                    transition: 'all 0.25s ease',
-                                    animation: `${fadeIn} 0.4s ease ${i * 0.1}s both`,
-                                    '&:hover': {
-                                        borderColor: `${bot.accent}33`,
-                                        boxShadow: `0 16px 64px ${bot.accent}15`,
-                                        transform: 'translateY(-4px)',
-                                        '& .bot-arrow': { opacity: 1, transform: 'translateX(0)' },
-                                    },
-                                }}>
-                                <CardContent sx={{ p: { xs: 3, sm: 4.5 } }}>
-                                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 3, md: 5 }} alignItems={{ md: 'center' }}>
-                                        {/* Left: Avatar + Info */}
-                                        <Stack direction="row" spacing={2.5} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
-                                            <Avatar src={bot.avatar} sx={{
-                                                width: 64, height: 64, borderRadius: 3,
-                                                boxShadow: `0 8px 24px ${bot.accent}30`,
-                                                flexShrink: 0,
-                                            }} />
-                                            <Box sx={{ minWidth: 0 }}>
-                                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
-                                                    <Typography sx={{ fontWeight: 700, fontSize: '1.25rem' }}>{bot.name}</Typography>
-                                                    <Chip label={bot.subtitle} size="small" sx={{
-                                                        height: 22, fontSize: '0.7rem', fontWeight: 500,
-                                                        bgcolor: `${bot.accent}15`, color: bot.accent,
-                                                    }} />
-                                                </Stack>
-                                                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
-                                                    {bot.description}
-                                                </Typography>
-                                            </Box>
-                                        </Stack>
-
-                                        {/* Right: Stats + Actions */}
-                                        <Stack spacing={2} alignItems={{ xs: 'flex-start', md: 'flex-end' }} sx={{ flexShrink: 0 }}>
-                                            <Stack direction="row" spacing={1}>
-                                                {bot.stats.map((s) => (
-                                                    <Typography key={s} variant="caption" sx={{
-                                                        px: 1.5, py: 0.4, borderRadius: 1.5,
-                                                        bgcolor: 'rgba(255,255,255,0.04)',
-                                                        color: '#71717a', fontSize: '0.72rem', fontWeight: 500,
-                                                        border: '1px solid rgba(255,255,255,0.04)',
-                                                    }}>
-                                                        {s}
-                                                    </Typography>
-                                                ))}
-                                            </Stack>
-                                            <Stack direction="row" spacing={1.5} alignItems="center">
-                                                <Button variant="contained" href={bot.inviteUrl} target="_blank" rel="noopener"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    startIcon={<AddIcon sx={{ fontSize: 16 }} />}
-                                                    sx={{
-                                                        background: `linear-gradient(135deg, ${bot.accent}, ${bot.accent}cc)`,
-                                                        color: '#fff', px: 3, py: 0.9, fontSize: '0.85rem', fontWeight: 600,
-                                                        boxShadow: `0 4px 16px ${bot.accent}30`,
-                                                        '&:hover': { boxShadow: `0 6px 24px ${bot.accent}40` },
-                                                    }}>
-                                                    {t('home.invite')}
-                                                </Button>
-                                                <ArrowForwardIcon className="bot-arrow" sx={{
-                                                    fontSize: 20, color: '#52525b',
-                                                    opacity: 0, transform: 'translateX(-8px)',
-                                                    transition: 'all 0.25s ease',
-                                                }} />
-                                            </Stack>
-                                        </Stack>
-                                    </Stack>
-                                </CardContent>
-                            </Card>
-                        ))}
-
-                        {/* Coming Soon */}
-                        <Box sx={{
-                            p: 4, borderRadius: 4, border: '1px dashed rgba(255,255,255,0.08)',
-                            textAlign: 'center', opacity: 0.5,
-                            animation: `${fadeIn} 0.4s ease 0.2s both`,
-                        }}>
-                            <AutoAwesomeIcon sx={{ fontSize: 28, color: '#52525b', mb: 1 }} />
-                            <Typography variant="body2" color="text.disabled">
-                                {t('bots.comingSoonBot.description')}
-                            </Typography>
-                        </Box>
-                    </Stack>
-                </Container>
-            </Box>
-
-            {/* ──── Why ByteBots ──── */}
-            <Box sx={{ py: 14, px: 3, borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                <Container maxWidth="lg">
-                    <Box sx={{ textAlign: 'center', mb: 8 }}>
-                        <Typography variant="overline" sx={{ color: '#a855f7', letterSpacing: 3, fontSize: '0.7rem', mb: 1.5, display: 'block' }}>
-                            {t('home.whyBytebots')}
-                        </Typography>
-                        <Typography variant="h3" sx={{ fontSize: { xs: '1.75rem', md: '2.5rem' }, fontWeight: 700 }}>
-                            {t('home.whatSetsUsApart')}
-                        </Typography>
-                    </Box>
-
+                <Container maxWidth="lg" sx={{ position: 'relative' }}>
                     <Box sx={{
                         display: 'grid',
-                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
-                        gap: 2,
+                        gridTemplateColumns: { xs: '1fr', md: '1.06fr 0.94fr' },
+                        gap: { xs: 6, md: 7 }, alignItems: 'center',
                     }}>
-                        {whyUs.map((f, i) => (
-                            <Box key={i} sx={{
-                                p: 3.5, borderRadius: 3, bgcolor: '#18181b',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                transition: 'all 0.2s',
-                                '&:hover': { borderColor: 'rgba(168,85,247,0.15)', transform: 'translateY(-2px)' },
+                        <Box sx={{ animation: `${fadeIn} 0.5s ease` }}>
+                            <Box sx={{
+                                display: 'inline-flex', alignItems: 'center', gap: 0.9, height: 30, px: 1.6,
+                                borderRadius: '999px', bgcolor: 'rgba(255,255,255,0.05)',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                fontSize: '0.82rem', fontWeight: 500, color: '#a1a1aa',
+                            }}>
+                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#a855f7' }} />
+                                {t('home.badge')}
+                            </Box>
+                            <Typography variant="h1" sx={{
+                                fontSize: { xs: '2.6rem', sm: '3.2rem', md: '3.75rem' },
+                                lineHeight: 1.03, mt: 2.5, mb: 2.75,
+                            }}>
+                                {t('home.heroTitle1')}<br />
+                                <GradText>{t('home.heroTitle2')}</GradText>
+                            </Typography>
+                            <Typography sx={{ fontSize: '1.1rem', lineHeight: 1.6, color: 'text.secondary', maxWidth: 520 }}>
+                                {t('home.heroSubtitle')}
+                            </Typography>
+                            <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mt: 3.75 }}>
+                                <Button component={Link} to="/bots" sx={PRIMARY_BTN_SX}>{t('home.inviteBot')}</Button>
+                                <Button component={Link} to="/guide" sx={GHOST_BTN_SX}>{t('home.howItWorks')}</Button>
+                            </Stack>
+                            <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mt: 3.25 }}>
+                                {[t('home.trust1'), t('home.trust2'), t('home.trust3')].map((item) => (
+                                    <Typography key={item} sx={{ fontSize: '0.875rem', color: '#71717a' }}>✓ {item}</Typography>
+                                ))}
+                            </Stack>
+                        </Box>
+
+                        <Box sx={{ animation: `${fadeIn} 0.5s ease 0.1s both` }}>
+                            <CommandBarMockup t={t} />
+                        </Box>
+                    </Box>
+                </Container>
+            </Box>
+
+            {/* ──── Was ist ByteBots ──── */}
+            <Box sx={{ pb: { xs: 7, md: 9 } }}>
+                <Container maxWidth="lg">
+                    <Box sx={{ textAlign: 'center' }}>
+                        <Kicker>{t('home.whatKicker')}</Kicker>
+                        <Typography variant="h2" sx={{ fontSize: { xs: '1.85rem', md: '2.35rem' }, mt: 1.25 }}>
+                            {t('home.whatTitle')}
+                        </Typography>
+                        <Typography sx={{ maxWidth: 620, mx: 'auto', mt: 1.75, fontSize: '1rem', lineHeight: 1.6, color: 'text.secondary' }}>
+                            {t('home.whatLead')}
+                        </Typography>
+                    </Box>
+                    <Box sx={{
+                        display: 'grid', gap: 2.5, mt: 4.75,
+                        gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+                    }}>
+                        {whatTiles.map((tile) => (
+                            <Card key={tile.title} elevation={0} sx={{
+                                p: 3, transition: 'all 0.2s',
+                                '&:hover': { borderColor: 'rgba(168,85,247,0.4)', transform: 'translateY(-3px)' },
                             }}>
                                 <Box sx={{
-                                    width: 40, height: 40, borderRadius: 2, mb: 2,
+                                    width: 44, height: 44, borderRadius: '12px', mb: 1.75, fontSize: 20,
+                                    bgcolor: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.26)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    bgcolor: 'rgba(168,85,247,0.08)', color: '#a855f7',
-                                    '& svg': { fontSize: 20 },
                                 }}>
-                                    {f.icon}
+                                    {tile.icon}
                                 </Box>
-                                <Typography variant="subtitle2" sx={{ mb: 0.75, fontWeight: 600, fontSize: '0.95rem' }}>{f.title}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>{f.text}</Typography>
-                            </Box>
+                                <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: '1.06rem', mb: 0.75 }}>
+                                    {tile.title}
+                                </Typography>
+                                <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', lineHeight: 1.55 }}>
+                                    {tile.text}
+                                </Typography>
+                            </Card>
                         ))}
                     </Box>
+                </Container>
+            </Box>
+
+            {/* ──── Unsere Bots ──── */}
+            <Box sx={{ pb: { xs: 7, md: 9 } }}>
+                <Container maxWidth="lg">
+                    <SectionHeader kicker={t('home.botsKicker')} title={t('home.botsTitle')}
+                        action={
+                            <Button component={Link} to="/bots" sx={{ ...GHOST_BTN_SX, height: 38, px: 1.9, fontSize: '0.875rem', borderRadius: '10px' }}>
+                                {t('home.allDetails')} →
+                            </Button>
+                        } />
+                    <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+                        {teasers.map((bot) => (
+                            <Card key={bot.name} component={Link} to={bot.path} elevation={0} sx={{
+                                display: 'flex', gap: 2.25, alignItems: 'center', p: 3.25,
+                                textDecoration: 'none', cursor: 'pointer', transition: 'all 0.18s',
+                                '&:hover': {
+                                    borderColor: `${bot.accent.main}73`,
+                                    transform: 'translateY(-3px)',
+                                },
+                            }}>
+                                <Box sx={{
+                                    width: 52, height: 52, borderRadius: '16px', flexShrink: 0,
+                                    background: `linear-gradient(135deg, ${bot.accent.main}, ${bot.accent.second})`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: `0 12px 34px -10px ${bot.accent.main}a6`,
+                                }}>
+                                    {bot.icon}
+                                </Box>
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 0.75 }}>
+                                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1.25rem', letterSpacing: '-0.02em', color: '#fafafa' }}>
+                                            {bot.name}
+                                        </Typography>
+                                        <Box component="span" sx={{
+                                            fontFamily: MONO_FONT, fontSize: '0.66rem', fontWeight: 600,
+                                            letterSpacing: '0.1em', textTransform: 'uppercase',
+                                            color: bot.accent.main, bgcolor: `${bot.accent.main}21`,
+                                            border: `1px solid ${bot.accent.main}47`,
+                                            px: 1, py: 0.25, borderRadius: '6px',
+                                        }}>
+                                            {bot.role}
+                                        </Box>
+                                    </Stack>
+                                    <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem', lineHeight: 1.55 }}>
+                                        {bot.text}
+                                    </Typography>
+                                </Box>
+                                <Typography sx={{ ml: 'auto', color: bot.accent.main, fontSize: '1.4rem', flexShrink: 0 }}>→</Typography>
+                            </Card>
+                        ))}
+                    </Box>
+                </Container>
+            </Box>
+
+            {/* ──── So einfach geht's ──── */}
+            <Box sx={{ pb: { xs: 7, md: 9 } }}>
+                <Container maxWidth="lg">
+                    <SectionHeader kicker={t('home.stepsKicker')} title={t('home.stepsTitle')}
+                        action={
+                            <Button component={Link} to="/guide" sx={{ ...GHOST_BTN_SX, height: 38, px: 1.9, fontSize: '0.875rem', borderRadius: '10px' }}>
+                                {t('home.fullGuide')} →
+                            </Button>
+                        } />
+                    <FlowSteps steps={steps} />
                 </Container>
             </Box>
 
             {/* ──── CTA ──── */}
-            <Box sx={{
-                py: 14, px: 3, textAlign: 'center',
-                borderTop: '1px solid rgba(255,255,255,0.04)',
-                position: 'relative',
-            }}>
-                <Box sx={{
-                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                    width: 500, height: 500, borderRadius: '50%', opacity: 0.06,
-                    background: 'radial-gradient(circle, #a855f7 0%, transparent 60%)',
-                    filter: 'blur(80px)', pointerEvents: 'none',
-                }} />
-                <Container maxWidth="sm" sx={{ position: 'relative' }}>
-                    <Typography variant="h3" sx={{ mb: 2, fontWeight: 700, fontSize: { xs: '1.75rem', md: '2.25rem' } }}>
-                        {t('home.readyTitle')}
-                    </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{ mb: 5 }}>
-                        {t('home.readySubtitle')}
-                    </Typography>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center">
-                        <Button variant="contained" href="#bots" size="large"
-                            onClick={(e) => { e.preventDefault(); document.getElementById('bots')?.scrollIntoView({ behavior: 'smooth' }); }}
-                            sx={{
-                                background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff',
-                                px: 4, py: 1.5, fontSize: '0.95rem', fontWeight: 600,
-                                boxShadow: '0 8px 32px rgba(168,85,247,0.3)',
-                                '&:hover': { background: 'linear-gradient(135deg, #6d28d9, #9333ea)' },
-                            }}>
-                            {t('home.viewBots')}
-                        </Button>
-                        <Button variant="outlined" component={Link} to="/guide" size="large"
-                            sx={{
-                                borderColor: 'rgba(255,255,255,0.1)', color: '#a1a1aa',
-                                px: 4, py: 1.5, fontSize: '0.95rem',
-                                '&:hover': { borderColor: 'rgba(255,255,255,0.25)', color: '#fafafa' },
-                            }}>
-                            {t('home.documentation')}
-                        </Button>
-                    </Stack>
+            <Box sx={{ pb: { xs: 8, md: 10 } }}>
+                <Container maxWidth="lg">
+                    <Box sx={{
+                        position: 'relative', overflow: 'hidden', textAlign: 'center',
+                        px: { xs: 3, md: 5 }, py: { xs: 5, md: 7 }, borderRadius: '24px',
+                        background: 'linear-gradient(120deg, rgba(124,58,237,0.2), rgba(217,70,239,0.1) 50%, rgba(34,211,238,0.13))',
+                        border: '1px solid rgba(168,85,247,0.24)',
+                    }}>
+                        <Box sx={{
+                            position: 'absolute', width: 640, height: 640, right: -160, top: -220, opacity: 0.6,
+                            background: 'radial-gradient(circle, rgba(168,85,247,0.3), transparent 62%)',
+                            pointerEvents: 'none',
+                        }} />
+                        <Box sx={{ position: 'relative' }}>
+                            <Typography variant="h2" sx={{ fontSize: { xs: '1.85rem', md: '2.35rem' }, mb: 1.5 }}>
+                                {t('home.ctaTitle')}
+                            </Typography>
+                            <Typography sx={{ color: 'text.secondary', maxWidth: 520, mx: 'auto', mb: 3.25, fontSize: '1rem' }}>
+                                {t('home.ctaText')}
+                            </Typography>
+                            <Stack direction="row" spacing={1.5} justifyContent="center" flexWrap="wrap" useFlexGap>
+                                <Button component={Link} to="/bots" sx={PRIMARY_BTN_SX}>{t('home.inviteBot')}</Button>
+                                <Button component={Link} to="/guide" sx={GHOST_BTN_SX}>{t('home.toGuide')}</Button>
+                            </Stack>
+                        </Box>
+                    </Box>
                 </Container>
             </Box>
         </Box>
