@@ -18,6 +18,14 @@ function parseDuration(str) {
   return 0;
 }
 
+// Bestes Cover eines Tracks: echtes Album-Art (quadratisch) vor Video-Thumbnail.
+// YouTube-hqdefault ist 4:3 mit eingebrannten schwarzen Balken — mqdefault ist
+// echtes 16:9 ohne Balken und wird in quadratischen Kacheln sauber zugeschnitten.
+function coverSrc(t) {
+  const src = t?.albumArt || t?.thumbnail || null;
+  return src ? src.replace(/(i\.ytimg\.com\/vi\/[\w-]+\/)hqdefault/, '$1mqdefault') : null;
+}
+
 // ── Icons ─────────────────────────────────────────────────────────
 const Icons = {
   equalizer: <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 12h2v4H3zm4-3h2v10H7zm4-4h2v18h-2zm4 7h2v6h-2zm4-2h2v10h-2z"/></svg>,
@@ -174,7 +182,7 @@ function App() {
             try {
               await fetch(`${botUrl}/api/guild/${guild.id}/likes`, {
                 method: 'POST', headers: h,
-                body: JSON.stringify({ title: t.title, url: t.url, artist: t.artist, thumbnail: t.thumbnail, duration: t.duration }),
+                body: JSON.stringify({ title: t.title, url: t.url, artist: t.artist, thumbnail: coverSrc(t), duration: t.duration }),
               });
             } catch {}
           }
@@ -250,7 +258,7 @@ function App() {
       } else {
         fetch(`${botUrl}/api/guild/${guild.id}/likes`, {
           method: 'POST', headers: h,
-          body: JSON.stringify({ title: track.title, url: track.url, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }),
+          body: JSON.stringify({ title: track.title, url: track.url, artist: track.artist, thumbnail: coverSrc(track), duration: track.duration }),
         }).catch(() => {});
       }
     }
@@ -885,16 +893,19 @@ function App() {
   }
 
   // ── Track Card Component ───────────────────────────────────────
-  const TrackCard = ({ track, showArtist = true }) => (
-    <div className="track-card" onClick={() => addToQueue(track)}>
-      <div className="track-card-cover">
-        {track.thumbnail ? <img src={track.thumbnail} alt="" /> : <div className="track-card-empty" />}
-        <div className="track-card-play">{Icons.playSmall}</div>
+  const TrackCard = ({ track, showArtist = true }) => {
+    const cover = coverSrc(track);
+    return (
+      <div className="track-card" onClick={() => addToQueue(track)}>
+        <div className="track-card-cover">
+          {cover ? <img src={cover} alt="" /> : <div className="track-card-empty" />}
+          <div className="track-card-play">{Icons.playSmall}</div>
+        </div>
+        <div className="track-card-title">{track.title}</div>
+        {showArtist && track.artist && <div className="track-card-artist">{track.artist}</div>}
       </div>
-      <div className="track-card-title">{track.title}</div>
-      {showArtist && track.artist && <div className="track-card-artist">{track.artist}</div>}
-    </div>
-  );
+    );
+  };
 
   // ── Track Row Component ────────────────────────────────────────
   const TrackRow = ({ track, index, showDuration = true, onRemove, draggable: isDraggable }) => (
@@ -909,7 +920,7 @@ function App() {
       {isDraggable && <span className="track-row-handle">&#8801;</span>}
       {index !== undefined && <span className="track-row-num">{index + 1}</span>}
       <div className="track-row-thumb">
-        {track.thumbnail ? <img src={track.thumbnail} alt="" /> : <div className="track-row-thumb-empty" />}
+        {coverSrc(track) ? <img src={coverSrc(track)} alt="" /> : <div className="track-row-thumb-empty" />}
         <button className="track-row-play-overlay" onClick={(e) => { e.stopPropagation(); addToQueue(track); }}>
           {adding === track.url ? <span className="adding-spinner" /> : Icons.playSmall}
         </button>
@@ -971,7 +982,7 @@ function App() {
   // Quick-access items
   const quickAccess = (() => {
     const items = [];
-    if (recentlyPlayed.length > 0) items.push({ icon: Icons.headphones, label: 'Zuletzt gehört', color: 'var(--purple-hover)', onClick: () => { setActiveView('library'); setLibraryTab('recent'); }, thumbnail: recentlyPlayed[0]?.thumbnail });
+    if (recentlyPlayed.length > 0) items.push({ icon: Icons.headphones, label: 'Zuletzt gehört', color: 'var(--purple-hover)', onClick: () => { setActiveView('library'); setLibraryTab('recent'); }, thumbnail: coverSrc(recentlyPlayed[0]) });
     if (likedSongs.length > 0) items.push({ icon: Icons.heart, label: 'Liked Songs', color: 'var(--red)', onClick: () => { setActiveView('liked'); } });
     return items;
   })();
@@ -1005,7 +1016,7 @@ function App() {
         <section className="content-section">
           <div className="now-playing-hero">
             <div className="np-hero-art">
-              {(state.current.albumArt || state.current.thumbnail) && <img src={state.current.albumArt || state.current.thumbnail} alt="" />}
+              {coverSrc(state.current) && <img src={coverSrc(state.current)} alt="" />}
               <div className="np-hero-visualizer">
                 {!state.paused && <><span className="np-bar" /><span className="np-bar" /><span className="np-bar" /><span className="np-bar" /></>}
               </div>
@@ -1092,7 +1103,7 @@ function App() {
         <section className="content-section">
           <div className="chart-hero" onClick={() => addToQueue(trendingTracks[0])}>
             <div className="chart-hero-bg">
-              {trendingTracks[0].thumbnail && <img src={trendingTracks[0].thumbnail} alt="" />}
+              {coverSrc(trendingTracks[0]) && <img src={coverSrc(trendingTracks[0])} alt="" />}
             </div>
             <div className="chart-hero-overlay" />
             <div className="chart-hero-content">
@@ -1816,7 +1827,7 @@ function App() {
         {/* Header */}
         <div className="playlist-detail-header">
           <div className="playlist-detail-cover">
-            {tracks[0]?.thumbnail ? <img src={tracks[0].thumbnail} alt="" /> : <div className="playlist-detail-cover-empty">{Icons.playlist}</div>}
+            {coverSrc(tracks[0]) ? <img src={coverSrc(tracks[0])} alt="" /> : <div className="playlist-detail-cover-empty">{Icons.playlist}</div>}
           </div>
           <div className="playlist-detail-info">
             <span className="playlist-detail-type">Playlist</span>
@@ -1867,7 +1878,7 @@ function App() {
               <div className="search-top-result" onClick={() => addToQueue(searchResults[0])}>
                 <h3 className="subsection-title">Top-Ergebnis</h3>
                 <div className="top-result-card">
-                  {searchResults[0].thumbnail && <img src={searchResults[0].thumbnail} alt="" className="top-result-img" />}
+                  {coverSrc(searchResults[0]) && <img src={coverSrc(searchResults[0])} alt="" className="top-result-img" />}
                   <span className="top-result-title">{searchResults[0].title}</span>
                   {searchResults[0].artist && <span className="top-result-artist">{searchResults[0].artist}</span>}
                   <div className="top-result-play">{Icons.play}</div>
@@ -1900,7 +1911,7 @@ function App() {
                 <div key={i} className={`track-row search-track-row`} onClick={() => addToQueue(track)}>
                   <span className="track-row-num">{i + 1}</span>
                   <div className="track-row-thumb">
-                    {track.thumbnail ? <img src={track.thumbnail} alt="" /> : <div className="track-row-thumb-empty" />}
+                    {coverSrc(track) ? <img src={coverSrc(track)} alt="" /> : <div className="track-row-thumb-empty" />}
                     <button className="track-row-play-overlay" onClick={(e) => { e.stopPropagation(); addToQueue(track); }}>
                       {adding === track.url ? <span className="adding-spinner" /> : Icons.playSmall}
                     </button>
@@ -2115,7 +2126,7 @@ function App() {
               </div>
               {pendingTrack && (
                 <div className="modal-track-preview">
-                  {pendingTrack.thumbnail && <img src={pendingTrack.thumbnail} alt="" />}
+                  {coverSrc(pendingTrack) && <img src={coverSrc(pendingTrack)} alt="" />}
                   <div className="modal-track-info">
                     <span className="modal-track-title">{pendingTrack.title}</span>
                     {pendingTrack.artist && <span className="modal-track-artist">{pendingTrack.artist}</span>}
@@ -2142,7 +2153,7 @@ function App() {
         {state.current ? (
           <>
             <div className="player-track">
-              {(state.current.albumArt || state.current.thumbnail) && <img src={state.current.albumArt || state.current.thumbnail} alt="" className="player-cover" />}
+              {coverSrc(state.current) && <img src={coverSrc(state.current)} alt="" className="player-cover" />}
               <div className="player-info">
                 <span className="player-title">{state.current.title}</span>
                 {state.current.artist && <span className="player-artist">{state.current.artist}</span>}

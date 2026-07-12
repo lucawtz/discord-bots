@@ -1776,8 +1776,11 @@ async function playNext(guildId) {
         queue._playbackStart = Date.now();
         queue._seekOffset = 0;
         // Cover schon mal im Hintergrund nachladen (falls keins vorhanden), damit
-        // es beim Umschalten aufs volle Embed bereitsteht.
-        queue._artPromise = ensureAlbumArt(track).catch(() => {});
+        // es beim Umschalten aufs volle Embed bereitsteht. Danach die Web-App
+        // informieren, damit sie sofort das quadratische Cover zeigt.
+        queue._artPromise = ensureAlbumArt(track)
+            .then(() => ctx.broadcast('stateUpdate', ctx.getGuildState(guildId)))
+            .catch(() => {});
 
         // Reset Auto-DJ counter when user manually queued a track
         if (track.requestedBy && track.requestedBy !== '\uD83E\uDD16 Auto-DJ') {

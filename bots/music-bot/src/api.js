@@ -180,7 +180,10 @@ function startAPI(ctx, client) {
         res.setHeader('X-XSS-Protection', '0');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com https://i.ytimg.com https://*.scdn.co https://*.dzcdn.net https://e-cdns-images.dzcdn.net; connect-src 'self' wss: ws:; frame-ancestors 'none'");
+        // img-src muss alle Cover-Quellen abdecken: Deezer (*.dzcdn.net), iTunes-Fallback
+        // aus ensureAlbumArt (*.mzstatic.com), Spotify (scdn.co + spotifycdn.com) und
+        // YouTube-Thumbnails inkl. YouTube-Music-Varianten (googleusercontent/ggpht).
+        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com https://i.ytimg.com https://*.googleusercontent.com https://*.ggpht.com https://*.scdn.co https://*.spotifycdn.com https://*.dzcdn.net https://e-cdns-images.dzcdn.net https://*.mzstatic.com; connect-src 'self' wss: ws:; frame-ancestors 'none'");
 
         // CORS
         const corsOrigin = getCorsOrigin(req);
@@ -444,81 +447,44 @@ function startAPI(ctx, client) {
 
                 // ── Discover Endpoints ─────────────────────────────
 
+                // Deezer-Genre-IDs (verifiziert via api.deezer.com/genre) — chart/{id}/tracks
+                // liefert tagesaktuelle Charts pro Genre, keine veralteten Künstlerlisten nötig.
+                const DEEZER_GENRE_IDS = { pop: 132, hiphop: 116, rnb: 165, rock: 152, electronic: 113, latin: 197, kpop: 16 };
+
+                const deezerGet = (deezerUrl) => new Promise((resolve, reject) => {
+                    require('https').get(deezerUrl, { timeout: 8000 }, (r) => {
+                        let d = ''; r.on('data', c => d += c);
+                        r.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Deezer parse error')); } });
+                    }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Deezer timeout')); });
+                });
+
+                const mapDeezerTrack = (t, i) => ({
+                    title: t.title || '',
+                    artist: t.artist?.name || '',
+                    // Manche Chart-Einträge haben leere cover_*-Felder, aber immer ein
+                    // md5_image, aus dem sich die Cover-URL direkt bauen lässt.
+                    thumbnail: t.album?.cover_medium || t.album?.cover
+                        || (t.md5_image ? `https://cdn-images.dzcdn.net/images/cover/${t.md5_image}/250x250-000000-80-0-0.jpg` : null),
+                    duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
+                    url: `${t.artist?.name || ''} ${t.title || ''}`,
+                    position: t.position || i + 1,
+                    source: 'deezer-charts',
+                });
+
                 // GET /api/discover/trending — Real charts from Deezer (no API key needed)
                 if (method === 'GET' && urlPath === '/api/discover/trending') {
                     const genreFilter = url.searchParams.get('genre') || 'all';
+                    const genreId = DEEZER_GENRE_IDS[genreFilter] || 0;
 
                     try {
-                        // Deezer Chart API — real, daily-updated global charts
-                        const chartData = await new Promise((resolve, reject) => {
-                            const chartUrl = 'https://api.deezer.com/chart/0/tracks?limit=20';
-                            require('https').get(chartUrl, { timeout: 8000 }, (res) => {
-                                let data = '';
-                                res.on('data', d => data += d);
-                                res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Deezer parse error')); } });
-                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Deezer timeout')); });
-                        });
-
-                        let tracks = (chartData.data || []).map((t, i) => ({
-                            title: t.title || '',
-                            artist: t.artist?.name || '',
-                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
-                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
-                            url: `${t.artist?.name || ''} ${t.title || ''}`,
-                            position: t.position || i + 1,
-                            source: 'deezer-charts',
-                        }));
-
-                        // Genre filter: search Deezer for genre-specific tracks
-                        if (genreFilter !== 'all') {
-                            const genreArtists = {
-                                pop: ['Sabrina Carpenter', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande'],
-                                hiphop: ['Kendrick Lamar', 'Drake', 'Travis Scott', 'Central Cee'],
-                                rnb: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean'],
-                                rock: ['Arctic Monkeys', 'Imagine Dragons', 'Linkin Park', 'Maneskin'],
-                                electronic: ['David Guetta', 'Calvin Harris', 'Martin Garrix', 'Tiesto'],
-                                latin: ['Bad Bunny', 'Karol G', 'Rauw Alejandro', 'Feid'],
-                                kpop: ['BTS', 'BLACKPINK', 'NewJeans', 'Stray Kids'],
-                            };
-                            const artists = genreArtists[genreFilter];
-                            if (artists) {
-                                try {
-                                    const https = require('https');
-                                    const deezerGet = (url) => new Promise((resolve, reject) => {
-                                        https.get(url, { timeout: 8000 }, (r) => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{try{resolve(JSON.parse(d));}catch{reject(new Error('Parse'));}}); }).on('error',reject);
-                                    });
-                                    const results = await Promise.allSettled(
-                                        artists.map(a => deezerGet(`https://api.deezer.com/search?q=${encodeURIComponent(a)}&limit=5`))
-                                    );
-                                    const seen = new Set();
-                                    tracks = [];
-                                    for (const r of results) {
-                                        if (r.status !== 'fulfilled') continue;
-                                        for (const t of (r.value.data || [])) {
-                                            if (seen.has(t.id)) continue;
-                                            seen.add(t.id);
-                                            tracks.push({
-                                                title: t.title || '',
-                                                artist: t.artist?.name || '',
-                                                thumbnail: t.album?.cover_medium || null,
-                                                duration: `${Math.floor((t.duration||0)/60)}:${String((t.duration||0)%60).padStart(2,'0')}`,
-                                                url: `${t.artist?.name||''} ${t.title||''}`,
-                                                source: 'deezer',
-                                            });
-                                        }
-                                    }
-                                } catch {}
-                            }
-                        }
-
+                        const chartData = await deezerGet(`https://api.deezer.com/chart/${genreId}/tracks?limit=20`);
+                        const tracks = (chartData.data || []).map(mapDeezerTrack);
                         if (tracks.length > 0) return json(res, tracks);
                         throw new Error('No chart data');
                     } catch (err) {
                         console.error('Charts failed:', err.message);
                         try {
-                            const artists = ['Sabrina Carpenter', 'Billie Eilish', 'The Weeknd', 'Kendrick Lamar'];
-                            const results = await Promise.allSettled(artists.map(a => ctx.searchTracks(a, 3)));
-                            return json(res, results.filter(r => r.status === 'fulfilled').flatMap(r => r.value).slice(0, 12));
+                            return json(res, (await ctx.searchTracks(`Top Hits ${new Date().getFullYear()}`, 12)).slice(0, 12));
                         } catch { return json(res, []); }
                     }
                 }
@@ -526,106 +492,54 @@ function startAPI(ctx, client) {
                 // GET /api/discover/local-charts — Country-specific charts via Deezer
                 if (method === 'GET' && urlPath === '/api/discover/local-charts') {
                     const country = (url.searchParams.get('country') || 'DE').toUpperCase();
-                    // Deezer editorial IDs per country
-                    const editorialIds = { DE: 116, AT: 116, CH: 116, US: 0, GB: 0, FR: 52, ES: 81, IT: 80, TR: 109, BR: 36, NL: 71, SE: 60, PL: 83, KR: 0, JP: 105, MX: 131 };
-                    const editorialId = editorialIds[country] ?? 0;
+                    // Offizielle "Top <Land>"-Playlists vom Deezer-Charts-Account (täglich aktualisiert)
+                    const chartPlaylists = {
+                        DE: 1111143121, AT: 1313615765, CH: 1313617925, US: 1313621735,
+                        GB: 1111142221, FR: 1109890291, ES: 1116190041, IT: 1116187241,
+                        NL: 1266971851, TR: 1116189071, PL: 1266972311, SE: 1313620305,
+                        BR: 1111141961, MX: 1111142361, JP: 1362508955, KR: 1362510315,
+                    };
+                    const playlistId = chartPlaylists[country] || chartPlaylists.DE;
 
                     try {
-                        const chartUrl = editorialId > 0
-                            ? `https://api.deezer.com/editorial/${editorialId}/charts`
-                            : 'https://api.deezer.com/chart/0/tracks?limit=15';
-
-                        const chartData = await new Promise((resolve, reject) => {
-                            require('https').get(chartUrl, { timeout: 8000 }, (res) => {
-                                let data = '';
-                                res.on('data', d => data += d);
-                                res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Parse error')); } });
-                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
-                        });
-
-                        const rawTracks = editorialId > 0 ? (chartData.tracks?.data || []) : (chartData.data || []);
-                        const tracks = rawTracks.slice(0, 15).map((t, i) => ({
-                            title: t.title || '',
-                            artist: t.artist?.name || '',
-                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
-                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
-                            url: `${t.artist?.name || ''} ${t.title || ''}`,
-                            position: t.position || i + 1,
-                            source: 'deezer-charts',
-                        }));
-
-                        return json(res, tracks);
+                        const chartData = await deezerGet(`https://api.deezer.com/playlist/${playlistId}/tracks?limit=15`);
+                        return json(res, (chartData.data || []).slice(0, 15).map(mapDeezerTrack));
                     } catch { return json(res, []); }
                 }
 
                 // GET /api/discover/sections — Genre/mood sections like Spotify home
+                // Jede Section speist sich aus den tagesaktuellen Deezer-Genre-Charts.
                 if (method === 'GET' && urlPath === '/api/discover/sections') {
                     const genreFilter = url.searchParams.get('genre') || 'all';
 
                     const allSections = [
-                        { title: 'Pop Hits', artists: ['Sabrina Carpenter', 'Dua Lipa', 'Taylor Swift', 'Ariana Grande', 'Olivia Rodrigo'], genre: 'pop' },
-                        { title: 'Hip-Hop', artists: ['Kendrick Lamar', 'Drake', 'Travis Scott', 'Central Cee', 'Future'], genre: 'hiphop' },
-                        { title: 'Chill Vibes', artists: ['Khruangbin', 'Mac DeMarco', 'Tame Impala', 'FKJ', 'Tom Misch'], genre: 'electronic' },
-                        { title: 'Party', artists: ['David Guetta', 'Calvin Harris', 'Tiesto', 'Martin Garrix', 'Marshmello'], genre: 'electronic' },
-                        { title: 'R&B & Soul', artists: ['SZA', 'The Weeknd', 'Doja Cat', 'Frank Ocean', 'Daniel Caesar'], genre: 'rnb' },
-                        { title: 'Rock & Indie', artists: ['Arctic Monkeys', 'Imagine Dragons', 'Linkin Park', 'Maneskin', 'Green Day'], genre: 'rock' },
-                        { title: 'Latin Hits', artists: ['Bad Bunny', 'Karol G', 'Rauw Alejandro', 'Feid', 'Peso Pluma'], genre: 'latin' },
-                        { title: 'K-Pop', artists: ['BTS', 'BLACKPINK', 'NewJeans', 'Stray Kids', 'aespa'], genre: 'kpop' },
-                        { title: 'Deutsch Rap', artists: ['Apache 207', 'Luciano', 'Capital Bra', 'Shirin David', 'Pashanim'], genre: 'hiphop' },
-                        { title: 'EDM & Dance', artists: ['Robin Schulz', 'Felix Jaehn', 'Regard', 'Joel Corry', 'Becky Hill'], genre: 'electronic' },
+                        { title: 'Pop Hits', genre: 'pop', chartId: 132 },
+                        { title: 'Hip-Hop', genre: 'hiphop', chartId: 116 },
+                        { title: 'Dance & Party', genre: 'electronic', chartId: 113 },
+                        { title: 'Electro', genre: 'electronic', chartId: 106 },
+                        { title: 'R&B & Soul', genre: 'rnb', chartId: 165 },
+                        { title: 'Rock & Indie', genre: 'rock', chartId: 152 },
+                        { title: 'Latin Hits', genre: 'latin', chartId: 197 },
+                        { title: 'K-Pop & Asian', genre: 'kpop', chartId: 16 },
+                        { title: 'Deutsche Charts', genre: 'hiphop', chartId: 459 },
                     ];
 
                     let sections = allSections;
                     if (genreFilter !== 'all') sections = sections.filter(s => s.genre === genreFilter);
                     if (sections.length === 0) sections = allSections;
 
-                    // Pick 4 sections
-                    const hour = new Date().getHours();
-                    const offset = (hour * 2) % sections.length;
+                    // Rotierende Auswahl von bis zu 5 Sections (wechselt alle 2 Stunden)
+                    const offset = (new Date().getHours() * 2) % sections.length;
                     const picked = [];
-                    // Always include Chill Vibes, then fill with rotating others
-                    const chillSection = sections.find(s => s.title === 'Chill Vibes');
-                    if (chillSection) picked.push(chillSection);
                     for (let i = 0; i < sections.length && picked.length < 5; i++) {
-                        const s = sections[(offset + i) % sections.length];
-                        if (!picked.includes(s)) picked.push(s);
+                        picked.push(sections[(offset + i) % sections.length]);
                     }
 
                     try {
-                        const https = require('https');
-                        const deezerSearch = (query, limit = 4) => new Promise((resolve, reject) => {
-                            https.get(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`, { timeout: 8000 }, (res) => {
-                                let d = ''; res.on('data', c => d += c);
-                                res.on('end', () => { try { resolve(JSON.parse(d)); } catch { reject(new Error('Parse')); } });
-                            }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('Timeout')); });
-                        });
-
-                        const mapTrack = (t) => ({
-                            title: t.title || '',
-                            artist: t.artist?.name || '',
-                            thumbnail: t.album?.cover_medium || t.album?.cover || null,
-                            duration: `${Math.floor((t.duration || 0) / 60)}:${String((t.duration || 0) % 60).padStart(2, '0')}`,
-                            url: `${t.artist?.name || ''} ${t.title || ''}`,
-                        });
-
-                        // For each section, pick 3 random artists and search individually
-                        const seed = Date.now() / 3600000 | 0;
                         const results = await Promise.allSettled(
                             picked.map(async (s) => {
-                                const shuffled = [...s.artists].sort((a, b) => Math.sin(seed + a.length) - Math.sin(seed + b.length));
-                                const picks = shuffled.slice(0, 3);
-                                const searches = await Promise.allSettled(picks.map(a => deezerSearch(a, 4)));
-                                const seen = new Set();
-                                const tracks = [];
-                                for (const r of searches) {
-                                    if (r.status !== 'fulfilled') continue;
-                                    for (const t of (r.value.data || [])) {
-                                        if (seen.has(t.id)) continue;
-                                        seen.add(t.id);
-                                        tracks.push(mapTrack(t));
-                                    }
-                                }
-                                return { title: s.title, tracks };
+                                const chartData = await deezerGet(`https://api.deezer.com/chart/${s.chartId}/tracks?limit=12`);
+                                return { title: s.title, tracks: (chartData.data || []).map(mapDeezerTrack) };
                             })
                         );
                         return json(res, results.filter(r => r.status === 'fulfilled').map(r => r.value).filter(s => s.tracks.length > 0));
@@ -871,6 +785,11 @@ function startAPI(ctx, client) {
                     const track = await ctx.searchTrack(query);
                     track.requestedBy = 'Web App';
                     track._requestedById = getUserId();
+                    // Quadratisches Album-Cover im Hintergrund nachladen, damit die
+                    // Queue-Ansicht nicht das letterboxed YouTube-Thumbnail zeigt.
+                    ctx.ensureAlbumArt(track)
+                        .then(() => broadcast('stateUpdate', getGuildState(guildId)))
+                        .catch(() => {});
 
                     if (immediate && queue.current) {
                         // Play now: put at front of queue and skip current
