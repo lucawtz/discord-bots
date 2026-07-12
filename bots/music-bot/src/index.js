@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, VoiceConnectionDisconnectReason, entersState, StreamType } = require('@discordjs/voice');
 const { spawn, execFileSync } = require('child_process'); // execFileSync für yt-dlp detection
 
 
@@ -64,6 +64,8 @@ function destroyQueue(guildId) {
     if (!queue) return;
     clearTimeout(queue.leaveTimer);
     clearTimeout(queue._leaveWarningTimer);
+    clearTimeout(queue._aloneTimer);
+    queue._aloneTimer = null;
     releaseNowPlaying(queue);
     if (queue._prefetch) {
         const pf = queue._prefetch;
@@ -1445,25 +1447,25 @@ async function setupVoiceConnection(guildId, voiceChannel, guild, textChannel) {
         }
     });
 
-    // Disconnect-Handling mit Reconnect-Versuch
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
-        try {
-            await Promise.race([
-                new Promise(resolve => {
-                    const check = (_, newState) => {
-                        if (newState.status === VoiceConnectionStatus.Ready || newState.status === VoiceConnectionStatus.Signalling) {
-                            connection.removeListener('stateChange', check);
-                            resolve();
-                        }
-                    };
-                    connection.on('stateChange', check);
-                }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Reconnect timeout')), DISCONNECT_CHECK_MS)),
-            ]);
-        } catch {
-            if (queue.connection && queue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
+    // Disconnect-Handling: Kick sauber akzeptieren, Netz-Blips reconnecten.
+    // WICHTIG: Nach einem Kick haengt die Connection in "Signalling" — darauf
+    // zu warten liess den Bot frueher wieder joinen statt draussen zu bleiben.
+    connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
+        if (newState.reason === VoiceConnectionDisconnectReason.WebSocketClose && newState.closeCode === 4014) {
+            // Vom Server getrennt (Kick oder Channel geloescht). Bei einem
+            // Channel-Move verbindet Discord selbst neu (-> Connecting);
+            // passiert das nicht, war es ein Kick -> aufraeumen, NICHT rejoinen.
+            try {
+                await entersState(connection, VoiceConnectionStatus.Connecting, DISCONNECT_CHECK_MS);
+            } catch {
                 destroyQueue(guildId);
             }
+        } else if (connection.rejoinAttempts < 5) {
+            // Netzwerk-Blip: mit Backoff neu verbinden
+            await new Promise(r => setTimeout(r, (connection.rejoinAttempts + 1) * 2_000));
+            if (connection.state.status === VoiceConnectionStatus.Disconnected) connection.rejoin();
+        } else {
+            destroyQueue(guildId);
         }
     });
 
@@ -2049,6 +2051,25 @@ client.on('voiceStateUpdate', (oldState, newState) => {
         queue.player.unpause();
         queue._autoPaused = false;
         updateNowPlayingMsg(queue);
+    }
+
+    // Allein im Channel: nach LEAVE_TIMEOUT_MS disconnecten (nicht nur pausieren).
+    // Kommt vorher jemand zurueck, wird der Timer abgebrochen.
+    if (members === 0) {
+        if (!queue._aloneTimer) {
+            queue._aloneTimer = setTimeout(() => {
+                const q = queues.get(guildId);
+                if (!q) return;
+                q._aloneTimer = null;
+                const chId = q.connection?.joinConfig?.channelId;
+                const ch = chId ? newState.guild.channels.cache.get(chId) : null;
+                const stillAlone = !ch || ch.members.filter(m => !m.user.bot).size === 0;
+                if (stillAlone) destroyQueue(guildId);
+            }, LEAVE_TIMEOUT_MS);
+        }
+    } else if (queue._aloneTimer) {
+        clearTimeout(queue._aloneTimer);
+        queue._aloneTimer = null;
     }
 });
 
