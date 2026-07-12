@@ -1,6 +1,7 @@
 const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
+const { writeAtomic, backupDaily } = require('../../../libs/dbFile');
 
 const dbPath = path.join(__dirname, '..', 'data', 'soundboard.db');
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -84,10 +85,34 @@ function migrateFilesToDb() {
   }
 }
 
+function persist() {
+  const buffer = Buffer.from(db.export());
+  writeAtomic(dbPath, buffer);
+  try {
+    backupDaily(dbPath);
+  } catch (err) {
+    console.error('DB backup error:', err);
+  }
+}
+
+// Debounced: die DB enthaelt Audio-BLOBs, ein Export pro Write waere teuer.
+// Beim Shutdown muss deshalb saveNow() aufgerufen werden.
+let _saveTimer = null;
 function save() {
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(dbPath, buffer);
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    try {
+      persist();
+    } catch (err) {
+      console.error('DB save error:', err);
+    }
+  }, 1000);
+}
+
+function saveNow() {
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+  persist();
 }
 
 function getOne(sql, params = {}) {
@@ -120,6 +145,7 @@ function run(sql, params = {}) {
 module.exports = {
   init,
   save,
+  saveNow,
 
   addSound({ name, filename, category = 'Allgemein', uploadedBy = null, isPredefined = 0, data = null }) {
     run(

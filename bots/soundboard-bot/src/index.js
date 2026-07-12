@@ -87,10 +87,28 @@ db.init().then(() => {
   const port = process.env.PORT || process.env.WEB_PORT || 3000;
   webServer = startWebServer(port, client);
 
-  client.login(process.env.DISCORD_TOKEN);
+  client.login(process.env.DISCORD_TOKEN).catch(err => {
+    console.error('Discord-Login fehlgeschlagen:', err);
+    process.exit(1);
+  });
 }).catch(err => {
   console.error('Datenbank-Fehler:', err);
   process.exit(1);
+});
+
+// Fehler-Handler auf Prozess-Ebene (Node 22 beendet den Prozess sonst
+// bei jeder unhandled Rejection ausserhalb des Interaction-try/catch)
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  try { db.saveNow(); } catch {}
+});
+
+client.on(Events.Error, (err) => {
+  console.error('Discord-Client-Fehler:', err);
 });
 
 // Graceful Shutdown
@@ -100,7 +118,7 @@ function gracefulShutdown(signal) {
   disconnectAll();
   console.log('Voice-Connections getrennt.');
 
-  db.save();
+  db.saveNow();
   console.log('Datenbank gespeichert.');
 
   if (webServer) {
