@@ -125,7 +125,7 @@ export default function MusicBot() {
                             }}>
                             {t('musicBot.addToServer')}
                         </Button>
-                        <Button variant="outlined" href="https://app.bytebots.de" target="_blank" rel="noopener" size="large"
+                        <Button variant="outlined" href="https://beatbyte.bytebots.de" target="_blank" rel="noopener" size="large"
                             startIcon={<WebIcon />}
                             sx={{
                                 borderColor: 'rgba(168,85,247,0.25)', px: 4, py: 1.4, fontSize: '0.95rem',
@@ -191,13 +191,13 @@ export default function MusicBot() {
                             <Typography variant="body1" color="text.secondary" sx={{ mb: 3, lineHeight: 1.8 }}>
                                 {t('musicBot.webAppShowcaseText')}
                             </Typography>
-                            <Button variant="outlined" href="https://app.bytebots.de" target="_blank" rel="noopener"
+                            <Button variant="outlined" href="https://beatbyte.bytebots.de" target="_blank" rel="noopener"
                                 endIcon={<ArrowForwardIcon />}
                                 sx={{
                                     borderColor: 'rgba(168,85,247,0.25)', px: 3,
                                     '&:hover': { borderColor: 'rgba(168,85,247,0.5)', bgcolor: 'rgba(168,85,247,0.04)' },
                                 }}>
-                                app.bytebots.de
+                                beatbyte.bytebots.de
                             </Button>
                         </Box>
                         {/* Web App Screenshot Placeholder */}
@@ -302,7 +302,7 @@ export default function MusicBot() {
                                 <WebIcon sx={{ fontSize: 32, color: 'primary.light', mb: 2, opacity: 0.7 }} />
                                 <Typography variant="h6" sx={{ mb: 1, fontSize: '1rem' }}>{t('musicBot.webAppCard')}</Typography>
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>{t('musicBot.webAppDesc')}</Typography>
-                                <Button variant="contained" fullWidth href="https://app.bytebots.de" target="_blank" rel="noopener" startIcon={<OpenInNewIcon />}
+                                <Button variant="contained" fullWidth href="https://beatbyte.bytebots.de" target="_blank" rel="noopener" startIcon={<OpenInNewIcon />}
                                     sx={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff', borderRadius: 2.5 }}>
                                     {t('musicBot.open')}
                                 </Button>
@@ -369,7 +369,7 @@ export default function MusicBot() {
                             }}>
                             {t('musicBot.addToServer')}
                         </Button>
-                        <Button variant="outlined" href="https://app.bytebots.de" target="_blank" rel="noopener" size="large"
+                        <Button variant="outlined" href="https://beatbyte.bytebots.de" target="_blank" rel="noopener" size="large"
                             sx={{
                                 borderColor: 'rgba(255,255,255,0.1)', color: '#a1a1aa', px: 4, py: 1.4,
                                 '&:hover': { borderColor: 'rgba(255,255,255,0.25)', color: '#fafafa' },

@@ -53,7 +53,7 @@ export default function Profile() {
             accentRgb: '168,85,247',
             detailsPath: '/bots/music-bot',
             inviteUrl: BEATBYTE_INVITE,
-            appUrl: 'https://app.bytebots.de',
+            appUrl: 'https://beatbyte.bytebots.de',
             appLabel: 'Web Player',
         },
         {
