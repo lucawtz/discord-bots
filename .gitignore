@@ -9,3 +9,4 @@ dashboard/users.json
 dashboard/audit.json
 dashboard/metrics-history.json
 *.db
+.devtools/

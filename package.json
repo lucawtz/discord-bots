@@ -1,7 +1,8 @@
 {
   "scripts": {
     "predev": "rimraf website/node_modules/.vite bots/music-bot/app/node_modules/.vite",
-    "dev": "concurrently -k -n music-bot,music-app,soundboard,website -c blue,cyan,magenta,green \"pnpm --filter discord-music-bot dev\" \"pnpm --filter discord-music-bot-app dev\" \"pnpm --filter discord-soundboard-bot dev\" \"pnpm --filter bytebots-website dev\""
+    "dev": "concurrently -k -n music-bot,music-app,soundboard,website -c blue,cyan,magenta,green \"pnpm --filter discord-music-bot dev\" \"pnpm --filter discord-music-bot-app dev\" \"pnpm --filter discord-soundboard-bot dev\" \"pnpm --filter bytebots-website dev\"",
+    "inspect:discord": "node scripts/discord-inspect.js"
   },
   "dependencies": {
     "discord.js": "^14.26.0",

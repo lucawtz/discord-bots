@@ -3,7 +3,7 @@ const crypto = require('crypto');
 // Discord-Login fuer das Dashboard: OAuth2 mit "identify"-Scope, die
 // Server-Mitgliedschaft prueft der Bot selbst (kein "guilds"-Scope noetig).
 // Session = HMAC-signiertes Cookie ohne Server-State — uebersteht Redeploys.
-// Secret ist der API_KEY; wird der rotiert, sind alle Sessions ungueltig.
+// Signatur-Secret ist SESSION_SECRET (Fallback: API_KEY); wird es rotiert, sind alle Sessions ungueltig.
 
 const SESSION_COOKIE = 'sb_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 Tage

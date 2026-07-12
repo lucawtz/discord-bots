@@ -114,6 +114,9 @@ const VALID_SOUND_NAME = /^[\w\säöüÄÖÜß.,!?()\-]+$/;
 
 function startWebServer(port, client) {
   const apiKey = process.env.API_KEY;
+  // Session-Signatur getrennt vom API_KEY: erlaubt Rotieren des einen ohne den anderen.
+  // Fallback auf API_KEY, damit bestehende Deployments ohne gesetztes SESSION_SECRET nicht brechen.
+  const sessionSecret = process.env.SESSION_SECRET || apiKey;
 
   if (!apiKey) {
     console.error('FEHLER: API_KEY muss in .env gesetzt sein! Soundboard-API startet ohne Key nicht.');
@@ -169,14 +172,14 @@ function startWebServer(port, client) {
   });
 
   // Discord-Login (vor der Schreib-Auth registriert, damit Logout ohne Session geht)
-  registerAuthRoutes(app, { client, sessionSecret: apiKey });
+  registerAuthRoutes(app, { client, sessionSecret });
 
   // Auth: Schreibende API-Endpunkte (POST/PUT/DELETE) brauchen Discord-Login
   // oder API-Key (Admin-Fallback). Lesende Endpunkte (GET) bleiben offen.
   app.use('/api', (req, res, next) => {
     if (req.method === 'GET') return next();
     if (req.headers['x-api-key'] === apiKey) return next();
-    if (getSessionUser(req, apiKey)) return next();
+    if (getSessionUser(req, sessionSecret)) return next();
     return res.status(401).json({ error: 'Bitte melde dich zuerst mit Discord an' });
   });
 

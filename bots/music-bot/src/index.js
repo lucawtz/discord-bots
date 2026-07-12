@@ -92,13 +92,18 @@ function destroyQueue(guildId) {
 }
 
 // ── yt-dlp ────────────────────────────────────────────────────────
-let ytdlpPath;
-try {
-    execFileSync('yt-dlp', ['--version'], { stdio: 'ignore' });
-    ytdlpPath = 'yt-dlp';
-} catch {
-    const ytdlpBin = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-    ytdlpPath = path.join(path.dirname(require.resolve('youtube-dl-exec')), '..', 'bin', ytdlpBin);
+// YTDLP_PATH: expliziter Override (lokal, wenn kein/zu altes System-yt-dlp da
+// ist — das gebuendelte youtube-dl-exec-yt-dlp braucht Python 3.10+). In Prod
+// ungesetzt -> unveraendertes Verhalten (Docker bringt ein aktuelles yt-dlp mit).
+let ytdlpPath = process.env.YTDLP_PATH;
+if (!ytdlpPath) {
+    try {
+        execFileSync('yt-dlp', ['--version'], { stdio: 'ignore' });
+        ytdlpPath = 'yt-dlp';
+    } catch {
+        const ytdlpBin = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+        ytdlpPath = path.join(path.dirname(require.resolve('youtube-dl-exec')), '..', 'bin', ytdlpBin);
+    }
 }
 console.log(`yt-dlp: ${ytdlpPath}`);
 
@@ -135,12 +140,19 @@ if (fs.existsSync(cookiePath)) {
 // bgutil-Plugin umgeht ihn), daher reicht der interne Alias pot-provider:4416.
 const POT_PROVIDER_URL = process.env.POT_PROVIDER_URL || 'http://pot-provider:4416';
 const YTDLP_PROXY = process.env.YTDLP_PROXY || 'socks5://warp:1080';
-const YT_EXTRACTOR_ARGS = [
-    '--proxy', YTDLP_PROXY,
-    '--remote-components', 'ejs:github',
-    '--extractor-args', 'youtube:player_client=web;fetch_pot=always',
-    '--extractor-args', `youtubepot-bgutilhttp:base_url=${POT_PROVIDER_URL}`,
-];
+// Lokaler Opt-out: YTDLP_PROXY=direct laesst yt-dlp OHNE Proxy/POT-Provider ueber
+// die lokale IP laufen (die Coolify-Aliasse warp:1080/pot-provider:4416 existieren
+// nur im Server-Docker-Netz). Prod setzt den echten Proxy -> Args unveraendert.
+const YT_DIRECT = ['direct', 'none', 'off', 'local'].includes(YTDLP_PROXY.toLowerCase());
+const YT_EXTRACTOR_ARGS = YT_DIRECT
+    ? ['--remote-components', 'ejs:github']
+    : [
+        '--proxy', YTDLP_PROXY,
+        '--remote-components', 'ejs:github',
+        '--extractor-args', 'youtube:player_client=web;fetch_pot=always',
+        '--extractor-args', `youtubepot-bgutilhttp:base_url=${POT_PROVIDER_URL}`,
+    ];
+if (YT_DIRECT) console.log('yt-dlp: DIRECT-Modus (ohne Proxy/POT — nur lokal gedacht)');
 
 // ── yt-dlp Auto-Update (im Hintergrund, blockiert nicht den Start) ──
 spawn(ytdlpPath, ['-U']).on('close', (code) => {
@@ -2119,3 +2131,7 @@ db.init().then(() => {
     console.error('❌ Datenbank-Fehler:', err.message);
     process.exit(1);
 });
+
+// Nur fuer den lokalen Dev-Test-Runner: gibt Zugriff auf client + ctx.
+// In Prod ist index.js der Entrypoint und wird nie require()d -> ohne Wirkung.
+module.exports = { client, ctx };

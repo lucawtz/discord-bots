@@ -143,3 +143,7 @@ function gracefulShutdown(signal) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Nur fuer den lokalen Dev-Test-Runner: Zugriff auf den Client.
+// In Prod ist index.js der Entrypoint und wird nie require()d -> ohne Wirkung.
+module.exports = { client };
