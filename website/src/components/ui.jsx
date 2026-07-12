@@ -69,16 +69,16 @@ export function BrandLogo({ size = 34 }) {
 }
 
 // Echte Discord-Avatare der Bots, lokal gebundelt (src/assets/) statt Discord-CDN
-export function BotAvatar({ bot = 'beat', size = 56, radius = 16, sx = {} }) {
+export function BotAvatar({ bot = 'beat', size = 56, sx = {} }) {
     const accent = ACCENTS[bot];
     const name = bot === 'beat' ? 'BeatByte' : 'EarTastic';
     return (
         <Box component="img" src={BOT_AVATARS[bot]} alt={name}
             sx={{
-                width: size, height: size, borderRadius: `${radius}px`,
+                width: size, height: size, borderRadius: '50%',
                 flexShrink: 0, display: 'block', objectFit: 'cover',
-                border: `1px solid ${accent.main}59`,
-                boxShadow: `0 12px 34px -10px ${accent.main}a6`,
+                border: `2px solid ${accent.main}66`,
+                boxShadow: `0 0 0 3px ${accent.main}1f, 0 12px 34px -10px ${accent.main}a6`,
                 ...sx,
             }} />
     );

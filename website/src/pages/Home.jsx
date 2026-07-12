@@ -275,7 +275,7 @@ export default function Home() {
                                     transform: 'translateY(-3px)',
                                 },
                             }}>
-                                <BotAvatar bot={bot.avatar} size={52} radius={16} />
+                                <BotAvatar bot={bot.avatar} size={52} />
                                 <Box sx={{ flex: 1, minWidth: 0 }}>
                                     <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 0.75 }}>
                                         <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1.25rem', letterSpacing: '-0.02em', color: '#fafafa' }}>

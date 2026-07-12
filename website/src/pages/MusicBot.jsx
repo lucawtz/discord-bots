@@ -84,7 +84,7 @@ export default function MusicBot() {
                 }} />
                 <Container maxWidth="md" sx={{ position: 'relative', textAlign: 'center' }}>
                     <Avatar src={AVATAR} sx={{
-                        width: 88, height: 88, borderRadius: 3, mx: 'auto', mb: 3,
+                        width: 88, height: 88, mx: 'auto', mb: 3,
                         boxShadow: '0 16px 48px rgba(168,85,247,0.35)',
                         animation: `${fadeInUp} 0.4s ease`,
                     }} />
@@ -352,7 +352,7 @@ export default function MusicBot() {
                     filter: 'blur(80px)', pointerEvents: 'none',
                 }} />
                 <Container maxWidth="sm" sx={{ position: 'relative' }}>
-                    <Avatar src={AVATAR} sx={{ width: 56, height: 56, borderRadius: 2.5, mx: 'auto', mb: 3 }} />
+                    <Avatar src={AVATAR} sx={{ width: 56, height: 56, mx: 'auto', mb: 3 }} />
                     <Typography variant="h4" sx={{ mb: 2, fontWeight: 700, fontSize: { xs: '1.5rem', md: '2rem' } }}>
                         {t('musicBot.ctaTitle')}
                     </Typography>
