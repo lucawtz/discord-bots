@@ -1836,11 +1836,17 @@ async function playNext(guildId) {
         // das volle Embed, sobald die Wiedergabe tatsächlich startet.
         if (queue.channel) {
             queue._npLoading = true;
-            queue.channel.send({ embeds: [buildLoadingEmbed(track, client)] })
-                .then(msg => {
-                    queue._nowPlayingMsg = msg;
-                    // Falls der Song beim Ankommen der Nachricht schon läuft: sofort umschalten
-                    if (!queue._npLoading) updateNowPlayingMsg(queue);
+            // Kurz aufs quadratische Cover warten (max 2.5s), damit Platzhalter und
+            // volles Embed dasselbe Bild in derselben Groesse zeigen.
+            Promise.race([queue._artPromise, new Promise(r => setTimeout(r, 2500))])
+                .then(() => {
+                    if (queue.current !== track) return; // Track wurde schon gewechselt
+                    return queue.channel.send({ embeds: [buildLoadingEmbed(track, client)] })
+                        .then(msg => {
+                            queue._nowPlayingMsg = msg;
+                            // Falls der Song beim Ankommen der Nachricht schon läuft: sofort umschalten
+                            if (!queue._npLoading) updateNowPlayingMsg(queue);
+                        });
                 })
                 .catch(e => console.error('Now-Playing-Embed konnte nicht gesendet werden:', e?.message || e));
         } else {
