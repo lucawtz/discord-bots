@@ -83,7 +83,9 @@ export default function Status() {
 
     const earDetails = [];
     if (status.ear.data?.uptime) earDetails.push(`${t('status.uptime')} ${formatUptime(status.ear.data.uptime)}`);
-    if (Number.isFinite(status.ear.data?.sounds)) earDetails.push(`${status.ear.data.sounds} Sounds`);
+    if (Number.isFinite(status.ear.data?.sounds)) {
+        earDetails.push(`${status.ear.data.sounds} ${status.ear.data.sounds === 1 ? 'Sound' : 'Sounds'}`);
+    }
 
     const services = [
         {
