@@ -7,6 +7,7 @@ const { createRateLimiter } = require('../../../../libs/rateLimiter');
 const https = require('https');
 const db = require('../database');
 const { getDuration, MAX_DURATION } = require('../utils/audio');
+const { registerAuthRoutes, getSessionUser } = require('./auth');
 
 const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.webm'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -111,7 +112,7 @@ function isAllowedDownloadUrl(urlStr) {
 // Sound-Name Validierung (XSS-Praevention)
 const VALID_SOUND_NAME = /^[\w\säöüÄÖÜß.,!?()\-]+$/;
 
-function startWebServer(port) {
+function startWebServer(port, client) {
   const apiKey = process.env.API_KEY;
 
   if (!apiKey) {
@@ -120,6 +121,9 @@ function startWebServer(port) {
   }
 
   const app = express();
+
+  // Hinter Traefik/Coolify: x-forwarded-proto respektieren (fuer Secure-Cookies)
+  app.set('trust proxy', 1);
 
   // Security Headers
   app.use((req, res, next) => {
@@ -164,14 +168,16 @@ function startWebServer(port) {
     next();
   });
 
-  // Auth: Schreibende API-Endpunkte (POST/PUT/DELETE) brauchen gueltigen Key
-  // Lesende Endpunkte (GET) bleiben offen (Sounds anhoeren, Liste laden)
+  // Discord-Login (vor der Schreib-Auth registriert, damit Logout ohne Session geht)
+  registerAuthRoutes(app, { client, sessionSecret: apiKey });
+
+  // Auth: Schreibende API-Endpunkte (POST/PUT/DELETE) brauchen Discord-Login
+  // oder API-Key (Admin-Fallback). Lesende Endpunkte (GET) bleiben offen.
   app.use('/api', (req, res, next) => {
     if (req.method === 'GET') return next();
-    if (req.headers['x-api-key'] !== apiKey) {
-      return res.status(401).json({ error: 'Ungueltiger API-Key' });
-    }
-    next();
+    if (req.headers['x-api-key'] === apiKey) return next();
+    if (getSessionUser(req, apiKey)) return next();
+    return res.status(401).json({ error: 'Bitte melde dich zuerst mit Discord an' });
   });
 
   // --- API: Health-Check ---

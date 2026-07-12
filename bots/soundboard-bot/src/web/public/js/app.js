@@ -10,7 +10,9 @@ let fsTotalCount = 0;
 let fsCurrentQuery = '';
 let fsAddTarget = null;
 
-// API Key fuer schreibende Aktionen (Upload, Edit, Delete)
+// Discord-Login (Session-Cookie); API Key nur noch als Admin-Fallback
+let currentUser = null;
+let authConfigured = false;
 let storedApiKey = localStorage.getItem('soundboardApiKey') || '';
 
 function getAuthHeaders(extra = {}) {
@@ -22,7 +24,7 @@ function getAuthHeaders(extra = {}) {
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
-  setupApiKeyPrompt();
+  setupAuth();
   setupTabs();
   setupMobileMenu();
   setupUploadForm();
@@ -33,16 +35,102 @@ async function init() {
   await refresh();
 }
 
-function setupApiKeyPrompt() {
-  const keyInput = document.getElementById('api-key-input');
-  const keySave = document.getElementById('api-key-save');
-  if (!keyInput || !keySave) return;
-  keyInput.value = storedApiKey;
-  keySave.addEventListener('click', () => {
-    storedApiKey = keyInput.value.trim();
-    localStorage.setItem('soundboardApiKey', storedApiKey);
-    showToast('API Key gespeichert', 'success');
-  });
+async function setupAuth() {
+  handleAuthParams();
+  try {
+    const res = await fetch('/api/auth/me');
+    const data = await res.json();
+    currentUser = data.user;
+    authConfigured = data.configured;
+  } catch {
+    // Server nicht erreichbar — Auth-Bereich bleibt leer
+  }
+  renderAuthSection();
+}
+
+function handleAuthParams() {
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get('error');
+  if (!error) return;
+  const messages = {
+    not_member: 'Du bist kein Mitglied des Discord-Servers',
+    discord_denied: 'Discord-Anmeldung abgebrochen',
+    invalid_state: 'Anmeldung abgelaufen, bitte erneut versuchen',
+    oauth_failed: 'Discord-Anmeldung fehlgeschlagen',
+  };
+  showToast(messages[error] || 'Anmeldung fehlgeschlagen', 'error');
+  window.history.replaceState({}, '', window.location.pathname);
+}
+
+function renderAuthSection() {
+  const section = document.getElementById('auth-section');
+  if (!section) return;
+  section.innerHTML = '';
+
+  if (currentUser) {
+    // Eingeloggt: Avatar + Name + Logout
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px';
+
+    const avatar = document.createElement('img');
+    avatar.src = currentUser.avatar
+      ? `https://cdn.discordapp.com/avatars/${currentUser.id}/${currentUser.avatar}.png?size=64`
+      : 'https://cdn.discordapp.com/embed/avatars/0.png';
+    avatar.alt = '';
+    avatar.style.cssText = 'width:28px;height:28px;border-radius:50%';
+
+    const name = document.createElement('span');
+    name.textContent = currentUser.name;
+    name.style.cssText = 'flex:1;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'btn btn-secondary btn-sm';
+    logoutBtn.textContent = 'Abmelden';
+    logoutBtn.style.cssText = 'padding:4px 8px;font-size:11px';
+    logoutBtn.addEventListener('click', logout);
+
+    row.append(avatar, name, logoutBtn);
+    section.appendChild(row);
+  } else if (authConfigured) {
+    // Ausgeloggt: Discord-Login-Button
+    const loginBtn = document.createElement('a');
+    loginBtn.href = '/api/auth/discord';
+    loginBtn.textContent = 'Mit Discord anmelden';
+    loginBtn.style.cssText = 'display:block;text-align:center;padding:8px;background:#5865F2;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none';
+    section.appendChild(loginBtn);
+  } else {
+    // Discord-Login nicht konfiguriert: API-Key-Eingabe als Fallback
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;gap:6px';
+
+    const keyInput = document.createElement('input');
+    keyInput.type = 'password';
+    keyInput.placeholder = 'API Key';
+    keyInput.value = storedApiKey;
+    keyInput.style.cssText = 'flex:1;min-width:0;padding:6px 8px;border:1px solid #333;border-radius:6px;background:#1a1a2e;color:#e0e0e0;font-size:12px';
+
+    const keySave = document.createElement('button');
+    keySave.className = 'btn btn-secondary btn-sm';
+    keySave.textContent = 'OK';
+    keySave.style.cssText = 'padding:6px 10px;font-size:11px';
+    keySave.addEventListener('click', () => {
+      storedApiKey = keyInput.value.trim();
+      localStorage.setItem('soundboardApiKey', storedApiKey);
+      showToast('API Key gespeichert', 'success');
+    });
+
+    wrap.append(keyInput, keySave);
+    section.appendChild(wrap);
+  }
+}
+
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } catch {}
+  currentUser = null;
+  renderAuthSection();
+  showToast('Abgemeldet', 'success');
 }
 
 // --- Tabs (Sidebar Navigation) ---

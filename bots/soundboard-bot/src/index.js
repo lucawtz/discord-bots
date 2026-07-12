@@ -85,7 +85,7 @@ db.init().then(() => {
   console.log('Datenbank initialisiert');
 
   const port = process.env.PORT || process.env.WEB_PORT || 3000;
-  webServer = startWebServer(port);
+  webServer = startWebServer(port, client);
 
   client.login(process.env.DISCORD_TOKEN);
 }).catch(err => {
