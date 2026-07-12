@@ -17,7 +17,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ImageIcon from '@mui/icons-material/Image';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
-import MusicPlayer from '../components/MusicPlayer';
+import { BeatMockup } from '../components/DiscordMockups';
 import CommandList from '../components/CommandList';
 import { BEATBYTE_INVITE } from '../config';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -173,7 +173,7 @@ export default function MusicBot() {
                             </Stack>
                         </Box>
                         <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 'auto' } }}>
-                            <MusicPlayer />
+                            <BeatMockup t={t} />
                         </Box>
                     </Stack>
                 </Container>
