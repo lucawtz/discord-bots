@@ -1653,8 +1653,12 @@ function updateNowPlayingMsg(queue) {
 // ── Live-Progress: laufende Now-Playing-Embeds alle 10s aktualisieren ──
 // (10s = Discord-Edit-freundlich und entspricht ~1 Segment des 20er-Balkens)
 setInterval(() => {
-    for (const queue of queues.values()) {
-        if (!queue._nowPlayingMsg || !queue.current || queue._npLoading) continue;
+    for (const [guildId, queue] of queues.entries()) {
+        if (!queue.current) continue;
+        // Sicherheitsnetz: naechsten Queue-Track vorladen, egal wie er reinkam
+        // (Playlist, Auto-DJ, playnow) — prefetchNext ist idempotent.
+        prefetchNext(guildId);
+        if (!queue._nowPlayingMsg || queue._npLoading) continue;
         if (queue.player?.state?.status !== AudioPlayerStatus.Playing) continue;
         updateNowPlayingMsg(queue);
     }
@@ -1902,6 +1906,7 @@ for (const file of commandFiles) {
 const ctx = {
     db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, preResolveTrack, spotifyFetch, searchPlaylist, isPlaylistUrl, fetchPlaylistMeta, resolvePlaylistInBackground, fetchSpotifyEmbed,
     playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
+    prefetchNext, ensureAlbumArt,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,

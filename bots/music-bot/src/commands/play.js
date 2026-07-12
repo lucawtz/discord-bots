@@ -100,6 +100,10 @@ module.exports = {
                 // Now Playing Embed wird automatisch von playNext gesendet
                 ctx.autoDelete(interaction.editReply({ content: `-# ▶️ **${track.title}** wird abgespielt` }), ctx.DELETE_SHORT_MS);
             } else {
+                // Sofort vorladen, damit /skip direkt wechseln kann
+                ctx.prefetchNext(interaction.guild.id);
+                // Quadratisches Cover fuer das Embed nachladen (statt letterboxed Thumb)
+                try { await ctx.ensureAlbumArt(track); } catch { /* dann halt Thumbnail */ }
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: 'Zur Warteschlange hinzugefuegt', iconURL: interaction.client.user.displayAvatarURL() })
                     .setThumbnail(track.albumArt || track.thumbnail || null)
