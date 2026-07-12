@@ -36,10 +36,12 @@ RUN cd bots/music-bot && npm ci --omit=dev
 
 # Quellcode + gebautes Frontend
 COPY bots/music-bot/src ./bots/music-bot/src
+COPY bots/music-bot/docker-entrypoint.sh ./bots/music-bot/
 COPY --from=appbuild /repo/bots/music-bot/app/dist ./bots/music-bot/app/dist
 
 WORKDIR /repo/bots/music-bot
 # DB liegt in ./data/music.db, optionale ./cookies.txt  ->  Persistent Storage:
 #   Container-Pfad: /repo/bots/music-bot/data
 EXPOSE 3001
-CMD ["node", "src/index.js"]
+# Entrypoint-Script updated yt-dlp (pip) und exec't dann node (Signale kommen durch)
+CMD ["sh", "docker-entrypoint.sh"]
