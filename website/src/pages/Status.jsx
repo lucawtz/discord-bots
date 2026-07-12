@@ -1,22 +1,10 @@
 import { Box, Typography, Container, Stack, Card, keyframes } from '@mui/material';
 import { useLanguage } from '../i18n/LanguageContext';
-import { PageHead, ACCENTS, MONO_FONT, DISPLAY_FONT } from '../components/ui';
+import { PageHead, BotAvatar, MONO_FONT, DISPLAY_FONT } from '../components/ui';
 
 const pulse = keyframes`
     50% { box-shadow: 0 0 0 9px rgba(34,197,94,0); }
 `;
-
-function BotIcon({ accent, children }) {
-    return (
-        <Box sx={{
-            width: 38, height: 38, borderRadius: '11px', flexShrink: 0,
-            background: `linear-gradient(135deg, ${accent.main}, ${accent.second})`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-            {children}
-        </Box>
-    );
-}
 
 function NeutralIcon({ children }) {
     return (
@@ -36,17 +24,11 @@ export default function Status() {
     const services = [
         {
             name: 'BeatByte', subtitle: t('status.musicBot'),
-            icon: <BotIcon accent={ACCENTS.beat}><Box component="span" sx={{ fontSize: 19, color: '#fff', lineHeight: 1 }}>♫</Box></BotIcon>,
+            icon: <BotAvatar bot="beat" size={38} radius={11} />,
         },
         {
             name: 'EarTastic', subtitle: t('status.soundboardBot'),
-            icon: (
-                <BotIcon accent={ACCENTS.ear}>
-                    <Box component="svg" viewBox="0 0 512 512" sx={{ width: 20, height: 20 }}>
-                        <path fill="#fff" d="M280 96 176 190H104a24 24 0 0 0-24 24v84a24 24 0 0 0 24 24h72l104 94a16 16 0 0 0 26-12V108a16 16 0 0 0-26-12z" />
-                    </Box>
-                </BotIcon>
-            ),
+            icon: <BotAvatar bot="ear" size={38} radius={11} />,
         },
         { name: 'Web Player', subtitle: 'beatbyte.bytebots.de', icon: <NeutralIcon>🎧</NeutralIcon> },
         { name: 'Soundboard Dashboard', subtitle: 'soundboard.bytebots.de', icon: <NeutralIcon>🔊</NeutralIcon> },

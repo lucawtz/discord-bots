@@ -5,7 +5,7 @@ import {
 import { BEATBYTE_INVITE, SOUNDBOARD_INVITE } from '../config';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
-    PageHead, ACCENTS, MONO_FONT, DISPLAY_FONT, GHOST_BTN_SX,
+    PageHead, BotAvatar, ACCENTS, MONO_FONT, DISPLAY_FONT, GHOST_BTN_SX,
 } from '../components/ui';
 
 const prog = keyframes`
@@ -113,14 +113,7 @@ function BotCard({ bot, t }) {
                 background: `radial-gradient(circle, ${accent.main}52, transparent 66%)`,
             }} />
             <Stack direction="row" alignItems="center" spacing={1.75} sx={{ position: 'relative' }}>
-                <Box sx={{
-                    width: 56, height: 56, borderRadius: '16px', flexShrink: 0,
-                    background: `linear-gradient(135deg, ${accent.main}, ${accent.second})`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: `0 12px 34px -10px ${accent.main}a6`,
-                }}>
-                    {bot.icon}
-                </Box>
+                <BotAvatar bot={bot.avatar} size={56} radius={16} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1.35rem', letterSpacing: '-0.02em' }}>
                         {bot.name}
@@ -194,23 +187,16 @@ export default function Bots() {
         {
             name: 'BeatByte', role: t('bots.beatbyte.subtitle'), blurb: t('bots.beatbyte.blurb'),
             chips: t('bots.beatbyte.chips'),
-            accent: ACCENTS.beat, preview: <BeatPreview />,
+            accent: ACCENTS.beat, preview: <BeatPreview />, avatar: 'beat',
             inviteUrl: BEATBYTE_INVITE, webAppUrl: 'https://beatbyte.bytebots.de', domain: 'beatbyte.bytebots.de',
             path: '/bots/music-bot',
-            icon: <Box component="span" sx={{ fontSize: 26, color: '#fff', lineHeight: 1 }}>♫</Box>,
         },
         {
             name: 'EarTastic', role: t('bots.eartastic.subtitle'), blurb: t('bots.eartastic.blurb'),
             chips: t('bots.eartastic.chips'),
-            accent: ACCENTS.ear, preview: <EarPreview />,
+            accent: ACCENTS.ear, preview: <EarPreview />, avatar: 'ear',
             inviteUrl: SOUNDBOARD_INVITE, webAppUrl: 'https://soundboard.bytebots.de', domain: 'soundboard.bytebots.de',
             path: '/bots/soundboard-bot',
-            icon: (
-                <Box component="svg" viewBox="0 0 512 512" sx={{ width: 28, height: 28 }}>
-                    <path fill="#fff" d="M280 96 176 190H104a24 24 0 0 0-24 24v84a24 24 0 0 0 24 24h72l104 94a16 16 0 0 0 26-12V108a16 16 0 0 0-26-12z" />
-                    <path d="M360 200a72 72 0 0 1 0 112" stroke="#fff" strokeWidth="30" fill="none" strokeLinecap="round" />
-                </Box>
-            ),
         },
     ];
 

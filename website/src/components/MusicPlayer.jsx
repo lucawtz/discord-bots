@@ -1,7 +1,7 @@
 import { Box, Typography, Stack } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=64';
+import BEATBYTE_AVATAR from '../assets/beatbyte-avatar.png';
 
 function DiscordButton({ children, primary, danger, link }) {
     return (

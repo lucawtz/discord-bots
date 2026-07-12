@@ -21,7 +21,7 @@ const fadeInUp = keyframes`
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=128';
+import AVATAR from '../assets/eartastic-avatar.png';
 const ACCENT = '#38bdf8';
 
 export default function SoundboardBot() {

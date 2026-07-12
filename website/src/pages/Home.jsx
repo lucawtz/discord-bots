@@ -4,7 +4,7 @@ import {
 } from '@mui/material';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
-    Kicker, GradText, CmdChip, ACCENTS, MONO_FONT, DISPLAY_FONT,
+    Kicker, GradText, CmdChip, BotAvatar, ACCENTS, MONO_FONT, DISPLAY_FONT,
     PRIMARY_BTN_SX, GHOST_BTN_SX,
 } from '../components/ui';
 
@@ -141,18 +141,11 @@ export default function Home() {
     const teasers = [
         {
             name: 'BeatByte', role: t('home.roleMusic'), text: t('home.beatTeaser'),
-            path: '/bots/music-bot', accent: ACCENTS.beat,
-            icon: <Box component="span" sx={{ fontSize: 26, color: '#fff', lineHeight: 1 }}>♫</Box>,
+            path: '/bots/music-bot', accent: ACCENTS.beat, avatar: 'beat',
         },
         {
             name: 'EarTastic', role: t('home.roleSound'), text: t('home.earTeaser'),
-            path: '/bots/soundboard-bot', accent: ACCENTS.ear,
-            icon: (
-                <Box component="svg" viewBox="0 0 512 512" sx={{ width: 26, height: 26 }}>
-                    <path fill="#fff" d="M280 96 176 190H104a24 24 0 0 0-24 24v84a24 24 0 0 0 24 24h72l104 94a16 16 0 0 0 26-12V108a16 16 0 0 0-26-12z" />
-                    <path d="M360 200a72 72 0 0 1 0 112" stroke="#fff" strokeWidth="30" fill="none" strokeLinecap="round" />
-                </Box>
-            ),
+            path: '/bots/soundboard-bot', accent: ACCENTS.ear, avatar: 'ear',
         },
     ];
 
@@ -282,14 +275,7 @@ export default function Home() {
                                     transform: 'translateY(-3px)',
                                 },
                             }}>
-                                <Box sx={{
-                                    width: 52, height: 52, borderRadius: '16px', flexShrink: 0,
-                                    background: `linear-gradient(135deg, ${bot.accent.main}, ${bot.accent.second})`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    boxShadow: `0 12px 34px -10px ${bot.accent.main}a6`,
-                                }}>
-                                    {bot.icon}
-                                </Box>
+                                <BotAvatar bot={bot.avatar} size={52} radius={16} />
                                 <Box sx={{ flex: 1, minWidth: 0 }}>
                                     <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 0.75 }}>
                                         <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: '1.25rem', letterSpacing: '-0.02em', color: '#fafafa' }}>

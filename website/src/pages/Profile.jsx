@@ -15,8 +15,8 @@ const fadeIn = keyframes`
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const BEATBYTE_AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128';
-const EARTASTIC_AVATAR = 'https://cdn.discordapp.com/avatars/1488966705488330932/96e1cfe3af1b12407f702d356d916038.png?size=128';
+import BEATBYTE_AVATAR from '../assets/beatbyte-avatar.png';
+import EARTASTIC_AVATAR from '../assets/eartastic-avatar.png';
 
 export default function Profile() {
     const { t, lang } = useLanguage();

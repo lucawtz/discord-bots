@@ -27,7 +27,7 @@ const fadeInUp = keyframes`
     to { opacity: 1; transform: translateY(0); }
 `;
 
-const AVATAR = 'https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128';
+import AVATAR from '../assets/beatbyte-avatar.png';
 
 export default function MusicBot() {
     const { t } = useLanguage();
