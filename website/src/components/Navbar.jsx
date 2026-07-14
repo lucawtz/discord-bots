@@ -9,6 +9,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
+import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
 import { useLanguage } from '../i18n/LanguageContext';
 import { DISCORD_LOGIN_URL, SUPPORT_INVITE } from '../config';
 import { BrandLogo, DISPLAY_FONT, PRIMARY_BTN_SX } from './ui';
@@ -140,56 +141,67 @@ export default function Navbar() {
                         })}
                     </Box>
 
-                    <Stack direction="row" spacing={1.75} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
-                        {/* Utility-Gruppe: Support | Sprache | Login als EINE segmentierte Leiste */}
-                        <Box sx={{
-                            display: 'flex', alignItems: 'center', height: 38,
-                            borderRadius: '11px', overflow: 'hidden',
-                            bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-                            '& > *': { height: 38, borderRadius: 0, minWidth: 0 },
-                            '& > * + *': { borderLeft: '1px solid rgba(255,255,255,0.08)' },
-                        }}>
-                            {/* Support-Server (Discord) */}
-                            <IconButton component="a" href={SUPPORT_INVITE} target="_blank" rel="noopener"
-                                aria-label={t('nav.support')} title={t('nav.support')}
-                                sx={{ color: '#a1a1aa', width: 42, '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' } }}>
-                                <DiscordIcon width={17} height={17} />
-                            </IconButton>
+                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
+                        {/* Support-Server — eigenes Icon (kein Discord-Logo, das gehoert dem Login) */}
+                        <IconButton component="a" href={SUPPORT_INVITE} target="_blank" rel="noopener"
+                            aria-label={t('nav.support')} title={t('nav.support')}
+                            sx={{
+                                color: '#a1a1aa', width: 40, height: 40, borderRadius: '10px',
+                                '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' },
+                            }}>
+                            <ForumOutlinedIcon sx={{ fontSize: 19 }} />
+                        </IconButton>
 
-                            {/* Language Selector */}
-                            <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
+                        {/* Sprachauswahl */}
+                        <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
+                            sx={{
+                                color: '#a1a1aa', fontSize: '0.82rem', fontWeight: 600,
+                                textTransform: 'none', height: 40, minWidth: 0, px: 1.25, gap: 0.7,
+                                borderRadius: '10px',
+                                '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' },
+                            }}>
+                            <Flag code={currentLang.flagCode} size={16} />
+                            {currentLang.code.toUpperCase()}
+                        </Button>
+
+                        {/* Login / eingeloggter Nutzer */}
+                        {user ? (
+                            <Button size="small" onClick={(e) => setAnchorEl(e.currentTarget)}
+                                aria-label={t('profile.title')} title={user.username}
                                 sx={{
-                                    color: '#a1a1aa', fontSize: '0.82rem', fontWeight: 600,
-                                    textTransform: 'none', px: 1.4, gap: 0.75,
-                                    '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' },
+                                    color: '#fafafa', textTransform: 'none', height: 40, gap: 0.85, px: 1.25,
+                                    borderRadius: '10px',
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
                                 }}>
-                                <Flag code={currentLang.flagCode} size={16} />
-                                {currentLang.code.toUpperCase()}
+                                <Avatar src={user.avatar} sx={{ width: 23, height: 23, fontSize: '0.7rem' }}>
+                                    {user.username?.[0]}
+                                </Avatar>
+                                <Typography sx={{ fontSize: '0.82rem', fontWeight: 500, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {user.username}
+                                </Typography>
                             </Button>
+                        ) : (
+                            <Button size="small" component="a" href={DISCORD_LOGIN_URL}
+                                aria-label={t('nav.signIn')} disableElevation
+                                sx={{
+                                    bgcolor: '#5865F2', color: '#fff', fontSize: '0.82rem', fontWeight: 600,
+                                    textTransform: 'none', height: 40, minWidth: 0, px: 1.6, gap: 0.7,
+                                    borderRadius: '10px', boxShadow: 'none',
+                                    '&:hover': { bgcolor: '#4954e0', boxShadow: 'none' },
+                                }}>
+                                <DiscordIcon width={16} height={16} style={{ color: '#fff' }} />
+                                {t('nav.signIn')}
+                            </Button>
+                        )}
 
-                            {/* Login / eingeloggter Nutzer */}
-                            {user ? (
-                                <Button size="small" onClick={(e) => setAnchorEl(e.currentTarget)}
-                                    aria-label={t('profile.title')} title={user.username}
-                                    sx={{
-                                        color: '#fafafa', textTransform: 'none', gap: 0.85, px: 1.35,
-                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
-                                    }}>
-                                    <Avatar src={user.avatar} sx={{ width: 23, height: 23, fontSize: '0.7rem' }}>
-                                        {user.username?.[0]}
-                                    </Avatar>
-                                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 500, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {user.username}
-                                    </Typography>
-                                </Button>
-                            ) : (
-                                <IconButton component="a" href={DISCORD_LOGIN_URL}
-                                    aria-label={t('nav.login')} title={t('nav.login')}
-                                    sx={{ color: '#a1a1aa', width: 42, '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' } }}>
-                                    <PersonIcon sx={{ fontSize: 19 }} />
-                                </IconButton>
-                            )}
-                        </Box>
+                        {/* Trenner vor der CTA */}
+                        <Box sx={{ width: '1px', height: 22, bgcolor: 'rgba(255,255,255,0.1)', mx: 0.75 }} />
+
+                        {/* Primäre CTA — klar abgesetzt */}
+                        <Button size="small" component={Link} to="/bots"
+                            sx={{ ...PRIMARY_BTN_SX, height: 40, px: 2.1, fontSize: '0.85rem', borderRadius: '11px' }}>
+                            {t('nav.invite')}
+                        </Button>
 
                         {/* Sprach-Menü (portalt, kein Layout-Einfluss) */}
                         <Menu anchorEl={langAnchor} open={Boolean(langAnchor)} onClose={() => setLangAnchor(null)}
@@ -231,12 +243,6 @@ export default function Navbar() {
                                 </MenuItem>
                             </Menu>
                         )}
-
-                        {/* Primäre CTA — klar abgesetzt */}
-                        <Button size="small" component={Link} to="/bots"
-                            sx={{ ...PRIMARY_BTN_SX, height: 38, px: 2.1, fontSize: '0.85rem', borderRadius: '11px' }}>
-                            {t('nav.invite')}
-                        </Button>
                     </Stack>
 
                     <IconButton sx={{ display: { md: 'none' }, color: '#fafafa' }} onClick={() => setMobileOpen(true)}>
@@ -280,7 +286,7 @@ export default function Navbar() {
                     </Button>
 
                     <Button fullWidth component="a" href={SUPPORT_INVITE} target="_blank" rel="noopener"
-                        startIcon={<DiscordIcon width={18} height={18} />}
+                        startIcon={<ForumOutlinedIcon sx={{ fontSize: 18 }} />}
                         sx={{
                             mt: 1, height: 42, borderRadius: '10px', color: '#a1a1aa',
                             bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
@@ -325,7 +331,7 @@ export default function Navbar() {
                         </Stack>
                     ) : (
                         <Button fullWidth href={DISCORD_LOGIN_URL}
-                            startIcon={<PersonIcon />}
+                            startIcon={<DiscordIcon />}
                             sx={{
                                 mt: 1, bgcolor: '#5865F2', color: '#fff', height: 42, borderRadius: '10px',
                                 '&:hover': { bgcolor: '#4954e0' },
