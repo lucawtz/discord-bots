@@ -230,3 +230,134 @@ export function EarMockup({ t }) {
         </DiscordMsg>
     );
 }
+
+// ── Kompakte Feature-Embeds fuer die Galerie-Raster der Detailseiten ──────────
+// Statisch (keine Float-Animation), auf Kachelbreite ausgelegt. Bilden echte
+// Bot-Ausgaben nach (Queue, Playlist-Import, Filter, Auto-DJ, Upload, Favoriten).
+
+// Schlanker Discord-Embed-Rahmen mit Titelzeile + optionalem Footer.
+function MiniEmbed({ accent = '#6E41CC', icon, title, children, footer }) {
+    return (
+        <Box sx={{ bgcolor: DC.embed, borderRadius: '4px', borderLeft: `4px solid ${accent}`, p: '11px 15px 13px', width: '100%' }}>
+            {title && (
+                <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+                    {icon && <Box component="span" sx={{ fontSize: '0.95rem', lineHeight: 1 }}>{icon}</Box>}
+                    <Typography sx={{ fontSize: '0.9rem', fontWeight: 700, color: DC.heading }}>{title}</Typography>
+                </Stack>
+            )}
+            {children}
+            {footer && <Typography sx={{ fontSize: '0.68rem', color: DC.muted, mt: 1 }}>{footer}</Typography>}
+        </Box>
+    );
+}
+
+// Eine Titelzeile im Queue-/Listen-Stil: Nummer · Titel — Artist · Dauer
+function TrackRow({ n, title, artist, dur, dim }) {
+    return (
+        <Stack direction="row" alignItems="baseline" spacing={1} sx={{ py: 0.35 }}>
+            {n != null && <Typography sx={{ fontFamily: MONO_FONT, fontSize: '0.72rem', color: DC.muted, width: 16, flexShrink: 0 }}>{n}</Typography>}
+            <Typography sx={{ fontSize: '0.8rem', color: dim ? DC.text : DC.heading, fontWeight: dim ? 400 : 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {title} <Box component="span" sx={{ color: DC.muted, fontWeight: 400 }}>— {artist}</Box>
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+            {dur && <Typography sx={{ fontFamily: MONO_FONT, fontSize: '0.7rem', color: DC.muted, flexShrink: 0 }}>{dur}</Typography>}
+        </Stack>
+    );
+}
+
+export function QueueMock() {
+    return (
+        <MiniEmbed accent="#6E41CC" icon="📋" title="Warteschlange" footer="4 Titel · 14:32 gesamt">
+            <Typography sx={{ fontSize: '0.72rem', color: DC.muted, mb: 0.5 }}>▶️ Jetzt: <Box component="span" sx={{ color: DC.heading, fontWeight: 600 }}>Strobe</Box> — deadmau5</Typography>
+            <TrackRow n={1} title="Opus" artist="Eric Prydz" dur="9:04" />
+            <TrackRow n={2} title="Genesis" artist="Justice" dur="3:54" />
+            <TrackRow n={3} title="Ghosts 'n' Stuff" artist="deadmau5" dur="3:20" />
+        </MiniEmbed>
+    );
+}
+
+export function PlaylistMock() {
+    return (
+        <MiniEmbed accent="#1DB954" icon="🎵" title="Playlist importiert" footer="Quelle: Spotify">
+            <Typography sx={{ fontSize: '0.82rem', color: DC.text, mb: 0.75 }}>
+                <Box component="span" sx={{ fontWeight: 700, color: DC.heading }}>Chill Vibes</Box> · 32 Titel hinzugefuegt
+            </Typography>
+            <TrackRow n={1} title="Nightcall" artist="Kavinsky" dim />
+            <TrackRow n={2} title="Midnight City" artist="M83" dim />
+            <TrackRow n={3} title="Instant Crush" artist="Daft Punk" dim />
+        </MiniEmbed>
+    );
+}
+
+export function FilterMock() {
+    const filters = [['Bassboost', true], ['Nightcore', false], ['8D', false], ['Vaporwave', false], ['Karaoke', false]];
+    return (
+        <MiniEmbed accent="#6E41CC" icon="🎛️" title="Audio Filter" footer="Bassboost aktiv">
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                {filters.map(([name, on]) => (
+                    <Box key={name} sx={{
+                        height: 30, px: 1.25, borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: 0.5,
+                        fontSize: '0.75rem', fontWeight: 600,
+                        bgcolor: on ? 'rgba(110,65,204,0.25)' : 'rgba(255,255,255,0.05)',
+                        color: on ? '#d8b4fe' : DC.text,
+                        border: `1px solid ${on ? 'rgba(110,65,204,0.6)' : 'rgba(255,255,255,0.08)'}`,
+                    }}>
+                        {on && <Box component="span" sx={{ fontSize: '0.7rem' }}>✓</Box>}{name}
+                    </Box>
+                ))}
+            </Stack>
+        </MiniEmbed>
+    );
+}
+
+export function AutoDjMock() {
+    return (
+        <MiniEmbed accent="#6E41CC" icon="🤖" title="Auto-DJ aktiv" footer="Fuellt die Queue automatisch">
+            <Typography sx={{ fontSize: '0.82rem', color: DC.text, mb: 0.75 }}>
+                Spielt endlos aehnliche Tracks – passend zu deinem Geschmack.
+            </Typography>
+            <TrackRow title="Als Naechstes: Faded" artist="Alan Walker" dim />
+            <TrackRow title="Danach: Wake Me Up" artist="Avicii" dim />
+        </MiniEmbed>
+    );
+}
+
+export function UploadMock() {
+    return (
+        <MiniEmbed accent="#22d3ee" icon="⬆️" title="Sound hochladen" footer="mp3 · wav · ogg — max. 5 MB">
+            <Box sx={{
+                border: '1.5px dashed rgba(34,211,238,0.4)', borderRadius: '8px', py: 1.75, mb: 1,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5,
+                bgcolor: 'rgba(34,211,238,0.04)',
+            }}>
+                <Box component="span" sx={{ fontSize: '1.3rem' }}>📁</Box>
+                <Typography sx={{ fontSize: '0.76rem', color: DC.text }}>Datei ablegen oder auswaehlen</Typography>
+            </Box>
+            <Stack direction="row" spacing={0.75}>
+                <Box sx={{ flex: 1, height: 30, borderRadius: '6px', bgcolor: DC.code, border: '1px solid #111214', display: 'flex', alignItems: 'center', px: 1 }}>
+                    <Typography sx={{ fontSize: '0.74rem', color: DC.muted }}>airhorn.mp3</Typography>
+                </Box>
+                <Box sx={{ height: 30, px: 1.5, borderRadius: '6px', bgcolor: '#22d3ee', color: '#06232b', display: 'flex', alignItems: 'center', fontSize: '0.76rem', fontWeight: 700 }}>Upload</Box>
+            </Stack>
+        </MiniEmbed>
+    );
+}
+
+export function FavoritesMock() {
+    const favs = ['Vine Boom', 'Tada', 'Airhorn', 'Bruh'];
+    return (
+        <MiniEmbed accent="#22d3ee" icon="⭐" title="Favoriten" footer="Schnellzugriff · 1 Klick zum Abspielen">
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                {favs.map((n) => (
+                    <Box key={n} sx={{
+                        height: 30, px: 1.25, borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: 0.5,
+                        fontSize: '0.75rem', fontWeight: 600, color: '#a5f3fc',
+                        bgcolor: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.35)',
+                    }}>
+                        <Box component="span" sx={{ fontSize: '0.7rem' }}>★</Box>{n}
+                    </Box>
+                ))}
+            </Stack>
+        </MiniEmbed>
+    );
+}

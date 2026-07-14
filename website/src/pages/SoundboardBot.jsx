@@ -10,9 +10,9 @@ import TuneIcon from '@mui/icons-material/Tune';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AddIcon from '@mui/icons-material/Add';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import ImageIcon from '@mui/icons-material/Image';
-import PlayCircleIcon from '@mui/icons-material/PlayCircle';
 import CommandList from '../components/CommandList';
+import { EarMockup, UploadMock, FavoritesMock } from '../components/DiscordMockups';
+import { DashboardMock } from '../components/AppMockups';
 import { SOUNDBOARD_INVITE } from '../config';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -137,15 +137,9 @@ export default function SoundboardBot() {
                                 ))}
                             </Stack>
                         </Box>
-                        {/* Discord Screenshot Placeholder */}
-                        <Box sx={{
-                            width: { xs: '100%', md: 400 }, aspectRatio: '4/3', borderRadius: 3,
-                            bgcolor: '#18181b', border: '1px solid rgba(255,255,255,0.06)', flexShrink: 0,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1,
-                            background: `linear-gradient(135deg, ${ACCENT}06 0%, rgba(91,141,239,0.03) 100%)`,
-                        }}>
-                            <ImageIcon sx={{ fontSize: 40, opacity: 0.1 }} />
-                            <Typography variant="caption" color="text.disabled">Soundboard Panel</Typography>
+                        {/* Soundboard-Panel-Mockup */}
+                        <Box sx={{ width: { xs: '100%', md: 440 }, flexShrink: 0 }}>
+                            <EarMockup t={t} />
                         </Box>
                     </Stack>
                 </Container>
@@ -172,15 +166,9 @@ export default function SoundboardBot() {
                                 soundboard.bytebots.de
                             </Button>
                         </Box>
-                        {/* Dashboard Screenshot Placeholder */}
-                        <Box sx={{
-                            width: { xs: '100%', md: 480 }, aspectRatio: '16/10', borderRadius: 4,
-                            bgcolor: '#18181b', border: `1px solid ${ACCENT}12`, flexShrink: 0,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1,
-                            background: `linear-gradient(135deg, ${ACCENT}06 0%, rgba(91,141,239,0.03) 100%)`,
-                        }}>
-                            <ImageIcon sx={{ fontSize: 40, opacity: 0.1 }} />
-                            <Typography variant="caption" color="text.disabled">Web Dashboard</Typography>
+                        {/* Web-Dashboard-Mockup */}
+                        <Box sx={{ width: { xs: '100%', md: 520 }, flexShrink: 0 }}>
+                            <DashboardMock />
                         </Box>
                     </Stack>
                 </Container>
@@ -220,31 +208,15 @@ export default function SoundboardBot() {
                         </Typography>
                     </Box>
 
-                    {/* Video Placeholder */}
-                    <Box sx={{
-                        aspectRatio: '16/9', borderRadius: 4, bgcolor: '#18181b', mb: 2.5,
-                        border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1,
-                        background: `linear-gradient(135deg, ${ACCENT}06 0%, rgba(91,141,239,0.03) 100%)`,
-                        cursor: 'pointer', transition: 'all 0.2s',
-                        '&:hover': { borderColor: `${ACCENT}25` },
-                    }}>
-                        <PlayCircleIcon sx={{ fontSize: 64, color: ACCENT, opacity: 0.2 }} />
-                        <Typography variant="caption" color="text.disabled">Video — EarTastic in Action</Typography>
-                    </Box>
-
-                    {/* Screenshot Grid */}
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}>
-                        {(Array.isArray(t('soundboardBot.screenshots')) ? t('soundboardBot.screenshots') : []).map((label, i) => (
+                    {/* Feature-Mockups (statt echter Screenshots) */}
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2.5 }}>
+                        {[<UploadMock />, <FavoritesMock />].map((mock, i) => (
                             <Box key={i} sx={{
-                                aspectRatio: '16/10', borderRadius: 3, bgcolor: '#18181b',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexDirection: 'column', gap: 0.75,
+                                p: { xs: 2, sm: 2.75 }, borderRadius: 3, bgcolor: '#141419',
+                                border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center',
                                 transition: 'all 0.2s', '&:hover': { borderColor: `${ACCENT}25` },
                             }}>
-                                <ImageIcon sx={{ fontSize: 28, opacity: 0.08 }} />
-                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.72rem' }}>{label}</Typography>
+                                {mock}
                             </Box>
                         ))}
                     </Box>

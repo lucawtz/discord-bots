@@ -15,9 +15,8 @@ import AddIcon from '@mui/icons-material/Add';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SaveIcon from '@mui/icons-material/Save';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import ImageIcon from '@mui/icons-material/Image';
-import PlayCircleIcon from '@mui/icons-material/PlayCircle';
-import { BeatMockup } from '../components/DiscordMockups';
+import { BeatMockup, QueueMock, PlaylistMock, FilterMock, AutoDjMock } from '../components/DiscordMockups';
+import { WebPlayerMock } from '../components/AppMockups';
 import CommandList from '../components/CommandList';
 import { BEATBYTE_INVITE } from '../config';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -200,15 +199,9 @@ export default function MusicBot() {
                                 beatbyte.bytebots.de
                             </Button>
                         </Box>
-                        {/* Web App Screenshot Placeholder */}
-                        <Box sx={{
-                            width: { xs: '100%', md: 480 }, aspectRatio: '16/10', borderRadius: 4,
-                            bgcolor: '#18181b', border: '1px solid rgba(168,85,247,0.08)', flexShrink: 0,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1,
-                            background: 'linear-gradient(135deg, rgba(168,85,247,0.04) 0%, rgba(56,189,248,0.02) 100%)',
-                        }}>
-                            <ImageIcon sx={{ fontSize: 40, opacity: 0.1 }} />
-                            <Typography variant="caption" color="text.disabled">Web Player Screenshot</Typography>
+                        {/* Web-Player-Mockup */}
+                        <Box sx={{ width: { xs: '100%', md: 520 }, flexShrink: 0 }}>
+                            <WebPlayerMock />
                         </Box>
                     </Stack>
                 </Container>
@@ -248,39 +241,15 @@ export default function MusicBot() {
                         </Typography>
                     </Box>
 
-                    {/* Video Placeholder */}
-                    <Box sx={{
-                        aspectRatio: '16/9', borderRadius: 4, bgcolor: '#18181b', mb: 2.5,
-                        border: '1px solid rgba(168,85,247,0.06)', overflow: 'hidden',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1,
-                        background: 'linear-gradient(135deg, rgba(168,85,247,0.04) 0%, rgba(56,189,248,0.02) 100%)',
-                        cursor: 'pointer', transition: 'all 0.2s',
-                        '&:hover': { borderColor: 'rgba(168,85,247,0.15)' },
-                    }}>
-                        <PlayCircleIcon sx={{ fontSize: 64, color: '#a855f7', opacity: 0.2 }} />
-                        <Typography variant="caption" color="text.disabled">{t('musicBot.videoPlaceholder')}</Typography>
-                    </Box>
-
-                    {/* Screenshot Grid */}
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-                        {[
-                            'Now Playing Embed',
-                            'Queue',
-                            'Web Player',
-                            'Playlist Import',
-                            'Audio Filter',
-                            'Auto-DJ',
-                        ].map((label, i) => (
+                    {/* Feature-Mockups (statt echter Screenshots) */}
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2.5 }}>
+                        {[<QueueMock />, <PlaylistMock />, <FilterMock />, <AutoDjMock />].map((mock, i) => (
                             <Box key={i} sx={{
-                                aspectRatio: '16/10', borderRadius: 3, bgcolor: '#18181b',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexDirection: 'column', gap: 0.75,
-                                transition: 'all 0.2s',
-                                '&:hover': { borderColor: 'rgba(168,85,247,0.15)' },
+                                p: { xs: 2, sm: 2.75 }, borderRadius: 3, bgcolor: '#141419',
+                                border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center',
+                                transition: 'all 0.2s', '&:hover': { borderColor: 'rgba(168,85,247,0.18)' },
                             }}>
-                                <ImageIcon sx={{ fontSize: 28, opacity: 0.08 }} />
-                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.72rem' }}>{label}</Typography>
+                                {mock}
                             </Box>
                         ))}
                     </Box>
