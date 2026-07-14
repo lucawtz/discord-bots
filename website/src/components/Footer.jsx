@@ -16,6 +16,7 @@ export default function Footer() {
         { label: t('nav.support'), href: SUPPORT_INVITE, external: true },
         { label: 'Impressum', path: '/impressum' },
         { label: 'Datenschutz', path: '/datenschutz' },
+        { label: t('nutzungsbedingungen.title'), path: '/nutzungsbedingungen' },
     ];
 
     return (

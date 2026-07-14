@@ -15,6 +15,7 @@ const Status = lazy(() => import('./pages/Status'));
 const Changelog = lazy(() => import('./pages/Changelog'));
 const Impressum = lazy(() => import('./pages/Impressum'));
 const Datenschutz = lazy(() => import('./pages/Datenschutz'));
+const Nutzungsbedingungen = lazy(() => import('./pages/Nutzungsbedingungen'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
                         <Route path="/changelog" element={<Changelog />} />
                         <Route path="/impressum" element={<Impressum />} />
                         <Route path="/datenschutz" element={<Datenschutz />} />
+                        <Route path="/nutzungsbedingungen" element={<Nutzungsbedingungen />} />
                         <Route path="*" element={<NotFound />} />
                     </Route>
                 </Routes>

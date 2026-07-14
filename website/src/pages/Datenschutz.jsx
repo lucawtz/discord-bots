@@ -5,6 +5,7 @@ export default function Datenschutz() {
   const { t } = useLanguage();
 
   const s3Items = t('datenschutz.s3Items');
+  const s6Items = t('datenschutz.s6Items');
   const s7Items = t('datenschutz.s7Items');
 
   const renderWithLineBreaks = (text) => {
@@ -118,9 +119,29 @@ export default function Datenschutz() {
         <Typography
           variant="body2"
           color="text.secondary"
-          sx={{ mb: 3, lineHeight: 1.8 }}
+          sx={{ mb: 1, lineHeight: 1.8 }}
         >
           {t('datenschutz.s6Text')}
+        </Typography>
+        <Box
+          component="ul"
+          sx={{
+            color: "text.secondary",
+            mb: 1,
+            pl: 3,
+            "& li": { fontSize: "0.875rem", mb: 0.5, lineHeight: 1.7 },
+          }}
+        >
+          {(Array.isArray(s6Items) ? s6Items : []).map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
+        </Box>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ mb: 3, lineHeight: 1.8 }}
+        >
+          {t('datenschutz.s6Footer')}
         </Typography>
 
         {/* 7. Betroffenenrechte */}
