@@ -38,6 +38,7 @@ export default {
         login: 'Mit Discord anmelden',
         logout: 'Abmelden',
         invite: 'Bot einladen',
+        support: 'Support',
     },
     footer: {
         product: 'Produkt',

@@ -10,7 +10,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import { useLanguage } from '../i18n/LanguageContext';
-import { DISCORD_LOGIN_URL } from '../config';
+import { DISCORD_LOGIN_URL, SUPPORT_INVITE } from '../config';
 import { BrandLogo, DISPLAY_FONT, PRIMARY_BTN_SX } from './ui';
 
 function DiscordIcon(props) {
@@ -136,6 +136,17 @@ export default function Navbar() {
                     </Box>
 
                     <Stack direction="row" spacing={1.25} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
+                        {/* Support-Server (Discord) */}
+                        <IconButton component="a" href={SUPPORT_INVITE} target="_blank" rel="noopener"
+                            aria-label={t('nav.support')} title={t('nav.support')}
+                            sx={{
+                                color: '#a1a1aa', width: 34, height: 34, borderRadius: '9px',
+                                bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
+                                '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.08)' },
+                            }}>
+                            <DiscordIcon width={17} height={17} />
+                        </IconButton>
+
                         {/* Language Selector */}
                         <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
                             sx={{
@@ -255,6 +266,16 @@ export default function Navbar() {
                     <Button fullWidth component={Link} to="/bots" onClick={() => setMobileOpen(false)}
                         sx={{ ...PRIMARY_BTN_SX, mt: 1, height: 42 }}>
                         {t('nav.invite')}
+                    </Button>
+
+                    <Button fullWidth component="a" href={SUPPORT_INVITE} target="_blank" rel="noopener"
+                        startIcon={<DiscordIcon width={18} height={18} />}
+                        sx={{
+                            mt: 1, height: 42, borderRadius: '10px', color: '#a1a1aa',
+                            bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
+                            '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.08)' },
+                        }}>
+                        {t('nav.support')}
                     </Button>
 
                     <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.07)' }} />

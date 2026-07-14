@@ -1,6 +1,7 @@
 import { Box, Typography, Link as MuiLink, Stack, Container } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
+import { SUPPORT_INVITE } from '../config';
 import { BrandLogo, DISPLAY_FONT } from './ui';
 
 export default function Footer() {
@@ -12,6 +13,7 @@ export default function Footer() {
         { label: t('nav.docs'), path: '/guide' },
         { label: 'Status', path: '/status' },
         { label: 'Changelog', path: '/changelog' },
+        { label: t('nav.support'), href: SUPPORT_INVITE, external: true },
         { label: 'Impressum', path: '/impressum' },
         { label: 'Datenschutz', path: '/datenschutz' },
     ];
@@ -34,7 +36,10 @@ export default function Footer() {
 
                     <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap spacing={3}>
                         {links.map((link) => (
-                            <MuiLink key={link.label} component={Link} to={link.path}
+                            <MuiLink key={link.label}
+                                {...(link.external
+                                    ? { href: link.href, target: '_blank', rel: 'noopener' }
+                                    : { component: Link, to: link.path })}
                                 underline="none"
                                 sx={{ color: '#a1a1aa', fontSize: '0.875rem', '&:hover': { color: '#fafafa' }, transition: 'color 0.15s' }}>
                                 {link.label}
