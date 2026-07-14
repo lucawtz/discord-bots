@@ -1909,6 +1909,36 @@ function releaseNowPlaying(queue) {
     if (msg) setTimeout(() => msg.delete().catch(() => {}), DELETE_NOWPLAYING_MS);
 }
 
+// Aktuellen Song mit dem gesetzten queue.filter/queue.eqBands ab der aktuellen
+// Position neu streamen. Wird vom /filter-Command UND vom Web-App-API-Handler
+// genutzt, damit der Filter auf BEIDEN Wegen sofort auf den laufenden Track wirkt.
+// (Vorher hat nur der Command neu gestreamt; die API setzte bloss queue.filter,
+// sodass der Filter im Web-Player erst beim naechsten Song hoerbar wurde.)
+// queue.filter muss vor dem Aufruf gesetzt sein. Gibt false zurueck, wenn nichts
+// laeuft (dann bleibt der Filter fuer den naechsten Song gesetzt).
+function restartCurrentWithFilter(queue) {
+    if (!queue?.current || !queue.player) return false;
+    const elapsed = getElapsed(queue);
+    for (const proc of queue.processes) {
+        if (!proc.killed) proc.kill();
+    }
+    queue.processes.clear();
+
+    const stream = createStream(queue.current.url, queue, (err) => {
+        if (queue.channel) autoDelete(queue.channel.send(`❌ Filter-Fehler: ${err.message}`), DELETE_ERROR_MS);
+    }, elapsed);
+
+    const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
+    resource.volume.setVolume(queue.volume);
+    queue._resource = resource;
+    queue.player.play(resource);
+    queue._playbackStart = Date.now();
+    queue._seekOffset = elapsed;
+
+    updateNowPlayingMsg(queue);
+    return true;
+}
+
 // ── Commands laden ────────────────────────────────────────────────
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
@@ -1923,7 +1953,7 @@ for (const file of commandFiles) {
 const ctx = {
     db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, preResolveTrack, spotifyFetch, searchPlaylist, isPlaylistUrl, fetchPlaylistMeta, resolvePlaylistInBackground, fetchSpotifyEmbed,
     playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
-    prefetchNext, ensureAlbumArt, releaseNowPlaying,
+    prefetchNext, ensureAlbumArt, releaseNowPlaying, restartCurrentWithFilter,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,

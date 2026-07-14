@@ -925,6 +925,10 @@ function startAPI(ctx, client) {
                     if (filter === 'custom' && Array.isArray(eqBands) && eqBands.length === 7) {
                         queue.eqBands = eqBands.map(v => Math.max(-12, Math.min(12, parseInt(v) || 0)));
                     }
+                    // Filter sofort auf den laufenden Track anwenden (Song ab aktueller
+                    // Position mit dem Filter neu streamen) — identisch zum /filter-Command.
+                    // No-op, wenn gerade nichts laeuft; der Filter greift dann beim naechsten Song.
+                    ctx.restartCurrentWithFilter(queue);
                     broadcast('stateUpdate', getGuildState(guildId));
                     return json(res, { ok: true, filter, eqBands: queue.eqBands });
                 }
