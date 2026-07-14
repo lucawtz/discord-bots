@@ -77,7 +77,7 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 - [x] Kanäle anlegen: Info + eigene Support-Bereiche pro Bot (BeatByte / EarTastic) + Community
 - [x] Servereinstellungen → **Community aktivieren** (Pflicht fürs App Directory später)
 - [x] Permanenten Invite-Link erstellen (nicht ablaufend) und notieren
-- [ ] Link auf der Website einbauen (Footer / Navbar)
+- [x] Link auf der Website einbauen (Footer / Navbar) — `SUPPORT_INVITE`, Footer + Navbar (Desktop-Icon + Mobile), 2026-07-13
 - [x] **EarTastic** auf den Server einladen (damit Nutzer beide Bots dort testen können) — live bestätigt 2026-07-13
 
 > **Server-Infos:** Guild-ID `1525977525400895668` · Invite https://discord.gg/F5UdSh5NnY
@@ -103,7 +103,8 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 **Mit Code (Repo — kann Claude umsetzen):**
 - [ ] **Changelog→`#changelog`-Webhook**: neue `CHANGELOG.md`-Einträge automatisch nach Discord
       posten → erledigt „Changelog auf Support-Server aktuell halten" dauerhaft
-- [ ] **`/support`- + `/invite`-Command** in beide Bots + dezenter Support-Link im Embed-Footer
+- [x] **`/support`- + `/invite`-Command** in beide Bots (2026-07-14, `libs/links.js`; noch Prod-`npm run deploy`).
+      Offen bleibt nur: `bytebots.de`-Footer auch in die Now-Playing-/Sound-Embeds (s. „Ideen für später")
 - [ ] **`#status`-Kanal** aus den Web-APIs (Ports 3001/3002): „🟢 BeatByte / 🟢 EarTastic online"
 
 ### Rechtliche Seiten
@@ -176,7 +177,13 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
       Verwaltungs-/Moderations-Bot ausbauen und verkaufen — z.B. Moderation (Warn/Mute/Ban,
       AutoMod), Reaction-Roles, Willkommen/Onboarding, Ticket-System, Audit-Logging. Rundet das
       Trio mit BeatByte + EarTastic ab, gleiche deutschsprachige Nische, gleiche Web-Dashboard-Logik.
-- [ ] `/invite`-Command in beide Bots (teilt Invite-Link + Website)
+- [ ] **Mehr Sprachen für die Bots (Standardsprachen):** Bot-UI ist aktuell nur Deutsch
+      (CLAUDE.md-Konvention). Weitere gängige Sprachen ergänzen — Englisch zuerst, dann z.B.
+      Spanisch/Französisch/Portugiesisch. Braucht eine i18n-Ebene für die Bot-Antworten +
+      Discord-Command-Lokalisierung (`setNameLocalizations`/`setDescriptionLocalizations`),
+      Sprachwahl pro Server oder per Discord-Locale. „Deutsch" bleibt USP, mehrsprachig
+      vergrößert die Reichweite (App Directory ist englisch). Website-i18n (`de.js`/`en.js`) analog erweitern.
+- [x] `/invite`-Command in beide Bots (teilt Invite-Link + Website) — erledigt 2026-07-14 (zusammen mit `/support`)
 - [ ] Dezenter „bytebots.de"-Footer in Embeds
 - [ ] Demo-Video/GIF für Website & Listings
 - [ ] SEO-Content: „Discord Musik Bot deutsch", „Rythm Alternative"
