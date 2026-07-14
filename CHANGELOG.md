@@ -5,6 +5,10 @@ Fortlaufendes Log aller Änderungen — auch solche, die NICHT im Code landen
 Neueste Einträge oben. Format: `## YYYY-MM-DD`, ein Bullet pro Änderung,
 mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
+## 2026-07-15
+
+- **infra:** **Alle 3 Apps auf Prod deployed** (Coolify-API, sequenziell wegen RAM-Enge). Damit sind die zuletzt gepushten Website-Aenderungen live: Support-Server-Link in Footer/Navbar (`916f305`) und die Bot-Detailseiten mit gerenderten Mockups (`4d63666`) — das war der einzige offene Deploy (Bots waren schon aktuell). Deployment-UUIDs `eisbner…` (website), `qzi3bo…` (music-bot), `de4lve…` (soundboard-bot), alle `finished`. Verifiziert: `bytebots.de` HTTP 200, `beatbyte.bytebots.de/status` HTTP 200, `soundboard.bytebots.de/api/health` `{status:ok}` mit frischer Uptime (Container neu gestartet). Commit `034d767` (Changelog + Marketing-Copy `marketing/support-server.md` + `topgg-beatbyte.md` + `dbl-background-beatbyte.png`) auf `coolify-deploy` gepusht — reine Copy/Docs, landet in keinem Image.
+
 ## 2026-07-14
 
 - **infra:** **Profilbild fuer den ByteBots-Admin-Bot** gesetzt (vorher keins). Design „Schild-Rahmen" im ByteBots-Stil (dunkler Radial-Tile, Gradient-Schild-Umriss `#a855f7→#d946ef→#22d3ee` mit Slash + Block-Cursor aus Logo-Variante 1c) — signalisiert „Verwaltung", bleibt Teil der Familie. Aus 3 Entwuerfen (Artifact-Vorschau) gewaehlt, SVG→PNG via `@resvg/resvg-js` (1024×1024) gerendert und an **beiden** Stellen gesetzt: **Bot-Avatar** (`PATCH /users/@me`, Chats/Mitgliederliste) **und App-Icon** (`PATCH /applications/@me`, Developer-Portal/OAuth-„Einladen"-Screen/App-Directory — vorher „BA"-Platzhalter), beide mit `ADMIN_DISCORD_TOKEN`. Discord-CDN liefert beide aus (HTTP 200, Hash `6ca8a8c2…`). Quelle liegt in `.devtools/bytebots-admin-avatar.svg` (gitignored) — bei Bedarf in ein getracktes Asset-Verzeichnis verschieben.
