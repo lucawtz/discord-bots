@@ -801,7 +801,7 @@ function App() {
     return (
       <div className="app">
         <aside className="sidebar">
-          <div className="sidebar-top"><div className="sidebar-brand"><img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="brand-logo" /><span className="brand-text">BeatByte</span></div></div>
+          <div className="sidebar-top"><div className="sidebar-brand"><img src="/beatbyte-avatar.png" alt="BeatByte" className="brand-logo" /><span className="brand-text">BeatByte</span></div></div>
           <nav className="sidebar-nav">
             {[1,2,3,4].map(i => <div key={i} className="skeleton-line" style={{ height: 36, margin: '2px 8px', borderRadius: 8 }} />)}
           </nav>
@@ -832,7 +832,7 @@ function App() {
         <div className="setup">
           <div className="setup-card">
             <div className="setup-logo">
-              <img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="setup-logo-icon" />
+              <img src="/beatbyte-avatar.png" alt="BeatByte" className="setup-logo-icon" />
             </div>
             <h1>Server wählen</h1>
             {oauthUser && <p className="setup-subtitle">Eingeloggt als {oauthUser.username}</p>}
@@ -857,7 +857,7 @@ function App() {
       <div className="setup">
         <div className="setup-card">
           <div className="setup-logo">
-            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="setup-logo-icon" />
+            <img src="/beatbyte-avatar.png" alt="BeatByte" className="setup-logo-icon" />
           </div>
           <h1>BeatByte</h1>
           <p className="setup-subtitle">Steuere deine Musik direkt im Browser</p>
@@ -1988,7 +1988,7 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-top">
           <div className="sidebar-brand" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
-            <img src="https://cdn.discordapp.com/avatars/1488919318472298647/4764a9259454d44d47e75034c1f9c03b.png?size=128" alt="BeatByte" className="brand-logo" />
+            <img src="/beatbyte-avatar.png" alt="BeatByte" className="brand-logo" />
             <span className="brand-text">BeatByte</span>
           </div>
         </div>
