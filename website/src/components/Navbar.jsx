@@ -12,6 +12,8 @@ import PersonIcon from '@mui/icons-material/Person';
 import { useLanguage } from '../i18n/LanguageContext';
 import { DISCORD_LOGIN_URL, SUPPORT_INVITE } from '../config';
 import { BrandLogo, DISPLAY_FONT, PRIMARY_BTN_SX } from './ui';
+import flagDe from '../assets/flag-de.svg';
+import flagGb from '../assets/flag-gb.svg';
 
 function DiscordIcon(props) {
     return (
@@ -21,9 +23,12 @@ function DiscordIcon(props) {
     );
 }
 
+// Lokal gebuendelte Flaggen (kein externer flagcdn-Request -> bricht nicht durch
+// Ad-Blocker/Netz/CSP; rendert immer scharf)
+const FLAGS = { de: flagDe, gb: flagGb };
 function Flag({ code, size = 20 }) {
-    return <Box component="img" src={`https://flagcdn.com/w40/${code}.png`} alt=""
-        sx={{ width: size, height: size, objectFit: 'cover', borderRadius: '50%', display: 'block' }} />;
+    return <Box component="img" src={FLAGS[code] ?? flagDe} alt=""
+        sx={{ width: size, height: size, objectFit: 'cover', borderRadius: '50%', display: 'block', flexShrink: 0 }} />;
 }
 
 const languages = [
@@ -210,16 +215,15 @@ export default function Navbar() {
                                 </Menu>
                             </>
                         ) : (
-                            <Button size="small" href={DISCORD_LOGIN_URL}
-                                startIcon={<DiscordIcon width={16} height={16} />}
+                            <IconButton component="a" href={DISCORD_LOGIN_URL}
+                                aria-label={t('nav.login')} title={t('nav.login')}
                                 sx={{
-                                    bgcolor: '#5865F2', color: '#fff', px: 1.9, height: 38,
-                                    fontSize: '0.85rem', fontWeight: 600, borderRadius: '10px',
-                                    transition: 'all 0.18s',
-                                    '&:hover': { bgcolor: '#4954e0', transform: 'translateY(-1px)' },
+                                    color: '#a1a1aa', width: 34, height: 34, borderRadius: '9px',
+                                    bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
+                                    '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.08)' },
                                 }}>
-                                {t('nav.login')}
-                            </Button>
+                                <PersonIcon sx={{ fontSize: 19 }} />
+                            </IconButton>
                         )}
 
                         <Button size="small" component={Link} to="/bots"
@@ -314,7 +318,7 @@ export default function Navbar() {
                         </Stack>
                     ) : (
                         <Button fullWidth href={DISCORD_LOGIN_URL}
-                            startIcon={<DiscordIcon />}
+                            startIcon={<PersonIcon />}
                             sx={{
                                 mt: 1, bgcolor: '#5865F2', color: '#fff', height: 42, borderRadius: '10px',
                                 '&:hover': { bgcolor: '#4954e0' },
