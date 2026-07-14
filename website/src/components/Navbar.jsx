@@ -140,30 +140,58 @@ export default function Navbar() {
                         })}
                     </Box>
 
-                    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
-                        {/* Support-Server (Discord) */}
-                        <IconButton component="a" href={SUPPORT_INVITE} target="_blank" rel="noopener"
-                            aria-label={t('nav.support')} title={t('nav.support')}
-                            sx={{
-                                color: '#a1a1aa', width: 34, height: 34, borderRadius: '9px',
-                                bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
-                                '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.08)' },
-                            }}>
-                            <DiscordIcon width={17} height={17} />
-                        </IconButton>
+                    <Stack direction="row" spacing={1.75} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
+                        {/* Utility-Gruppe: Support | Sprache | Login als EINE segmentierte Leiste */}
+                        <Box sx={{
+                            display: 'flex', alignItems: 'center', height: 38,
+                            borderRadius: '11px', overflow: 'hidden',
+                            bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+                            '& > *': { height: 38, borderRadius: 0, minWidth: 0 },
+                            '& > * + *': { borderLeft: '1px solid rgba(255,255,255,0.08)' },
+                        }}>
+                            {/* Support-Server (Discord) */}
+                            <IconButton component="a" href={SUPPORT_INVITE} target="_blank" rel="noopener"
+                                aria-label={t('nav.support')} title={t('nav.support')}
+                                sx={{ color: '#a1a1aa', width: 42, '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' } }}>
+                                <DiscordIcon width={17} height={17} />
+                            </IconButton>
 
-                        {/* Language Selector */}
-                        <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
-                            sx={{
-                                color: '#a1a1aa', fontSize: '0.82rem', fontWeight: 600,
-                                textTransform: 'none', px: 1.5, height: 34, gap: 0.75, minWidth: 0,
-                                borderRadius: '9px', bgcolor: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.09)',
-                                '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.08)' },
-                            }}>
-                            <Flag code={currentLang.flagCode} size={16} />
-                            {currentLang.code.toUpperCase()}
-                        </Button>
+                            {/* Language Selector */}
+                            <Button size="small" onClick={(e) => setLangAnchor(e.currentTarget)}
+                                sx={{
+                                    color: '#a1a1aa', fontSize: '0.82rem', fontWeight: 600,
+                                    textTransform: 'none', px: 1.4, gap: 0.75,
+                                    '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' },
+                                }}>
+                                <Flag code={currentLang.flagCode} size={16} />
+                                {currentLang.code.toUpperCase()}
+                            </Button>
+
+                            {/* Login / eingeloggter Nutzer */}
+                            {user ? (
+                                <Button size="small" onClick={(e) => setAnchorEl(e.currentTarget)}
+                                    aria-label={t('profile.title')} title={user.username}
+                                    sx={{
+                                        color: '#fafafa', textTransform: 'none', gap: 0.85, px: 1.35,
+                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
+                                    }}>
+                                    <Avatar src={user.avatar} sx={{ width: 23, height: 23, fontSize: '0.7rem' }}>
+                                        {user.username?.[0]}
+                                    </Avatar>
+                                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 500, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {user.username}
+                                    </Typography>
+                                </Button>
+                            ) : (
+                                <IconButton component="a" href={DISCORD_LOGIN_URL}
+                                    aria-label={t('nav.login')} title={t('nav.login')}
+                                    sx={{ color: '#a1a1aa', width: 42, '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.06)' } }}>
+                                    <PersonIcon sx={{ fontSize: 19 }} />
+                                </IconButton>
+                            )}
+                        </Box>
+
+                        {/* Sprach-Menü (portalt, kein Layout-Einfluss) */}
                         <Menu anchorEl={langAnchor} open={Boolean(langAnchor)} onClose={() => setLangAnchor(null)}
                             slotProps={{ paper: { sx: {
                                 bgcolor: '#141419', border: '1px solid rgba(255,255,255,0.07)',
@@ -187,47 +215,26 @@ export default function Navbar() {
                             ))}
                         </Menu>
 
-                        {/* Discord Login / User */}
-                        {user ? (
-                            <>
-                                <Button size="small" onClick={(e) => setAnchorEl(e.currentTarget)}
-                                    sx={{
-                                        color: '#fafafa', textTransform: 'none', gap: 1, px: 1.5,
-                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
-                                    }}>
-                                    <Avatar src={user.avatar} sx={{ width: 26, height: 26, fontSize: '0.75rem' }}>
-                                        {user.username?.[0]}
-                                    </Avatar>
-                                    <Typography sx={{ fontSize: '0.85rem', fontWeight: 500 }}>{user.username}</Typography>
-                                </Button>
-                                <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}
-                                    PaperProps={{
-                                        sx: { bgcolor: '#141419', border: '1px solid rgba(255,255,255,0.07)', mt: 1, minWidth: 150, borderRadius: 1.5, py: 0.5, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' },
-                                    }}>
-                                    <MenuItem onClick={() => { setAnchorEl(null); navigate('/profile'); }}
-                                        sx={{ fontSize: '0.82rem', color: '#a1a1aa', gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' } }}>
-                                        <PersonIcon sx={{ fontSize: 16 }} /> {t('profile.title')}
-                                    </MenuItem>
-                                    <MenuItem onClick={handleLogout}
-                                        sx={{ fontSize: '0.82rem', color: '#a1a1aa', gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75, '&:hover': { bgcolor: 'rgba(239,68,68,0.06)', color: '#ef4444' } }}>
-                                        <LogoutIcon sx={{ fontSize: 16 }} /> {t('nav.logout')}
-                                    </MenuItem>
-                                </Menu>
-                            </>
-                        ) : (
-                            <IconButton component="a" href={DISCORD_LOGIN_URL}
-                                aria-label={t('nav.login')} title={t('nav.login')}
-                                sx={{
-                                    color: '#a1a1aa', width: 34, height: 34, borderRadius: '9px',
-                                    bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)',
-                                    '&:hover': { color: '#fafafa', bgcolor: 'rgba(255,255,255,0.08)' },
+                        {/* User-Menü */}
+                        {user && (
+                            <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}
+                                PaperProps={{
+                                    sx: { bgcolor: '#141419', border: '1px solid rgba(255,255,255,0.07)', mt: 1, minWidth: 150, borderRadius: 1.5, py: 0.5, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' },
                                 }}>
-                                <PersonIcon sx={{ fontSize: 19 }} />
-                            </IconButton>
+                                <MenuItem onClick={() => { setAnchorEl(null); navigate('/profile'); }}
+                                    sx={{ fontSize: '0.82rem', color: '#a1a1aa', gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fafafa' } }}>
+                                    <PersonIcon sx={{ fontSize: 16 }} /> {t('profile.title')}
+                                </MenuItem>
+                                <MenuItem onClick={handleLogout}
+                                    sx={{ fontSize: '0.82rem', color: '#a1a1aa', gap: 1.5, py: 0.9, px: 2, mx: 0.5, borderRadius: 0.75, '&:hover': { bgcolor: 'rgba(239,68,68,0.06)', color: '#ef4444' } }}>
+                                    <LogoutIcon sx={{ fontSize: 16 }} /> {t('nav.logout')}
+                                </MenuItem>
+                            </Menu>
                         )}
 
+                        {/* Primäre CTA — klar abgesetzt */}
                         <Button size="small" component={Link} to="/bots"
-                            sx={{ ...PRIMARY_BTN_SX, height: 38, px: 1.9, fontSize: '0.85rem', borderRadius: '10px' }}>
+                            sx={{ ...PRIMARY_BTN_SX, height: 38, px: 2.1, fontSize: '0.85rem', borderRadius: '11px' }}>
                             {t('nav.invite')}
                         </Button>
                     </Stack>
