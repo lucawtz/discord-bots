@@ -1,16 +1,19 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { killQueueProcesses } = require('../utils/checks');
+const { t } = require('../i18n');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('stop')
-        .setDescription('Stoppt die Wiedergabe'),
+        .setDescription('Stoppt die Wiedergabe')
+        .setDescriptionLocalizations({ 'en-US': 'Stops playback', 'en-GB': 'Stops playback' }),
 
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);
+        const loc = ctx.localeFor(interaction);
 
         if (!queue.current && !queue.connection) {
-            return interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
+            return interaction.reply({ content: t('checks.nothingPlaying', loc), ephemeral: true });
         }
 
         // Prozesse & Queue leeren, aber Connection behalten

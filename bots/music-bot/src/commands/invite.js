@@ -1,21 +1,19 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { SUPPORT_INVITE, BEATBYTE_INVITE, EARTASTIC_INVITE, ADMIN_INVITE } = require('../../../../libs/links');
+const { t } = require('../i18n');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('invite')
-        .setDescription('Lade die ByteBots auf deinen Server ein'),
+        .setDescription('Lade die ByteBots auf deinen Server ein')
+        .setDescriptionLocalizations({ 'en-US': 'Invite the ByteBots to your server', 'en-GB': 'Invite the ByteBots to your server' }),
 
-    async execute(interaction) {
+    async execute(interaction, ctx) {
+        const loc = ctx.localeFor(interaction);
         const embed = new EmbedBuilder()
             .setColor(0x6E41CC)
-            .setTitle('➕ ByteBots einladen')
-            .setDescription(
-                'Hol dir die **ByteBots** auf deinen Server — kostenlos & auf Deutsch:\n\n' +
-                '🎵 **BeatByte** — Musik-Bot mit Web-Player\n' +
-                '🔊 **EarTastic** — Soundboard mit Web-Dashboard\n' +
-                '🛡️ **ByteBots Admin** — Server-Verwaltung *(in Entwicklung)*',
-            )
+            .setTitle(t('invite.title', loc))
+            .setDescription(t('invite.desc', loc))
             .setFooter({ text: 'bytebots.de' });
 
         const row = new ActionRowBuilder().addComponents(

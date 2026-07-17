@@ -47,6 +47,13 @@ async function init() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS guild_settings (
+      guild_id TEXT PRIMARY KEY,
+      language TEXT DEFAULT NULL
+    )
+  `);
+
   // Migration: data-Spalte hinzufuegen falls sie fehlt
   try {
     db.run(`ALTER TABLE sounds ADD COLUMN data BLOB`);
@@ -241,5 +248,22 @@ module.exports = {
 
   getUserSoundCount(userId) {
     return getOne(`SELECT COUNT(*) as count FROM sounds WHERE uploaded_by = :userId`, { ':userId': userId }).count;
+  },
+
+  // ── Guild Settings (Sprache pro Server) ──
+  getGuildSettings(guildId) {
+    const row = getOne(`SELECT * FROM guild_settings WHERE guild_id = :guildId`, { ':guildId': guildId });
+    return row || { guild_id: guildId, language: null };
+  },
+
+  setGuildSetting(guildId, key, value) {
+    const allowed = { language: 'language' };
+    const col = allowed[key];
+    if (!col) return;
+    run(
+      `INSERT INTO guild_settings (guild_id, ${col}) VALUES (:guildId, :val)
+       ON CONFLICT(guild_id) DO UPDATE SET ${col} = :val`,
+      { ':guildId': guildId, ':val': value }
+    );
   },
 };

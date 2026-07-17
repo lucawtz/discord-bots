@@ -4,6 +4,7 @@ const { Client, Collection, GatewayIntentBits, Events, MessageFlags } = require(
 const fs = require('fs');
 const path = require('path');
 const { handleButton, handleSelectMenu } = require('./handlers/interactionHandler');
+const { t, localeFor } = require('./i18n');
 
 const client = new Client({
   intents: [
@@ -65,7 +66,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (error) {
     console.error('Interaction-Fehler:', error);
 
-    const reply = { content: 'Ein Fehler ist aufgetreten.', flags: MessageFlags.Ephemeral };
+    const reply = { content: t('error.generic', localeFor(interaction)), flags: MessageFlags.Ephemeral };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(reply).catch(() => {});
     } else {

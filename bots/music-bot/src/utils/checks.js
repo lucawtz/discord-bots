@@ -1,10 +1,13 @@
+const { t } = require('../i18n');
+
 /**
  * Prueft ob der User in einem Voice Channel ist.
+ * @param {string} locale - 'de' | 'en' (Default 'de' fuer noch nicht migrierte Aufrufer)
  * @returns {boolean} false wenn nicht im Channel (Antwort wurde gesendet)
  */
-function requireVoiceChannel(interaction, deferred = false) {
+function requireVoiceChannel(interaction, deferred = false, locale = 'de') {
     if (!interaction.member.voice.channel) {
-        const msg = '❌ Du musst in einem Voice Channel sein!';
+        const msg = t('checks.voiceRequired', locale);
         if (deferred) {
             interaction.editReply({ content: msg });
         } else {
@@ -17,11 +20,12 @@ function requireVoiceChannel(interaction, deferred = false) {
 
 /**
  * Prueft ob etwas abgespielt wird (current + player existieren).
+ * @param {string} locale - 'de' | 'en'
  * @returns {boolean} false wenn nichts laeuft (Antwort wurde gesendet)
  */
-function requirePlaying(interaction, queue) {
+function requirePlaying(interaction, queue, locale = 'de') {
     if (!queue.current || !queue.player) {
-        interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
+        interaction.reply({ content: t('checks.nothingPlaying', locale), ephemeral: true });
         return false;
     }
     return true;

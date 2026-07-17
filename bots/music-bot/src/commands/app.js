@@ -1,9 +1,11 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { t } = require('../i18n');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('app')
-        .setDescription('Öffne den BeatByte Music Player'),
+        .setDescription('Öffne den BeatByte Music Player')
+        .setDescriptionLocalizations({ 'en-US': 'Open the BeatByte music player', 'en-GB': 'Open the BeatByte music player' }),
 
     async execute(interaction, ctx) {
         const apiPort = process.env.API_PORT || 3001;
@@ -12,23 +14,17 @@ module.exports = {
 
         const code = ctx.generateAccessCode(interaction.guild.id);
 
+        const loc = ctx.localeFor(interaction);
         const embed = new EmbedBuilder()
             .setAuthor({ name: 'BeatByte', iconURL: interaction.client.user.displayAvatarURL() })
-            .setDescription([
-                `### Dein Zugangs-Code`,
-                `# \`${code}\``,
-                ``,
-                `Oeffne den Music Player und gib diesen Code ein, um dich zu verbinden.`,
-                ``,
-                `Der Code ist **7 Tage** gueltig.`,
-            ].join('\n'))
+            .setDescription(t('app.desc', loc, { code }))
             .setColor(0x6E41CC)
-            .setFooter({ text: 'Nur für dich sichtbar' });
+            .setFooter({ text: t('app.footer', loc) });
 
         const row = new ActionRowBuilder();
         row.addComponents(
             new ButtonBuilder()
-                .setLabel('Player öffnen')
+                .setLabel(t('app.openPlayer', loc))
                 .setStyle(ButtonStyle.Link)
                 .setURL(webUrl)
                 .setEmoji('🎵'),

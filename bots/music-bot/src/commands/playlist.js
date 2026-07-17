@@ -1,39 +1,47 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { t } = require('../i18n');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('playlist')
         .setDescription('Playlists speichern, laden und verwalten')
+        .setDescriptionLocalizations({ 'en-US': 'Save, load and manage playlists', 'en-GB': 'Save, load and manage playlists' })
         .addSubcommand(sub =>
             sub.setName('save')
                 .setDescription('Speichert die aktuelle Queue als Playlist')
+                .setDescriptionLocalizations({ 'en-US': 'Saves the current queue as a playlist', 'en-GB': 'Saves the current queue as a playlist' })
                 .addStringOption(opt =>
-                    opt.setName('name').setDescription('Name der Playlist').setRequired(true).setMaxLength(50)))
+                    opt.setName('name').setDescription('Name der Playlist').setDescriptionLocalizations({ 'en-US': 'Playlist name', 'en-GB': 'Playlist name' }).setRequired(true).setMaxLength(50)))
         .addSubcommand(sub =>
             sub.setName('load')
                 .setDescription('Lädt eine gespeicherte Playlist in die Queue')
+                .setDescriptionLocalizations({ 'en-US': 'Loads a saved playlist into the queue', 'en-GB': 'Loads a saved playlist into the queue' })
                 .addStringOption(opt =>
-                    opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true)))
+                    opt.setName('name').setDescription('Name der Playlist').setDescriptionLocalizations({ 'en-US': 'Playlist name', 'en-GB': 'Playlist name' }).setRequired(true).setAutocomplete(true)))
         .addSubcommand(sub =>
             sub.setName('list')
-                .setDescription('Zeigt alle deine gespeicherten Playlists'))
+                .setDescription('Zeigt alle deine gespeicherten Playlists')
+                .setDescriptionLocalizations({ 'en-US': 'Shows all your saved playlists', 'en-GB': 'Shows all your saved playlists' }))
         .addSubcommand(sub =>
             sub.setName('show')
                 .setDescription('Zeigt die Songs einer Playlist')
+                .setDescriptionLocalizations({ 'en-US': 'Shows the songs of a playlist', 'en-GB': 'Shows the songs of a playlist' })
                 .addStringOption(opt =>
-                    opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true)))
+                    opt.setName('name').setDescription('Name der Playlist').setDescriptionLocalizations({ 'en-US': 'Playlist name', 'en-GB': 'Playlist name' }).setRequired(true).setAutocomplete(true)))
         .addSubcommand(sub =>
             sub.setName('delete')
                 .setDescription('Löscht eine gespeicherte Playlist')
+                .setDescriptionLocalizations({ 'en-US': 'Deletes a saved playlist', 'en-GB': 'Deletes a saved playlist' })
                 .addStringOption(opt =>
-                    opt.setName('name').setDescription('Name der Playlist').setRequired(true).setAutocomplete(true)))
+                    opt.setName('name').setDescription('Name der Playlist').setDescriptionLocalizations({ 'en-US': 'Playlist name', 'en-GB': 'Playlist name' }).setRequired(true).setAutocomplete(true)))
         .addSubcommand(sub =>
             sub.setName('import')
                 .setDescription('Importiert eine Playlist von Spotify, Apple Music, Deezer oder Amazon Music')
+                .setDescriptionLocalizations({ 'en-US': 'Imports a playlist from Spotify, Apple Music, Deezer or Amazon Music', 'en-GB': 'Imports a playlist from Spotify, Apple Music, Deezer or Amazon Music' })
                 .addStringOption(opt =>
-                    opt.setName('url').setDescription('Playlist- oder Album-URL').setRequired(true))
+                    opt.setName('url').setDescription('Playlist- oder Album-URL').setDescriptionLocalizations({ 'en-US': 'Playlist or album URL', 'en-GB': 'Playlist or album URL' }).setRequired(true))
                 .addStringOption(opt =>
-                    opt.setName('name').setDescription('Name zum Speichern (optional, sonst Original-Name)').setMaxLength(50))),
+                    opt.setName('name').setDescription('Name zum Speichern (optional, sonst Original-Name)').setDescriptionLocalizations({ 'en-US': 'Name to save under (optional, otherwise original name)', 'en-GB': 'Name to save under (optional, otherwise original name)' }).setMaxLength(50))),
 
     async autocomplete(interaction, ctx) {
         const focused = interaction.options.getFocused();
@@ -48,6 +56,7 @@ module.exports = {
 
     async execute(interaction, ctx) {
         const sub = interaction.options.getSubcommand();
+        const loc = ctx.localeFor(interaction);
 
         if (sub === 'save') {
             const name = interaction.options.getString('name');
@@ -59,29 +68,29 @@ module.exports = {
             tracks.push(...queue.tracks);
 
             if (tracks.length === 0) {
-                return interaction.reply({ content: '❌ Keine Songs zum Speichern vorhanden.', ephemeral: true });
+                return interaction.reply({ content: t('playlist.noSongs', loc), ephemeral: true });
             }
             if (tracks.length > 200) {
-                return interaction.reply({ content: '❌ Maximal 200 Songs pro Playlist.', ephemeral: true });
+                return interaction.reply({ content: t('playlist.max200', loc), ephemeral: true });
             }
 
             // Pruefen ob Name schon existiert
             const existing = ctx.db.getPlaylistByName(interaction.guildId, interaction.user.id, name);
             if (existing) {
-                return interaction.reply({ content: `❌ Du hast bereits eine Playlist namens **${name}**.`, ephemeral: true });
+                return interaction.reply({ content: t('playlist.exists', loc, { name }), ephemeral: true });
             }
 
             try {
                 ctx.db.createPlaylist(interaction.guildId, interaction.user.id, name, tracks);
             } catch (err) {
-                return interaction.reply({ content: '❌ Fehler beim Speichern der Playlist.', ephemeral: true });
+                return interaction.reply({ content: t('playlist.saveError', loc), ephemeral: true });
             }
 
             const embed = new EmbedBuilder()
-                .setAuthor({ name: 'Playlist gespeichert', iconURL: interaction.client.user.displayAvatarURL() })
-                .setDescription(`**${name}** — ${tracks.length} Song${tracks.length !== 1 ? 's' : ''}`)
+                .setAuthor({ name: t('playlist.saved', loc), iconURL: interaction.client.user.displayAvatarURL() })
+                .setDescription(t('playlist.nameCount', loc, { name, n: tracks.length }))
                 .setColor(0x6E41CC)
-                .setFooter({ text: `Lade mit /playlist load ${name}` });
+                .setFooter({ text: t('playlist.loadHint', loc, { name }) });
             ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }));
         }
 
@@ -89,12 +98,12 @@ module.exports = {
             const name = interaction.options.getString('name');
             const playlist = ctx.db.getPlaylistByName(interaction.guildId, interaction.user.id, name);
             if (!playlist) {
-                return interaction.reply({ content: `❌ Playlist **${name}** nicht gefunden.`, ephemeral: true });
+                return interaction.reply({ content: t('playlist.notFound', loc, { name }), ephemeral: true });
             }
 
             const full = ctx.db.getPlaylist(playlist.id);
             if (!full || full.tracks.length === 0) {
-                return interaction.reply({ content: '❌ Diese Playlist ist leer.', ephemeral: true });
+                return interaction.reply({ content: t('playlist.empty', loc), ephemeral: true });
             }
 
             const queue = ctx.getQueue(interaction.guildId);
@@ -115,27 +124,27 @@ module.exports = {
             }
 
             const embed = new EmbedBuilder()
-                .setAuthor({ name: 'Playlist geladen', iconURL: interaction.client.user.displayAvatarURL() })
-                .setDescription(`**${full.name}** — ${tracks.length} Song${tracks.length !== 1 ? 's' : ''} zur Queue hinzugefügt`)
+                .setAuthor({ name: t('playlist.loaded', loc), iconURL: interaction.client.user.displayAvatarURL() })
+                .setDescription(t('playlist.loadedDesc', loc, { name: full.name, n: tracks.length }))
                 .setColor(0x6E41CC)
-                .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
+                .setFooter({ text: t('queue.count', loc, { n: queue.tracks.length }) });
             ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }));
         }
 
         else if (sub === 'list') {
             const playlists = ctx.db.getPlaylists(interaction.guildId, interaction.user.id);
             if (playlists.length === 0) {
-                return interaction.reply({ content: 'Du hast noch keine Playlists gespeichert.\nNutze `/playlist save <name>` um die aktuelle Queue zu speichern.', ephemeral: true });
+                return interaction.reply({ content: t('playlist.noneYet', loc), ephemeral: true });
             }
 
             const lines = playlists.map((p, i) =>
-                `**${i + 1}.** ${p.name} — ${p.track_count} Song${p.track_count !== 1 ? 's' : ''}`
+                `**${i + 1}.** ${p.name} — ${p.track_count} ${t('word.songs', loc, { n: p.track_count })}`
             );
             const embed = new EmbedBuilder()
-                .setAuthor({ name: 'Deine Playlists', iconURL: interaction.client.user.displayAvatarURL() })
+                .setAuthor({ name: t('playlist.yours', loc), iconURL: interaction.client.user.displayAvatarURL() })
                 .setDescription(lines.join('\n'))
                 .setColor(0x6E41CC)
-                .setFooter({ text: `${playlists.length} Playlist${playlists.length !== 1 ? 's' : ''}` });
+                .setFooter({ text: t('playlist.count', loc, { n: playlists.length }) });
             ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }));
         }
 
@@ -143,22 +152,22 @@ module.exports = {
             const name = interaction.options.getString('name');
             const playlist = ctx.db.getPlaylistByName(interaction.guildId, interaction.user.id, name);
             if (!playlist) {
-                return interaction.reply({ content: `❌ Playlist **${name}** nicht gefunden.`, ephemeral: true });
+                return interaction.reply({ content: t('playlist.notFound', loc, { name }), ephemeral: true });
             }
 
             const full = ctx.db.getPlaylist(playlist.id);
-            const lines = full.tracks.slice(0, 20).map((t, i) =>
-                `**${i + 1}.** ${t.title}${t.duration ? ` \`${t.duration}\`` : ''}`
+            const lines = full.tracks.slice(0, 20).map((tr, i) =>
+                `**${i + 1}.** ${tr.title}${tr.duration ? ` \`${tr.duration}\`` : ''}`
             );
             if (full.tracks.length > 20) {
-                lines.push(`*...und ${full.tracks.length - 20} weitere*`);
+                lines.push(t('queue.andMore', loc, { n: full.tracks.length - 20 }));
             }
 
             const embed = new EmbedBuilder()
                 .setAuthor({ name: full.name, iconURL: interaction.client.user.displayAvatarURL() })
-                .setDescription(lines.join('\n') || 'Leer')
+                .setDescription(lines.join('\n') || t('playlist.emptyLabel', loc))
                 .setColor(0x6E41CC)
-                .setFooter({ text: `${full.tracks.length} Song${full.tracks.length !== 1 ? 's' : ''}` });
+                .setFooter({ text: `${full.tracks.length} ${t('word.songs', loc, { n: full.tracks.length })}` });
             ctx.autoDelete(interaction.reply({ embeds: [embed], fetchReply: true }));
         }
 
@@ -166,18 +175,18 @@ module.exports = {
             const name = interaction.options.getString('name');
             const playlist = ctx.db.getPlaylistByName(interaction.guildId, interaction.user.id, name);
             if (!playlist) {
-                return interaction.reply({ content: `❌ Playlist **${name}** nicht gefunden.`, ephemeral: true });
+                return interaction.reply({ content: t('playlist.notFound', loc, { name }), ephemeral: true });
             }
 
             ctx.db.deletePlaylist(playlist.id, interaction.user.id);
-            ctx.autoDelete(interaction.reply({ content: `-# 🗑️ Playlist **${name}** gelöscht`, fetchReply: true }), ctx.DELETE_SHORT_MS);
+            ctx.autoDelete(interaction.reply({ content: t('playlist.deleted', loc, { name }), fetchReply: true }), ctx.DELETE_SHORT_MS);
         }
 
         else if (sub === 'import') {
             const url = interaction.options.getString('url');
 
             if (!ctx.isPlaylistUrl(url)) {
-                return interaction.reply({ content: '❌ Ungueltige Playlist-URL. Unterstuetzt: Spotify, Apple Music, Deezer, Amazon Music, YouTube.', ephemeral: true });
+                return interaction.reply({ content: t('playlist.invalidUrl', loc), ephemeral: true });
             }
 
             await interaction.deferReply();
@@ -187,7 +196,7 @@ module.exports = {
                 const tracks = playlist.tracks;
 
                 if (tracks.length === 0) {
-                    return interaction.editReply({ content: '❌ Konnte keine Songs aus dieser Playlist laden.' });
+                    return interaction.editReply({ content: t('playlist.noTracks', loc) });
                 }
                 if (tracks.length > 200) {
                     tracks.length = 200; // Auf 200 begrenzen
@@ -198,20 +207,20 @@ module.exports = {
                 // Pruefen ob Name schon existiert
                 const existing = ctx.db.getPlaylistByName(interaction.guildId, interaction.user.id, name);
                 if (existing) {
-                    return interaction.editReply({ content: `❌ Du hast bereits eine Playlist namens **${name}**. Wähle einen anderen Namen mit der \`name\` Option.` });
+                    return interaction.editReply({ content: t('playlist.existsHint', loc, { name }) });
                 }
 
                 ctx.db.createPlaylist(interaction.guildId, interaction.user.id, name, tracks);
 
                 const embed = new EmbedBuilder()
-                    .setAuthor({ name: 'Playlist importiert', iconURL: interaction.client.user.displayAvatarURL() })
-                    .setDescription(`**${name}** — ${tracks.length} Song${tracks.length !== 1 ? 's' : ''}`)
+                    .setAuthor({ name: t('playlist.imported', loc), iconURL: interaction.client.user.displayAvatarURL() })
+                    .setDescription(t('playlist.nameCount', loc, { name, n: tracks.length }))
                     .setColor(0x6E41CC)
-                    .setFooter({ text: `Lade mit /playlist load ${name}` });
+                    .setFooter({ text: t('playlist.loadHint', loc, { name }) });
                 ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
             } catch (error) {
                 console.error('Playlist import error:', error.message);
-                ctx.autoDelete(interaction.editReply({ content: `❌ ${error.message}` }), ctx.DELETE_ERROR_MS);
+                ctx.autoDelete(interaction.editReply({ content: t('play.error', loc, { message: error.message }) }), ctx.DELETE_ERROR_MS);
             }
         }
     },

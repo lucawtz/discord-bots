@@ -5,7 +5,8 @@ const { requirePlaying } = require('../utils/checks');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('pause')
-        .setDescription('Pausiert oder setzt die Wiedergabe fort'),
+        .setDescription('Pausiert oder setzt die Wiedergabe fort')
+        .setDescriptionLocalizations({ 'en-US': 'Pauses or resumes playback', 'en-GB': 'Pauses or resumes playback' }),
 
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);

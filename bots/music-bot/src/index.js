@@ -10,6 +10,16 @@ const os = require('os');
 require('../../../libs/loadEnv').loadEnv('MUSIC', path.join(__dirname, '..'));
 const { startAPI } = require('./api');
 const db = require('./database');
+const { t, normalizeLocale } = require('./i18n');
+const { notifyError, notifyOnline } = require('../../../libs/notify');
+// Server-Sprache fuer Hintergrund-Nachrichten ohne Interaction (Now-Playing-Embed):
+// explizite Einstellung (guild_settings.language), sonst Default 'de'.
+function guildLocaleFor(guildId) {
+    try {
+        const stored = guildId ? db.getGuildSettings(guildId).language : null;
+        return (stored === 'de' || stored === 'en') ? stored : 'de';
+    } catch { return 'de'; }
+}
 
 // ── Konstanten ────────────────────────────────────────────────────
 const DELETE_SHORT_MS = 30_000;     // 30 Sekunden (skip, pause, stop, join)
@@ -33,6 +43,7 @@ const queues = new Map();
 function getQueue(guildId) {
     if (!queues.has(guildId)) {
         queues.set(guildId, {
+            guildId,
             tracks: [],
             current: null,
             player: null,
@@ -1564,7 +1575,7 @@ function createPlayerButtons(loopMode, isPaused = false) {
 }
 
 // ── Now Playing Embed bauen ──────────────────────────────────────
-function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
+function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed, loc = guildLocaleFor(queue.guildId)) {
     const botUser = clientOrInteraction.user || clientOrInteraction;
     const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
 
@@ -1581,7 +1592,7 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
     // Status als kleine Zeile
     const status = [];
     if (track.requestedBy) status.push(track.requestedBy);
-    if (queue.tracks.length > 0) status.push(`📋 ${queue.tracks.length} in Queue`);
+    if (queue.tracks.length > 0) status.push(`📋 ${t('np.inQueue', loc, { n: queue.tracks.length })}`);
     if (queue.loopMode === 'song') status.push('🔂 Song');
     else if (queue.loopMode === 'queue') status.push('🔁 Queue');
     if (queue.filter && queue.filter !== 'off') {
@@ -1594,7 +1605,7 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
     }
 
     const embed = new EmbedBuilder()
-        .setAuthor({ name: isPaused ? '⏸ Paused' : 'Now playing', iconURL: botUser.displayAvatarURL() })
+        .setAuthor({ name: isPaused ? t('np.paused', loc) : t('np.nowPlaying', loc), iconURL: botUser.displayAvatarURL() })
         .setDescription(descLines.join('\n'))
         .setThumbnail(track.albumArt || track.thumbnail || null)
         .setColor(isPaused ? 0x95a5a6 : 0x6E41CC);
@@ -1603,14 +1614,14 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed) {
 }
 
 // Platzhalter-Embed, solange der Song noch lädt (wird bei Wiedergabestart ersetzt)
-function buildLoadingEmbed(track, clientOrInteraction) {
+function buildLoadingEmbed(track, clientOrInteraction, loc = 'de') {
     const botUser = clientOrInteraction.user || clientOrInteraction;
     const lines = [`### ${track.title}`];
     if (track.artist) lines.push(`*${track.artist}*`);
     lines.push('');
-    lines.push('-# ⏳ Wird geladen…');
+    lines.push(t('np.loadingLine', loc));
     return new EmbedBuilder()
-        .setAuthor({ name: 'Lädt…', iconURL: botUser.displayAvatarURL() })
+        .setAuthor({ name: t('np.loadingTitle', loc), iconURL: botUser.displayAvatarURL() })
         .setDescription(lines.join('\n'))
         .setThumbnail(track.albumArt || track.thumbnail || null)
         .setColor(0x95a5a6);
@@ -1872,7 +1883,7 @@ async function playNext(guildId) {
             Promise.race([queue._artPromise, new Promise(r => setTimeout(r, 2500))])
                 .then(() => {
                     if (queue.current !== track) return; // Track wurde schon gewechselt
-                    return queue.channel.send({ embeds: [buildLoadingEmbed(track, client)] })
+                    return queue.channel.send({ embeds: [buildLoadingEmbed(track, client, guildLocaleFor(queue.guildId))] })
                         .then(msg => {
                             queue._nowPlayingMsg = msg;
                             // Falls der Song beim Ankommen der Nachricht schon läuft: sofort umschalten
@@ -1960,6 +1971,22 @@ const ctx = {
     parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, updateNowPlayingMsg,
 };
 
+// ── i18n: t + Locale-Aufloesung ───────────────────────────────────
+// Sprache pro Server: explizite Einstellung (guild_settings.language) >
+// Server-Locale (guildLocale) > User-Locale (interaction.locale) > 'de'.
+ctx.t = t;
+ctx.localeFor = (interaction) => {
+    const stored = interaction.guildId ? db.getGuildSettings(interaction.guildId).language : null;
+    if (stored === 'de' || stored === 'en') return stored;
+    return normalizeLocale(interaction.guildLocale) || normalizeLocale(interaction.locale) || 'de';
+};
+// Fuer geteilte/persistente Nachrichten ohne Interaction (Now-Playing-Embed):
+// nur die Server-Einstellung, sonst Default 'de'.
+ctx.localeForGuild = (guildId) => {
+    const stored = guildId ? db.getGuildSettings(guildId).language : null;
+    return (stored === 'de' || stored === 'en') ? stored : 'de';
+};
+
 // ── API Broadcast & Access Codes (wird nach API-Start gesetzt) ──
 let _apiBroadcast = () => {};
 let _apiGetGuildState = () => ({});
@@ -1971,13 +1998,14 @@ ctx.generateAccessCode = (guildId) => _generateAccessCode(guildId);
 // ── Button Handler ────────────────────────────────────────────────
 async function handleButton(interaction) {
     const queue = queues.get(interaction.guildId);
+    const loc = ctx.localeFor(interaction);
     if (!queue || !queue.current) {
-        return interaction.reply({ content: '❌ Es wird gerade nichts abgespielt.', ephemeral: true });
+        return interaction.reply({ content: t('checks.nothingPlaying', loc), ephemeral: true });
     }
 
     // Prüfen ob User im Voice Channel ist
     if (!interaction.member.voice.channel) {
-        return interaction.reply({ content: '❌ Du musst im Voice Channel sein!', ephemeral: true });
+        return interaction.reply({ content: t('buttons.mustBeInVoice', loc), ephemeral: true });
     }
 
     switch (interaction.customId) {
@@ -2015,7 +2043,7 @@ async function handleButton(interaction) {
 
         case 'music_shuffle':
             if (queue.tracks.length < 2) {
-                return interaction.reply({ content: '❌ Nicht genug Songs zum Mischen.', ephemeral: true });
+                return interaction.reply({ content: t('buttons.notEnoughToShuffle', loc), ephemeral: true });
             }
             for (let i = queue.tracks.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -2059,7 +2087,7 @@ client.on('interactionCreate', async (interaction) => {
         await command.execute(interaction, ctx);
     } catch (error) {
         console.error(`Command ${interaction.commandName} error:`, error.message);
-        const reply = { content: '❌ Beim Ausführen des Commands ist ein Fehler aufgetreten.', ephemeral: true };
+        const reply = { content: t('error.commandFailed', ctx.localeFor(interaction)), ephemeral: true };
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp(reply).catch(() => {});
         } else {
@@ -2131,14 +2159,17 @@ process.once('SIGINT', gracefulShutdown);
 // ── Unhandled Errors abfangen (verhindert Crashes) ──────────────
 process.on('unhandledRejection', (err) => {
     console.error('Unhandled rejection:', err?.message || err);
+    notifyError('BeatByte', 'unhandledRejection', err);
 });
 process.on('uncaughtException', (err) => {
     console.error('Uncaught exception:', err?.message || err);
+    notifyError('BeatByte', 'uncaughtException', err);
 });
 
 // ── Discord Reconnect & Error Handling ──────────────────────────
 client.on('error', (err) => {
     console.error('Discord client error:', err.message);
+    notifyError('BeatByte', 'Discord client error', err);
 });
 client.on('warn', (msg) => {
     console.warn('Discord warning:', msg);
@@ -2147,6 +2178,7 @@ client.on('warn', (msg) => {
 // ── Bot starten ───────────────────────────────────────────────────
 client.once('ready', () => {
     console.log(`✅ Bot ist online als ${client.user.tag}`);
+    notifyOnline('BeatByte', `als ${client.user.tag} · ${client.guilds.cache.size} Server`);
     client.user.setActivity('/play', { type: ActivityType.Listening });
     const api = startAPI(ctx, client);
     _apiBroadcast = api.broadcast;

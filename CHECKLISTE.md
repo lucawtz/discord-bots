@@ -63,6 +63,31 @@ kein akuter Bug, alles läuft (BeatByte 31/31, EarTastic 13/13 grün getestet).
 
 ---
 
+# Mehrsprachigkeit (i18n)
+
+Ziel (auf Luca-Wunsch): **genau Deutsch + Englisch**, kein offener Mehr-Sprachen-Fahrplan.
+Die Website ist schon DE+EN; seit **2026-07-17 sind es auch beide Bots** (Code umgesetzt).
+Fallback immer Deutsch.
+
+- [x] **i18n-Ebene für die Bot-Antworten** — **erledigt 2026-07-17**. Geteilte Basis
+      `libs/i18n.js` (`t(key, locale, vars)` + `normalizeLocale`), pro Bot ein Katalog
+      `src/i18n/de.js`+`en.js` (music-bot 83 Keys, soundboard 35, DE=EN-Parität). music-bot
+      über `ctx.t`/`ctx.localeFor`, soundboard über `i18n.localeFor(interaction)` (kein ctx).
+- [x] **Discord-Command-Lokalisierung** — **erledigt 2026-07-17**. `setDescriptionLocalizations`
+      an allen Command- + Options-Beschreibungen beider Bots (Command-*Namen* bleiben englisch:
+      `/play`, `/sound`…); `setNameLocalizations` bei der `/language`-Option (`sprache`→`language`)
+      und bei loop/filter-Choices.
+- [x] **Sprachwahl pro Server** — **erledigt 2026-07-17**. Neuer `/language`-Command (nur
+      „Server verwalten") + `guild_settings.language`-Spalte (music-bot Migration, soundboard
+      neue Tabelle). Auflösung: Einstellung > `guildLocale` > User-Locale > `de`.
+- [x] **Englisch als Zweitsprache** — **erledigt 2026-07-17** für die gesamte sichtbare
+      Bot-Oberfläche (Commands, Embeds, Buttons, Now-Playing). **Bewusst offen:** ~20
+      provider-spezifische Wurf-Fehler im music-bot-Such-Stack (z.B. „Keine Ergebnisse")
+      bleiben vorerst DE; Web-Player/Dashboard (eigene React-Apps) bleiben vorerst DE.
+- [x] **Website-i18n** (`de.js`/`en.js`) — war bereits DE+EN; bleibt konsistent.
+
+---
+
 # Bewerbung & Wachstum
 
 Fahrplan, um BeatByte und EarTastic bekannt zu machen. Reihenfolge: erst Grundlagen,
@@ -88,16 +113,28 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 > Community + AutoMod an, beide Bots + read-only „ByteBots Admin"-Bot drauf. Offene Hebel:
 
 **Nur in der Discord-UI (du):**
-- [ ] **Onboarding aktivieren** (Servereinstellungen → Onboarding): „Wegen BeatByte oder EarTastic
-      hier?" schaltet die passenden Kanäle frei — größter Conversion-Hebel, aktuell AUS
-- [ ] **Willkommensbildschirm** einschalten, mit 2–3 Ziel-Kanälen (aktuell AUS)
+- [x] **Onboarding aktivieren** (Servereinstellungen → Onboarding) — **erledigt 2026-07-15** (per API):
+      Prompt „Welchen Bot nutzt du?" (Mehrfachauswahl, beim Beitritt), Optionen 🎵 BeatByte / 🔊 EarTastic
+      vergeben die Rollen `BeatByte 🎵`/`EarTastic 🔊`. **MIT Kanal-Gating** (nachgerüstet): die Kategorien
+      BeatByte/EarTastic sind für `@everyone` versteckt, die jeweilige Rolle (+ Team + ByteBots Admin) sieht sie →
+      Wahl im Onboarding schaltet die passenden Kanäle frei. Simulation bestätigt (BeatByte-Wahl sieht nur BeatByte, usw.).
+      ⚠️ Testen nur mit **Zweit-Account ohne Team-Rolle** — Owner/Admins umgehen Kanalrechte und sehen immer alles.
+      Discord-Mindest-Regel (≥7 sichtbar/≥5 schreibbar) wird formal unterschritten, greift aber nicht rückwirkend
+      (Onboarding blieb aktiv); saubere Ausbaustufe: 2–3 öffentliche Community-Kanäle ergänzen.
+- [x] **Willkommensbildschirm** einschalten, mit 2–3 Ziel-Kanälen — **erledigt 2026-07-15** (per API gesetzt:
+      Beschreibung + 📢 #regeln / 🎵 #beatbyte-support / 🔊 #eartastic-support; `WELCOME_SCREEN_ENABLED` aktiv). Vorlage: `.devtools/support-server-setup.md` §2
 - [ ] `#beatbyte-support` / `#eartastic-support` → **Forum-Kanäle** (Tags: Bug · Frage ·
       Web-Player/Dashboard · Gelöst); macht `-bugs`/`-ideen` überflüssig → durchsuchbarer Wissensspeicher
 - [ ] `#ankündigungen` + `#changelog` → **Ankündigungs-Kanäle** (NEWS-Feature ist vorhanden),
       damit andere Server sie folgen können
-- [ ] **Selbstvergebbare Rollen** (Channels & Roles): `@BeatByte`, `@EarTastic`, `@Ankündigungen`
-      (Ping-Opt-in) — bisher nur `Team`/`Bots`
+- [~] **Selbstvergebbare Rollen** (Channels & Roles): `@BeatByte`, `@EarTastic`, `@Ankündigungen`
+      (Ping-Opt-in) — bisher nur `Team`/`Bots`. **2026-07-15:** `BeatByte 🎵` (#a855f7) + `EarTastic 🔊` (#22d3ee)
+      per API angelegt (pingbar, via Onboarding-Prompt vergebbar; Emoji im Namen → keine Kollision mit den Bot-Rollen).
+      **Offen:** `@Ankündigungen` + optional die Rollen zusätzlich unter „Channels & Roles" self-serve schalten.
 - [ ] **Banner + Invite-Splash** im ByteBots-Look setzen (Server-Icon ist schon gesetzt)
+      → Grafiken FERTIG im ByteBots-Look: `.devtools/banner-bytebots.*` + `splash-bytebots.*`.
+      ⛔ **Upload durch Discord gesperrt bis Boost:** Invite-Splash braucht Boost-Level 1 (2 Boosts),
+      Banner Boost-Level 2 (7 Boosts) — Server hat 0. Upload-Steps in `.devtools/support-server-setup.md` §1
 - [ ] Regeln-Screening prüfen (Spam-Schutz beim Beitritt)
 
 **Mit Code (Repo — kann Claude umsetzen):**
@@ -108,11 +145,15 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 - [ ] **`#status`-Kanal** aus den Web-APIs (Ports 3001/3002): „🟢 BeatByte / 🟢 EarTastic online"
 
 ### Rechtliche Seiten
-- [ ] Nutzungsbedingungen-Seite (`/nutzungsbedingungen`) auf bytebots.de erstellen
-- [ ] Datenschutz-Seite um die Bots ergänzen (welche Daten speichern BeatByte/EarTastic:
-      User-IDs, Playlists, hochgeladene Sounds, …)
+- [x] Nutzungsbedingungen-Seite (`/nutzungsbedingungen`) auf bytebots.de erstellen —
+      **erledigt 2026-07-15** (`pages/Nutzungsbedingungen.jsx`, 10 Abschnitte, Route + Footer-Link, i18n de+en)
+- [x] Datenschutz-Seite um die Bots ergänzen (welche Daten speichern BeatByte/EarTastic:
+      User-IDs, Playlists, hochgeladene Sounds, …) — **erledigt 2026-07-15** (Datenschutz §6:
+      aus den DB-Schemata verifiziert — Playlists/Historie/Likes/Follows + Guild-Settings; Sounds/Favoriten/Volume;
+      Web-Login via Discord-OAuth; inkl. Hosting Hetzner/DE, Rechtsgrundlagen, Löschung; de+en)
 - [ ] Beide URLs im Developer Portal eintragen: **General Information →
-      Privacy Policy URL / Terms of Service URL** (bei beiden Apps)
+      Privacy Policy URL / Terms of Service URL** (bei beiden Apps) —
+      URLs stehen bereit: `bytebots.de/nutzungsbedingungen` bzw. `/datenschutz`
 
 ### Developer-Portal-Hygiene
 - [ ] 2FA auf dem Discord-Account aktivieren
@@ -130,7 +171,8 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 - [ ] botlist.me eintragen
 - [ ] Gute Screenshots/Assets erstellen: Now-Playing-Embed mit Fortschrittsbalken,
       Web Player, Soundboard-Dashboard (werden auch fürs App Directory gebraucht)
-- [ ] „Deutscher Bot" als Alleinstellungsmerkmal prominent in jede Beschreibung
+- [ ] **Mehrsprachig** (DE + EN) konsistent in jede Beschreibung — passend zur Website-Positionierung
+      (2026-07-15), nicht mehr als „nur deutscher Bot" vermarkten
 - [ ] Optional: top.gg-Vote-Webhook einbauen, Votern kleinen Perk geben
 
 ---
@@ -162,7 +204,7 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 
 - [ ] Developer Portal → App → Tab **„Discovery"** öffnen
 - [ ] Kurz- & Langbeschreibung auf Englisch schreiben
-      („German-language music bot" = Nische hervorheben)
+      (mehrsprachig positionieren — DE + EN; nicht als reinen deutschen Bot vermarkten)
 - [ ] Tags wählen: BeatByte → Music/Entertainment, EarTastic → Entertainment/Fun
 - [ ] Bis zu 5 Bilder/Videos hochladen (min. 1 Pflicht — Assets aus Phase 2)
 - [ ] Support-Server verlinken (muss Community-Server sein ✓ Phase 1)
@@ -176,15 +218,13 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
       (aktuell nur Server-Inspektion, `scripts/discord-inspect.js`) später zu einem vollwertigen
       Verwaltungs-/Moderations-Bot ausbauen und verkaufen — z.B. Moderation (Warn/Mute/Ban,
       AutoMod), Reaction-Roles, Willkommen/Onboarding, Ticket-System, Audit-Logging. Rundet das
-      Trio mit BeatByte + EarTastic ab, gleiche deutschsprachige Nische, gleiche Web-Dashboard-Logik.
-- [ ] **Mehr Sprachen für die Bots (Standardsprachen):** Bot-UI ist aktuell nur Deutsch
-      (CLAUDE.md-Konvention). Weitere gängige Sprachen ergänzen — Englisch zuerst, dann z.B.
-      Spanisch/Französisch/Portugiesisch. Braucht eine i18n-Ebene für die Bot-Antworten +
-      Discord-Command-Lokalisierung (`setNameLocalizations`/`setDescriptionLocalizations`),
-      Sprachwahl pro Server oder per Discord-Locale. „Deutsch" bleibt USP, mehrsprachig
-      vergrößert die Reichweite (App Directory ist englisch). Website-i18n (`de.js`/`en.js`) analog erweitern.
+      Trio mit BeatByte + EarTastic ab, gleiche mehrsprachige Nische, gleiche Web-Dashboard-Logik.
 - [x] `/invite`-Command in beide Bots (teilt Invite-Link + Website) — erledigt 2026-07-14 (zusammen mit `/support`)
 - [ ] Dezenter „bytebots.de"-Footer in Embeds
 - [ ] Demo-Video/GIF für Website & Listings
-- [ ] SEO-Content: „Discord Musik Bot deutsch", „Rythm Alternative"
-- [ ] Meta-/OG-Tags der Website prüfen (schöne Link-Vorschau in Discord)
+- [x] SEO-Content: „Discord Musik Bot deutsch", „Rythm Alternative" — **erledigt 2026-07-15**
+      (keyword-reicher Titel/Description in `index.html` inkl. beider Keywords, `keywords`/`author`/`canonical`,
+      `robots.txt` + `sitemap.xml` mit 12 Routen)
+- [x] Meta-/OG-Tags der Website prüfen (schöne Link-Vorschau in Discord) — **erledigt 2026-07-15**
+      (vollständige Open-Graph-/Twitter-Tags mit absoluter Bild-URL + `summary_large_image` + `og:locale`;
+      neues OG-Banner `public/og-image.png` 1200×630)

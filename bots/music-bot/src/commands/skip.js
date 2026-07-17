@@ -1,15 +1,18 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { requirePlaying, killQueueProcesses } = require('../utils/checks');
+const { t } = require('../i18n');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('skip')
-        .setDescription('Überspringt den aktuellen Song'),
+        .setDescription('Überspringt den aktuellen Song')
+        .setDescriptionLocalizations({ 'en-US': 'Skips the current song', 'en-GB': 'Skips the current song' }),
 
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);
+        const loc = ctx.localeFor(interaction);
 
-        if (!requirePlaying(interaction, queue)) return;
+        if (!requirePlaying(interaction, queue, loc)) return;
 
         // DJ-Rolle, Admin, Moderator oder Song-Requester → sofort skippen
         const settings = ctx.db.getGuildSettings(interaction.guildId);
@@ -22,7 +25,7 @@ module.exports = {
         if (!isDJ && !isAdmin && !isModerator && !isRequester) {
             // Vote-Skip
             const voiceChannel = interaction.member.voice.channel;
-            if (!voiceChannel) return interaction.reply({ content: '❌ Du musst im Voice Channel sein!', ephemeral: true });
+            if (!voiceChannel) return interaction.reply({ content: t('buttons.mustBeInVoice', loc), ephemeral: true });
 
             queue.skipVotes.add(interaction.user.id);
             const members = voiceChannel.members.filter(m => !m.user.bot).size;
@@ -30,7 +33,7 @@ module.exports = {
 
             if (queue.skipVotes.size < needed) {
                 return interaction.reply({
-                    content: `-# 🗳️ Skip-Vote: **${queue.skipVotes.size}/${needed}** — noch ${needed - queue.skipVotes.size} nötig`,
+                    content: t('skip.vote', loc, { have: queue.skipVotes.size, need: needed, remaining: needed - queue.skipVotes.size }),
                 });
             }
         }

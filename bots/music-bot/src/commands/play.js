@@ -1,19 +1,22 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { requireVoiceChannel } = require('../utils/checks');
+const { t } = require('../i18n');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('play')
         .setDescription('Spielt einen Song/Playlist oder fügt zur Warteschlange hinzu')
+        .setDescriptionLocalizations({ 'en-US': 'Plays a song/playlist or adds it to the queue', 'en-GB': 'Plays a song/playlist or adds it to the queue' })
         .addStringOption(option =>
             option.setName('query')
-                .setDescription('Songname, URL oder Playlist-URL')
+                .setDescription('Songname, URL oder Playlist-URL').setDescriptionLocalizations({ 'en-US': 'Song name, URL or playlist URL', 'en-GB': 'Song name, URL or playlist URL' })
                 .setRequired(true)),
 
     async execute(interaction, ctx) {
         await interaction.deferReply();
+        const loc = ctx.localeFor(interaction);
 
-        if (!requireVoiceChannel(interaction, true)) return;
+        if (!requireVoiceChannel(interaction, true, loc)) return;
 
         const query = interaction.options.getString('query');
         const queue = ctx.getQueue(interaction.guild.id);
@@ -47,14 +50,14 @@ module.exports = {
 
                     const remaining = meta.rawTracks.length - 1;
                     const embed = new EmbedBuilder()
-                        .setAuthor({ name: 'Playlist hinzugefügt', iconURL: interaction.client.user.displayAvatarURL() })
+                        .setAuthor({ name: t('play.playlistAdded', loc), iconURL: interaction.client.user.displayAvatarURL() })
                         .setDescription(`**${meta.title}**`)
                         .addFields(
-                            { name: 'Songs', value: `\`${meta.rawTracks.length}\``, inline: true },
-                            { name: 'Angefragt von', value: interaction.user.toString(), inline: true },
+                            { name: t('label.songs', loc), value: `\`${meta.rawTracks.length}\``, inline: true },
+                            { name: t('label.requestedBy', loc), value: interaction.user.toString(), inline: true },
                         )
                         .setColor(0x6E41CC)
-                        .setFooter({ text: remaining > 0 ? `Lade ${remaining} weitere Songs im Hintergrund...` : '1 Song in der Warteschlange' });
+                        .setFooter({ text: remaining > 0 ? t('play.loadingMore', loc, { n: remaining }) : t('queue.count', loc, { n: 1 }) });
 
                     ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
 
@@ -75,14 +78,14 @@ module.exports = {
                 }
 
                 const embed = new EmbedBuilder()
-                    .setAuthor({ name: 'Playlist hinzugefügt', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setAuthor({ name: t('play.playlistAdded', loc), iconURL: interaction.client.user.displayAvatarURL() })
                     .setDescription(`**${playlist.title}**`)
                     .addFields(
-                        { name: 'Songs', value: `\`${tracks.length}\``, inline: true },
-                        { name: 'Angefragt von', value: interaction.user.toString(), inline: true },
+                        { name: t('label.songs', loc), value: `\`${tracks.length}\``, inline: true },
+                        { name: t('label.requestedBy', loc), value: interaction.user.toString(), inline: true },
                     )
                     .setColor(0x6E41CC)
-                    .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
+                    .setFooter({ text: t('queue.count', loc, { n: queue.tracks.length }) });
 
                 ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
                 return;
@@ -105,16 +108,16 @@ module.exports = {
                 // Quadratisches Cover fuer das Embed nachladen (statt letterboxed Thumb)
                 try { await ctx.ensureAlbumArt(track); } catch { /* dann halt Thumbnail */ }
                 const embed = new EmbedBuilder()
-                    .setAuthor({ name: 'Zur Warteschlange hinzugefügt', iconURL: interaction.client.user.displayAvatarURL() })
+                    .setAuthor({ name: t('play.addedToQueue', loc), iconURL: interaction.client.user.displayAvatarURL() })
                     .setThumbnail(track.albumArt || track.thumbnail || null)
                     .setDescription(`[${track.title}](${track.url})`)
                     .addFields(
-                        { name: 'Dauer', value: `\`${track.duration}\``, inline: true },
-                        { name: 'Position', value: `\`#${queue.tracks.length}\``, inline: true },
-                        { name: 'Angefragt von', value: track.requestedBy, inline: true },
+                        { name: t('label.duration', loc), value: `\`${track.duration}\``, inline: true },
+                        { name: t('label.position', loc), value: `\`#${queue.tracks.length}\``, inline: true },
+                        { name: t('label.requestedBy', loc), value: track.requestedBy, inline: true },
                     )
                     .setColor(0x6E41CC)
-                    .setFooter({ text: `${queue.tracks.length} Song${queue.tracks.length !== 1 ? 's' : ''} in der Warteschlange` });
+                    .setFooter({ text: t('queue.count', loc, { n: queue.tracks.length }) });
 
                 ctx.autoDelete(interaction.editReply({ embeds: [embed] }));
             }
@@ -123,7 +126,7 @@ module.exports = {
             if (queue.connection && !queue.current) {
                 ctx.destroyQueue(interaction.guild.id);
             }
-            ctx.autoDelete(interaction.editReply({ content: `❌ ${error.message}` }), ctx.DELETE_ERROR_MS);
+            ctx.autoDelete(interaction.editReply({ content: t('play.error', loc, { message: error.message }) }), ctx.DELETE_ERROR_MS);
         }
     },
 };

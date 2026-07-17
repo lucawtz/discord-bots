@@ -8,6 +8,7 @@ const {
 } = require('discord.js');
 const db = require('../database');
 const { playSound, stopSound } = require('../utils/player');
+const { t, localeFor } = require('../i18n');
 
 const SOUNDS_PER_PAGE = 10; // Max 5 Rows x 5 Buttons = 25, aber wir brauchen Platz fuer Navigation
 
@@ -23,7 +24,7 @@ setInterval(() => {
   }
 }, 10 * 60_000);
 
-function buildSoundboardPanel(userId, view = 'predefined', page = 0) {
+function buildSoundboardPanel(userId, view = 'predefined', page = 0, loc = 'de') {
   let sounds;
   let title;
   let description;
@@ -31,22 +32,22 @@ function buildSoundboardPanel(userId, view = 'predefined', page = 0) {
   switch (view) {
     case 'predefined':
       sounds = db.getPredefinedSounds();
-      title = 'Soundboard - Vorgegebene Sounds';
-      description = 'Klicke auf einen Button um den Sound abzuspielen!';
+      title = t('sb.title.predefined', loc);
+      description = t('sb.desc.predefined', loc);
       break;
     case 'all':
       sounds = db.getAllSounds();
-      title = 'Soundboard - Alle Sounds';
-      description = `Alle verfuegbaren Sounds (${sounds.length})`;
+      title = t('sb.title.all', loc);
+      description = t('sb.desc.all', loc, { n: sounds.length });
       break;
     case 'favorites':
       sounds = db.getFavorites(userId);
-      title = 'Soundboard - Favoriten';
-      description = 'Deine Lieblingssounds';
+      title = t('sb.title.favorites', loc);
+      description = t('sb.desc.favorites', loc);
       break;
     default:
       sounds = db.getPredefinedSounds();
-      title = 'Soundboard';
+      title = t('sb.title.default', loc);
       description = '';
   }
 
@@ -59,11 +60,11 @@ function buildSoundboardPanel(userId, view = 'predefined', page = 0) {
     .setTitle(title)
     .setDescription(
       sounds.length === 0
-        ? 'Keine Sounds vorhanden. Nutze `/dashboard` um Sounds hinzuzufuegen!'
+        ? t('sb.empty', loc)
         : description
     )
     .setColor(0x5865F2)
-    .setFooter({ text: `Seite ${page + 1}/${totalPages} | ${sounds.length} Sounds` });
+    .setFooter({ text: t('sb.footer', loc, { page: page + 1, total: totalPages, n: sounds.length }) });
 
   const components = [];
 
@@ -71,22 +72,22 @@ function buildSoundboardPanel(userId, view = 'predefined', page = 0) {
   const categoryMenu = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId('sb_view')
-      .setPlaceholder('Kategorie waehlen...')
+      .setPlaceholder(t('sb.categoryPlaceholder', loc))
       .addOptions([
         {
-          label: 'Vorgegebene Sounds',
+          label: t('sb.opt.predefined', loc),
           value: 'predefined',
           emoji: '🎵',
           default: view === 'predefined',
         },
         {
-          label: 'Alle Sounds',
+          label: t('sb.opt.all', loc),
           value: 'all',
           emoji: '📋',
           default: view === 'all',
         },
         {
-          label: 'Favoriten',
+          label: t('sb.opt.favorites', loc),
           value: 'favorites',
           emoji: '⭐',
           default: view === 'favorites',
@@ -139,12 +140,12 @@ function buildSoundboardPanel(userId, view = 'predefined', page = 0) {
       .setDisabled(page >= totalPages - 1),
     new ButtonBuilder()
       .setCustomId('sb_stop')
-      .setLabel('Stop')
+      .setLabel(t('sb.btn.stop', loc))
       .setStyle(ButtonStyle.Danger)
       .setEmoji('⏹'),
     new ButtonBuilder()
-      .setCustomId('sb_refresh')
-      .setLabel('Aktualisieren')
+      .setCustomId(`sb_refresh_${view}`)
+      .setLabel(t('sb.btn.refresh', loc))
       .setStyle(ButtonStyle.Success)
       .setEmoji('🔄'),
   );
@@ -167,6 +168,7 @@ function buildSoundboardPanel(userId, view = 'predefined', page = 0) {
 
 async function handleButton(interaction) {
   const customId = interaction.customId;
+  const loc = localeFor(interaction);
 
   // Sound abspielen
   if (customId.startsWith('sb_play_')) {
@@ -174,7 +176,7 @@ async function handleButton(interaction) {
     const sound = db.getSound(soundId);
 
     if (!sound) {
-      return interaction.reply({ content: 'Sound nicht gefunden.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: t('sb.notFound', loc), flags: MessageFlags.Ephemeral });
     }
 
     // Rate-Limiting pruefen
@@ -183,7 +185,7 @@ async function handleButton(interaction) {
     const lastPlay = lastPlayTimestamps.get(userId) || 0;
     if (now - lastPlay < RATE_LIMIT_MS) {
       return interaction.reply({
-        content: 'Warte kurz bevor du den naechsten Sound abspielst.',
+        content: t('sb.rateLimit', loc),
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -194,7 +196,7 @@ async function handleButton(interaction) {
 
     if (!voiceChannel) {
       return interaction.reply({
-        content: 'Du musst in einem Voice-Channel sein!',
+        content: t('sb.voiceRequired', loc),
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -206,7 +208,7 @@ async function handleButton(interaction) {
       await playSound(voiceChannel, sound.id, volume);
     } catch (err) {
       console.error('Fehler beim Abspielen:', err);
-      await interaction.followUp({ content: 'Fehler beim Abspielen des Sounds.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await interaction.followUp({ content: t('sb.playError', loc), flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     return;
   }
@@ -217,25 +219,20 @@ async function handleButton(interaction) {
     const view = parts[0];
     const page = parseInt(parts[1]);
 
-    const panel = buildSoundboardPanel(interaction.user.id, view, page);
+    const panel = buildSoundboardPanel(interaction.user.id, view, page, loc);
     return interaction.update(panel);
   }
 
   // Stop
   if (customId === 'sb_stop') {
     stopSound(interaction.guildId);
-    return interaction.reply({ content: 'Sound gestoppt.', flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: t('sb.stopped', loc), flags: MessageFlags.Ephemeral });
   }
 
-  // Aktualisieren
-  if (customId === 'sb_refresh') {
-    // Parse current view from the embed title
-    const title = interaction.message.embeds[0]?.title || '';
-    let view = 'predefined';
-    if (title.includes('Alle')) view = 'all';
-    else if (title.includes('Favoriten')) view = 'favorites';
-
-    const panel = buildSoundboardPanel(interaction.user.id, view, 0);
+  // Aktualisieren — view steckt in der customId (sprachunabhaengig)
+  if (customId.startsWith('sb_refresh')) {
+    const view = customId.replace('sb_refresh_', '') || 'predefined';
+    const panel = buildSoundboardPanel(interaction.user.id, view, 0, loc);
     return interaction.update(panel);
   }
 
@@ -249,8 +246,8 @@ async function handleButton(interaction) {
     }
     return interaction.reply({
       content: db.isFavorite(interaction.user.id, soundId)
-        ? 'Zu Favoriten hinzugefuegt!'
-        : 'Aus Favoriten entfernt.',
+        ? t('sb.favAdded', loc)
+        : t('sb.favRemoved', loc),
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -259,7 +256,7 @@ async function handleButton(interaction) {
 async function handleSelectMenu(interaction) {
   if (interaction.customId === 'sb_view') {
     const view = interaction.values[0];
-    const panel = buildSoundboardPanel(interaction.user.id, view, 0);
+    const panel = buildSoundboardPanel(interaction.user.id, view, 0, localeFor(interaction));
     return interaction.update(panel);
   }
 }

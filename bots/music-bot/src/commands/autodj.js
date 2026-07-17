@@ -1,9 +1,11 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { t } = require('../i18n');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('autodj')
-        .setDescription('Auto-DJ ein-/ausschalten — spielt automatisch aehnliche Songs'),
+        .setDescription('Auto-DJ ein-/ausschalten — spielt automatisch aehnliche Songs')
+        .setDescriptionLocalizations({ 'en-US': 'Toggle Auto-DJ — automatically plays similar songs', 'en-GB': 'Toggle Auto-DJ — automatically plays similar songs' }),
 
     async execute(interaction, ctx) {
         const queue = ctx.getQueue(interaction.guildId);
@@ -13,9 +15,9 @@ module.exports = {
         ctx.db.setGuildSetting(interaction.guildId, 'auto_dj', queue.autoDj ? 1 : 0);
 
         ctx.updateNowPlayingMsg(queue);
-        const status = queue.autoDj ? 'aktiviert' : 'deaktiviert';
+        const loc = ctx.localeFor(interaction);
         ctx.autoDelete(
-            interaction.reply({ content: `-# 🤖 Auto-DJ ${status}`, fetchReply: true }),
+            interaction.reply({ content: t(queue.autoDj ? 'autodj.on' : 'autodj.off', loc), fetchReply: true }),
             ctx.DELETE_SHORT_MS
         );
 
