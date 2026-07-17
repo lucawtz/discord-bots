@@ -16,13 +16,16 @@ const SOUNDS_PER_PAGE = 10; // Max 5 Rows x 5 Buttons = 25, aber wir brauchen Pl
 const RATE_LIMIT_MS = 2000;
 const lastPlayTimestamps = new Map();
 
-// Rate-Limiter aufraumen (alle 10 Minuten)
+// Rate-Limiter aufraumen (alle 10 Minuten). .unref(): dieser Timer soll den
+// Prozess nicht am Leben halten — sonst haengt `npm run deploy` (laedt dieses
+// Modul transitiv ueber commands/soundboard.js) nach dem Registrieren. Fuer den
+// laufenden Bot irrelevant, weil der Discord-Client den Event-Loop offenhaelt.
 setInterval(() => {
   const cutoff = Date.now() - 60_000;
   for (const [userId, timestamp] of lastPlayTimestamps) {
     if (timestamp < cutoff) lastPlayTimestamps.delete(userId);
   }
-}, 10 * 60_000);
+}, 10 * 60_000).unref();
 
 function buildSoundboardPanel(userId, view = 'predefined', page = 0, loc = 'de') {
   let sounds;
