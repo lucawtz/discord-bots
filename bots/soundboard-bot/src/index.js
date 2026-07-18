@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { handleButton, handleSelectMenu } = require('./handlers/interactionHandler');
 const { t, localeFor } = require('./i18n');
+const { notifyError, notifyOnline } = require('../../../libs/notify');
 
 const client = new Client({
   intents: [
@@ -29,6 +30,7 @@ for (const file of commandFiles) {
 client.once(Events.ClientReady, (c) => {
   console.log(`Bot ist online als ${c.user.tag}`);
   console.log(`In ${c.guilds.cache.size} Server(n)`);
+  notifyOnline('EarTastic', `als ${c.user.tag} · ${c.guilds.cache.size} Server`);
 });
 
 // Interactions
@@ -101,15 +103,18 @@ db.init().then(() => {
 // bei jeder unhandled Rejection ausserhalb des Interaction-try/catch)
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled rejection:', err);
+  notifyError('EarTastic', 'unhandledRejection', err);
 });
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
+  notifyError('EarTastic', 'uncaughtException', err);
   try { db.saveNow(); } catch {}
 });
 
 client.on(Events.Error, (err) => {
   console.error('Discord-Client-Fehler:', err);
+  notifyError('EarTastic', 'Discord client error', err);
 });
 
 // Graceful Shutdown

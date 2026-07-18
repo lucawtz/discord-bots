@@ -42,6 +42,20 @@ kein akuter Bug, alles läuft (BeatByte 31/31, EarTastic 13/13 grün getestet).
 - [ ] Klare Fehlermeldung an den Nutzer, wenn ein Stream endgültig fehlschlägt —
       statt stiller Buffering-/Retry-Schleife.
 
+## Monitoring & Alerting
+- [x] **Fehler-/Crash-Alerting nach Discord** (2026-07-17, `libs/notify.js`): beide Bots
+      posten `unhandledRejection`/`uncaughtException`/`client error` + einen `🟢 online`-Ping
+      an einen Webhook (`ALERT_WEBHOOK_URL`), mit Dedup + Rate-Limit. Fehler landen nicht mehr
+      nur in den Coolify-Logs, die niemand liest.
+- [ ] **`ALERT_WEBHOOK_URL` in Coolify setzen** (je Bot, privater Discord-Kanal → Webhook-URL) —
+      ohne die Env-Var ist das Alerting inaktiv (No-op). *Das ist der letzte Schritt, damit es scharf ist.*
+- [ ] Periodischer **`/play`-Selbsttest** auf dem Server, der bei Stille über denselben
+      Webhook Alarm schlägt (deckt das YouTube-Pipeline-Risiko oben aktiv ab) — Alert-Weg steht bereits.
+- [ ] **`#status`-Kanal** aus den Web-APIs (Ports 3001/3002) — kann denselben Webhook/`notify.js` nutzen.
+      *(Dublette zu Phase-1 „#status-Kanal" unten — dort abhaken, wenn erledigt.)*
+- [ ] Optional: **Backup-Restore einmal testen** — die täglichen `data/backups/` (7 behalten,
+      `database.js`) wurden noch nie zurückgespielt; einmal durchspielen + Mini-Runbook festhalten.
+
 ## Testbarkeit & CI
 - [ ] `index.js` (2100+ Zeilen, `ctx` mit ~40 Feldern) ist ein Monolith und war
       nicht zum Testen strukturiert (für die Tests musste `client`/`ctx` exportiert
