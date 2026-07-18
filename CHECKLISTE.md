@@ -47,8 +47,9 @@ kein akuter Bug, alles läuft (BeatByte 31/31, EarTastic 13/13 grün getestet).
       posten `unhandledRejection`/`uncaughtException`/`client error` + einen `🟢 online`-Ping
       an einen Webhook (`ALERT_WEBHOOK_URL`), mit Dedup + Rate-Limit. Fehler landen nicht mehr
       nur in den Coolify-Logs, die niemand liest.
-- [ ] **`ALERT_WEBHOOK_URL` in Coolify setzen** (je Bot, privater Discord-Kanal → Webhook-URL) —
-      ohne die Env-Var ist das Alerting inaktiv (No-op). *Das ist der letzte Schritt, damit es scharf ist.*
+- [x] **`ALERT_WEBHOOK_URL` in Coolify setzen** (2026-07-18 verifiziert): bei **beiden** Bots gesetzt
+      (`GET /applications/<uuid>/envs`) → Alerting ist scharf, kein No-op mehr. Der Endpoint gibt
+      Werte nie zurueck, geprueft ist also nur die Existenz des Keys.
 - [ ] Periodischer **`/play`-Selbsttest** auf dem Server, der bei Stille über denselben
       Webhook Alarm schlägt (deckt das YouTube-Pipeline-Risiko oben aktiv ab) — Alert-Weg steht bereits.
 - [ ] **`#status`-Kanal** aus den Web-APIs (Ports 3001/3002) — kann denselben Webhook/`notify.js` nutzen.
