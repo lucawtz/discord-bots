@@ -12,6 +12,7 @@ const { startAPI } = require('./api');
 const db = require('./database');
 const { t, normalizeLocale } = require('./i18n');
 const { notifyError, notifyOnline } = require('../../../libs/notify');
+const { startStatusUpdater } = require('../../../libs/status');
 // Server-Sprache fuer Hintergrund-Nachrichten ohne Interaction (Now-Playing-Embed):
 // explizite Einstellung (guild_settings.language), sonst Default 'de'.
 function guildLocaleFor(guildId) {
@@ -2184,6 +2185,21 @@ client.once('ready', () => {
     _apiBroadcast = api.broadcast;
     _apiGetGuildState = api.getGuildState;
     _generateAccessCode = api.generateAccessCode;
+
+    // Periodischer #status-Post (No-op ohne STATUS_CHANNEL_ID)
+    startStatusUpdater({
+        client,
+        botName: 'BeatByte',
+        emoji: '🎵',
+        getState: () => ({
+            online: true,
+            guilds: client.guilds.cache.size,
+            extra: {
+                'Aktive Wiedergaben': [...queues.values()].filter(q => q.current).length,
+                'Web-API': `Port ${process.env.API_PORT || 3001} ✓`,
+            },
+        }),
+    });
 });
 
 db.init().then(() => {

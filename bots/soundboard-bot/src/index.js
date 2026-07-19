@@ -6,6 +6,7 @@ const path = require('path');
 const { handleButton, handleSelectMenu } = require('./handlers/interactionHandler');
 const { t, localeFor } = require('./i18n');
 const { notifyError, notifyOnline } = require('../../../libs/notify');
+const { startStatusUpdater } = require('../../../libs/status');
 
 const client = new Client({
   intents: [
@@ -31,6 +32,20 @@ client.once(Events.ClientReady, (c) => {
   console.log(`Bot ist online als ${c.user.tag}`);
   console.log(`In ${c.guilds.cache.size} Server(n)`);
   notifyOnline('EarTastic', `als ${c.user.tag} · ${c.guilds.cache.size} Server`);
+
+  // Periodischer #status-Post (No-op ohne STATUS_CHANNEL_ID)
+  startStatusUpdater({
+    client: c,
+    botName: 'EarTastic',
+    emoji: '🔊',
+    getState: () => ({
+      online: true,
+      guilds: c.guilds.cache.size,
+      extra: {
+        'Web-Dashboard': `Port ${process.env.PORT || process.env.WEB_PORT || 3000} ✓`,
+      },
+    }),
+  });
 });
 
 // Interactions

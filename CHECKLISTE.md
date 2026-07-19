@@ -52,8 +52,11 @@ kein akuter Bug, alles läuft (BeatByte 31/31, EarTastic 13/13 grün getestet).
       Werte nie zurueck, geprueft ist also nur die Existenz des Keys.
 - [ ] Periodischer **`/play`-Selbsttest** auf dem Server, der bei Stille über denselben
       Webhook Alarm schlägt (deckt das YouTube-Pipeline-Risiko oben aktiv ab) — Alert-Weg steht bereits.
-- [ ] **`#status`-Kanal** aus den Web-APIs (Ports 3001/3002) — kann denselben Webhook/`notify.js` nutzen.
-      *(Dublette zu Phase-1 „#status-Kanal" unten — dort abhaken, wenn erledigt.)*
+- [x] **`#status`-Kanal** — Code **erledigt 2026-07-19** (`libs/status.js`): beide Bots pflegen je eine
+      selbst-aktualisierende Nachricht (🎵 BeatByte / 🔊 EarTastic, „🟢 Online · aktualisiert vor X" +
+      Server-Zahl + Web-Port, alle 5 Min; Restart wiederverwendet die eigene Nachricht → keine Karteileichen).
+      **Offen (kein Code):** #status-Kanal anlegen, beiden Bots dort View/Send/Embed/Read-History geben,
+      `STATUS_CHANNEL_ID` (gleiche ID) in Coolify bei beiden setzen — sonst No-op.
 - [ ] Optional: **Backup-Restore einmal testen** — die täglichen `data/backups/` (7 behalten,
       `database.js`) wurden noch nie zurückgespielt; einmal durchspielen + Mini-Runbook festhalten.
 
@@ -157,7 +160,9 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
       posten → erledigt „Changelog auf Support-Server aktuell halten" dauerhaft
 - [x] **`/support`- + `/invite`-Command** in beide Bots (2026-07-14, `libs/links.js`; noch Prod-`npm run deploy`).
       Offen bleibt nur: `bytebots.de`-Footer auch in die Now-Playing-/Sound-Embeds (s. „Ideen für später")
-- [ ] **`#status`-Kanal** aus den Web-APIs (Ports 3001/3002): „🟢 BeatByte / 🟢 EarTastic online"
+- [x] **`#status`-Kanal**: „🟢 BeatByte / 🟢 EarTastic online" — Code erledigt 2026-07-19
+      (`libs/status.js`, s. Abschnitt „Monitoring & Alerting"). Offen nur noch: Kanal anlegen +
+      `STATUS_CHANNEL_ID` in Coolify setzen.
 
 ### Rechtliche Seiten
 - [x] Nutzungsbedingungen-Seite (`/nutzungsbedingungen`) auf bytebots.de erstellen —
