@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType, Events } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, VoiceConnectionDisconnectReason, entersState, StreamType } = require('@discordjs/voice');
 const { spawn, execFileSync } = require('child_process'); // execFileSync für yt-dlp detection
 
@@ -2177,7 +2177,11 @@ client.on('warn', (msg) => {
 });
 
 // ── Bot starten ───────────────────────────────────────────────────
-client.once('ready', () => {
+// Events.ClientReady statt des Strings 'ready': der wurde in discord.js
+// umbenannt (ab v15 feuert nur noch 'clientReady') und warnte im Prod-Log.
+// Der Enum ist versionsrobust — ein hartes 'clientReady' wuerde bei einer
+// aelteren gepinnten Version still nie feuern.
+client.once(Events.ClientReady, () => {
     console.log(`✅ Bot ist online als ${client.user.tag}`);
     notifyOnline('BeatByte', `als ${client.user.tag} · ${client.guilds.cache.size} Server`);
     client.user.setActivity('/play', { type: ActivityType.Listening });
