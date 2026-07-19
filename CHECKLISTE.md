@@ -55,8 +55,12 @@ kein akuter Bug, alles läuft (BeatByte 31/31, EarTastic 13/13 grün getestet).
 - [x] **`#status`-Kanal** — Code **erledigt 2026-07-19** (`libs/status.js`): beide Bots pflegen je eine
       selbst-aktualisierende Nachricht (🎵 BeatByte / 🔊 EarTastic, „🟢 Online · aktualisiert vor X" +
       Server-Zahl + Web-Port, alle 5 Min; Restart wiederverwendet die eigene Nachricht → keine Karteileichen).
-      **Offen (kein Code):** #status-Kanal anlegen, beiden Bots dort View/Send/Embed/Read-History geben,
-      `STATUS_CHANNEL_ID` (gleiche ID) in Coolify bei beiden setzen — sonst No-op.
+      **Einrichtung 2026-07-19 erledigt:** `#status` liegt in der Kategorie 📢 Info (ID `1528421307698511952`,
+      `@everyone` = nur lesen, beide Bot-Rollen View/Send/Embed/Read-History), und `STATUS_CHANNEL_ID` ist bei
+      **beiden** Coolify-Apps gesetzt (`POST /applications/<uuid>/envs`, Key-Zahl 10→11 bzw. 12→13).
+      - [ ] **Letzter Schritt: beide Bots in Coolify redeployen** — Env-Änderungen greifen erst beim
+            Container-Neustart, bis dahin bleibt `libs/status.js` ein No-op. Danach prüfen, ob in `#status`
+            zwei Nachrichten stehen (🎵 BeatByte / 🔊 EarTastic) und der relative Zeitstempel alle 5 Min wandert.
 - [ ] Optional: **Backup-Restore einmal testen** — die täglichen `data/backups/` (7 behalten,
       `database.js`) wurden noch nie zurückgespielt; einmal durchspielen + Mini-Runbook festhalten.
 
@@ -158,8 +162,10 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 **Mit Code (Repo — kann Claude umsetzen):**
 - [ ] **Changelog→`#changelog`-Webhook**: neue `CHANGELOG.md`-Einträge automatisch nach Discord
       posten → erledigt „Changelog auf Support-Server aktuell halten" dauerhaft
-- [x] **`/support`- + `/invite`-Command** in beide Bots (2026-07-14, `libs/links.js`; noch Prod-`npm run deploy`).
-      Offen bleibt nur: `bytebots.de`-Footer auch in die Now-Playing-/Sound-Embeds (s. „Ideen für später")
+- [x] **`/support`- + `/invite`-Command** in beide Bots (2026-07-14, `libs/links.js`). **Prod-Deploy erledigt**
+      (2026-07-19 verifiziert: global registriert sind BeatByte 26 Commands, EarTastic 8 — inkl. `/support`,
+      `/invite`, `/language`). Offen bleibt nur: `bytebots.de`-Footer auch in die Now-Playing-/Sound-Embeds
+      (s. „Ideen für später")
 - [x] **`#status`-Kanal**: „🟢 BeatByte / 🟢 EarTastic online" — Code erledigt 2026-07-19
       (`libs/status.js`, s. Abschnitt „Monitoring & Alerting"). Offen nur noch: Kanal anlegen +
       `STATUS_CHANNEL_ID` in Coolify setzen.
@@ -171,22 +177,44 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
       User-IDs, Playlists, hochgeladene Sounds, …) — **erledigt 2026-07-15** (Datenschutz §6:
       aus den DB-Schemata verifiziert — Playlists/Historie/Likes/Follows + Guild-Settings; Sounds/Favoriten/Volume;
       Web-Login via Discord-OAuth; inkl. Hosting Hetzner/DE, Rechtsgrundlagen, Löschung; de+en)
-- [ ] Beide URLs im Developer Portal eintragen: **General Information →
-      Privacy Policy URL / Terms of Service URL** (bei beiden Apps) —
-      URLs stehen bereit: `bytebots.de/nutzungsbedingungen` bzw. `/datenschutz`
+- [x] Beide URLs im Developer Portal eingetragen — **erledigt 2026-07-19**, per `GET /applications/@me`
+      bei **beiden** Apps verifiziert: `terms_of_service_url` = `https://bytebots.de/nutzungsbedingungen`,
+      `privacy_policy_url` = `https://bytebots.de/datenschutz`.
 
 ### Developer-Portal-Hygiene
 - [ ] 2FA auf dem Discord-Account aktivieren
-- [ ] Prüfen, welche Privileged Intents aktiviert sind — ungenutzte abschalten
-      (Slash-Command-Bots brauchen meist weder Message Content noch Members Intent)
+- [~] **Bot-Rechte auf dem Support-Server entschärfen** (2026-07-19): beide Bots hatten **ADMINISTRATOR**.
+      Ziel-Set = `VIEW_CHANNEL + SEND_MESSAGES + EMBED_LINKS + READ_MESSAGE_HISTORY + CONNECT + SPEAK +
+      USE_VAD` (Bitmaske **`36785152`**) — aus dem Code hergeleitet: `channel.send()` + Embeds, `msg.delete()`
+      nur auf **eigenen** Nachrichten (braucht kein `MANAGE_MESSAGES`), Voice-Playback, `messages.fetch` in
+      `libs/status.js`; keine Attachments (`AttachmentBuilder` kommt in keinem Bot vor).
+      - [x] **EarTastic demotiert** — Rolle steht auf `36785152`, ADMIN weg; Bot weiter gesund
+            (`/api/health` 200).
+      - [x] **Vorher Kanal-Overwrites nachgezogen**, sonst wäre Sichtbarkeit verloren gegangen: die Kategorien
+            🎵 BeatByte / 🔊 EarTastic verbieten `@everyone` `VIEW_CHANNEL`, und die Bot-Rollen hatten dort
+            **keine** eigenen Overwrites — sie sahen die Kanäle nur dank ADMIN. Jetzt hat jede Bot-Rolle auf
+            ihrer eigenen Kategorie + deren 3 Kanälen explizit VIEW/SEND/EMBED/HIST (je Bot nur die eigene).
+      - [ ] **BeatByte muss Luca in der Discord-UI demotieren** — geht per API nicht: BeatByte ist mit
+            **pos 8 die höchste Rolle**, und Discord lässt kein Bearbeiten der eigenen höchsten Rolle zu;
+            EarTastic (pos 7) steht darunter und hat seit der Demotion ohnehin kein `MANAGE_ROLES` mehr.
+            → Servereinstellungen → Rollen → **BeatByte** → Administrator aus, stattdessen: Kanal ansehen,
+            Nachrichten senden, Links einbetten, Nachrichtenverlauf lesen, Verbinden, Sprechen, Sprachaktivität.
+      - [ ] Invite-Link im Developer Portal (OAuth2 → URL Generator) auf dasselbe Set einkürzen —
+            `install_params.permissions` steht bei beiden Apps auf `0`.
+- [x] Prüfen, welche Privileged Intents aktiviert sind — **erledigt/geprüft 2026-07-19**: bei BeatByte
+      (`flags 10485760`) und EarTastic (`flags 8388608`) ist **kein** privilegierter Intent gesetzt
+      (weder `GATEWAY_MESSAGE_CONTENT(_LIMITED)`, `GUILD_MEMBERS(_LIMITED)` noch `PRESENCE(_LIMITED)`).
+      Nichts abzuschalten — Zustand ist schon sauber. Nachprüfbar per `GET /applications/@me` mit dem Bot-Token.
 - [ ] Optional: Team anlegen und beide Apps ins Team übertragen
 
 ---
 
 ## Phase 2: Bot-Listen (jetzt — keine Mindestgrenze)
 
-- [ ] **top.gg**: beide Bots eintragen (Beschreibung DE/EN, Tags, Support-Server-Link)
-- [ ] discordbotlist.com eintragen
+- [~] **top.gg**: beide Bots eintragen (Beschreibung DE/EN, Tags, Support-Server-Link) —
+      **2026-07-19: BeatByte ist gelistet** (`top.gg/bot/1488919318472298647` → 200, Top.gg-Bot ist auch
+      auf dem Support-Server). **EarTastic fehlt noch** (`/bot/1488966705488330932` → 404).
+- [ ] discordbotlist.com eintragen — 2026-07-19 geprüft: beide Bots dort noch nicht gelistet (404)
 - [ ] discords.com/bots eintragen
 - [ ] botlist.me eintragen
 - [ ] Gute Screenshots/Assets erstellen: Now-Playing-Embed mit Fortschrittsbalken,
@@ -212,6 +240,8 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 > Bei 100 Servern kann ein unverifizierter Bot keinen Servern mehr beitreten.
 > Prozess dauert Tage bis Wochen → bei ~75 starten.
 > Verifizierung ist KEIN Feature-Freeze — danach normal weiterentwickeln.
+> **Stand 2026-07-19:** BeatByte 3 Server, EarTastic 2 (`approximate_guild_count`) — noch weit weg,
+> Phase 2/3 sind der Hebel.
 
 - [ ] Developer Portal → App → Tab **„App Verification"** öffnen
 - [ ] Identitätsprüfung über Stripe Identity durchlaufen (Ausweis + Selfie)
