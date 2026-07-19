@@ -67,13 +67,13 @@ async function postOnce(client, channel, botName, emoji, getState) {
         // Discord verwirft Embeds STILL (kein Fehler!), wenn EMBED_LINKS im Kanal
         // fehlt — dann steht dort eine leere Nachricht. Sichtbar machen statt schweigen.
         if (!res?.embeds?.length) {
-            console.error(
+            console.log(
                 `status: Embed wurde verworfen (${botName}) — fehlt EMBED_LINKS in #${channel.name}? ` +
                 `Gesendet: ${JSON.stringify(embed).slice(0, 400)}`
             );
         }
     } catch (e) {
-        console.error('status: Update fehlgeschlagen:', e?.message || e);
+        console.log('status: Update fehlgeschlagen:', e?.message || e);
     }
 }
 
