@@ -4,7 +4,7 @@ const { t } = require('../i18n');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('autodj')
-        .setDescription('Auto-DJ ein-/ausschalten — spielt automatisch aehnliche Songs')
+        .setDescription('Auto-DJ ein-/ausschalten — spielt automatisch ähnliche Songs')
         .setDescriptionLocalizations({ 'en-US': 'Toggle Auto-DJ — automatically plays similar songs', 'en-GB': 'Toggle Auto-DJ — automatically plays similar songs' }),
 
     async execute(interaction, ctx) {

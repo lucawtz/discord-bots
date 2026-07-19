@@ -4,7 +4,7 @@ const { t, localeFor } = require('../i18n');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('dashboard')
-    .setDescription('Oeffne das Soundboard-Dashboard im Browser')
+    .setDescription('Öffne das Soundboard-Dashboard im Browser')
     .setDescriptionLocalizations({ 'en-US': 'Open the soundboard dashboard in your browser', 'en-GB': 'Open the soundboard dashboard in your browser' }),
 
   async execute(interaction) {

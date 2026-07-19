@@ -108,7 +108,7 @@ module.exports = {
     'support.join': 'Support-Server beitreten',
 
     // ── /app ──
-    'app.desc': (v) => `### Dein Zugangs-Code\n# \`${v.code}\`\n\nOeffne den Music Player und gib diesen Code ein, um dich zu verbinden.\n\nDer Code ist **7 Tage** gueltig.`,
+    'app.desc': (v) => `### Dein Zugangs-Code\n# \`${v.code}\`\n\nÖffne den Music Player und gib diesen Code ein, um dich zu verbinden.\n\nDer Code ist **7 Tage** gültig.`,
     'app.footer': 'Nur für dich sichtbar',
     'app.openPlayer': 'Player öffnen',
 
@@ -130,7 +130,7 @@ module.exports = {
     'playlist.count': (v) => `${v.n} Playlist${v.n !== 1 ? 's' : ''}`,
     'playlist.emptyLabel': 'Leer',
     'playlist.deleted': (v) => `-# 🗑️ Playlist **${v.name}** gelöscht`,
-    'playlist.invalidUrl': '❌ Ungueltige Playlist-URL. Unterstuetzt: Spotify, Apple Music, Deezer, Amazon Music, YouTube.',
+    'playlist.invalidUrl': '❌ Ungültige Playlist-URL. Unterstützt: Spotify, Apple Music, Deezer, Amazon Music, YouTube.',
     'playlist.noTracks': '❌ Konnte keine Songs aus dieser Playlist laden.',
     'playlist.existsHint': (v) => `❌ Du hast bereits eine Playlist namens **${v.name}**. Wähle einen anderen Namen mit der \`name\` Option.`,
     'playlist.imported': 'Playlist importiert',

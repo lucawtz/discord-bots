@@ -5,11 +5,11 @@ const { t, localeFor } = require('../i18n');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('volume')
-    .setDescription('Stelle deine persoenliche Lautstaerke ein')
+    .setDescription('Stelle deine persönliche Lautstärke ein')
     .setDescriptionLocalizations({ 'en-US': 'Set your personal volume', 'en-GB': 'Set your personal volume' })
     .addIntegerOption(opt =>
       opt.setName('prozent')
-        .setDescription('Lautstaerke in Prozent (0-200)')
+        .setDescription('Lautstärke in Prozent (0-200)')
         .setDescriptionLocalizations({ 'en-US': 'Volume in percent (0-200)', 'en-GB': 'Volume in percent (0-200)' })
         .setRequired(true)
         .setMinValue(0)

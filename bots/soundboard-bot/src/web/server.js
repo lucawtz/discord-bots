@@ -25,14 +25,14 @@ const CATEGORIES = [
   'Ambient',
 ];
 
-// Multer: temp-Verzeichnis fuer Uploads (wird nach Verarbeitung geloescht)
+// Multer: temp-Verzeichnis fuer Uploads (wird nach Verarbeitung gelöscht)
 const upload = multer({
   dest: os.tmpdir(),
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter(req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      return cb(new Error('Ungueltiges Format! Erlaubt: ' + ALLOWED_EXTENSIONS.join(', ')));
+      return cb(new Error('Ungültiges Format! Erlaubt: ' + ALLOWED_EXTENSIONS.join(', ')));
     }
     cb(null, true);
   },
@@ -241,7 +241,7 @@ function startWebServer(port, client) {
       return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen, nur Buchstaben, Zahlen und Grundzeichen)' });
     }
     if (!CATEGORIES.includes(category)) {
-      return res.status(400).json({ error: 'Ungueltige Kategorie' });
+      return res.status(400).json({ error: 'Ungültige Kategorie' });
     }
     const existing = db.getSoundByName(name);
     if (existing && existing.id !== sound.id) {
@@ -258,7 +258,7 @@ function startWebServer(port, client) {
     const sound = db.getSound(parseInt(req.params.id));
     if (!sound) return res.status(404).json({ error: 'Sound nicht gefunden' });
     db.deleteSound(sound.id);
-    res.json({ message: 'Sound geloescht' });
+    res.json({ message: 'Sound gelöscht' });
   });
 
   // --- API: Sound hochladen ---
@@ -276,7 +276,7 @@ function startWebServer(port, client) {
     }
     if (!CATEGORIES.includes(category)) {
       cleanup();
-      return res.status(400).json({ error: 'Ungueltige Kategorie' });
+      return res.status(400).json({ error: 'Ungültige Kategorie' });
     }
     if (db.getSoundByName(name)) {
       cleanup();
@@ -291,7 +291,7 @@ function startWebServer(port, client) {
       }
     } catch {
       cleanup();
-      return res.status(400).json({ error: 'Datei konnte nicht gelesen werden. Ist es eine gueltige Audio-Datei?' });
+      return res.status(400).json({ error: 'Datei konnte nicht gelesen werden. Ist es eine gültige Audio-Datei?' });
     }
 
     const audioData = fs.readFileSync(req.file.path);
@@ -359,13 +359,13 @@ function startWebServer(port, client) {
       return res.status(400).json({ error: 'Name ist erforderlich (max. 32 Zeichen, nur Buchstaben, Zahlen und Grundzeichen)' });
     }
     if (!CATEGORIES.includes(category)) {
-      return res.status(400).json({ error: 'Ungueltige Kategorie' });
+      return res.status(400).json({ error: 'Ungültige Kategorie' });
     }
     if (!previewUrl) {
       return res.status(400).json({ error: 'Keine Preview-URL' });
     }
     if (!isAllowedDownloadUrl(previewUrl)) {
-      return res.status(400).json({ error: 'Ungueltige Download-URL (nur freesound.org erlaubt)' });
+      return res.status(400).json({ error: 'Ungültige Download-URL (nur freesound.org erlaubt)' });
     }
     if (db.getSoundByName(name)) {
       return res.status(409).json({ error: `Sound "${name}" existiert bereits` });
@@ -414,7 +414,7 @@ function startWebServer(port, client) {
     }
     if (err) {
       console.error('Server-Fehler:', err);
-      return res.status(400).json({ error: 'Ungueltige Anfrage' });
+      return res.status(400).json({ error: 'Ungültige Anfrage' });
     }
     next();
   });
@@ -423,7 +423,7 @@ function startWebServer(port, client) {
   // (127.0.0.1 wäre nur innerhalb des Containers erreichbar.)
   const host = process.env.WEB_HOST || '0.0.0.0';
   const server = app.listen(port, host, () => {
-    console.log(`Web-Dashboard laeuft auf http://${host}:${port}`);
+    console.log(`Web-Dashboard läuft auf http://${host}:${port}`);
   });
 
   return server;
