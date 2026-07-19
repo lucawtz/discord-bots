@@ -64,8 +64,10 @@ async function postOnce(client, channel, botName, emoji, getState) {
         const res = existing
             ? await existing.edit({ embeds: [embed] })
             : await channel.send({ embeds: [embed] });
-        // Discord verwirft Embeds STILL (kein Fehler!), wenn EMBED_LINKS im Kanal
-        // fehlt — dann steht dort eine leere Nachricht. Sichtbar machen statt schweigen.
+        // Discord verwirft Embeds STILL (kein Fehler!), wenn EMBED_LINKS im Kanal fehlt.
+        // ACHTUNG: faengt NICHT den Fall, dass ein asynchroner Content-Scan das Embed
+        // erst nach der API-Antwort entfernt (siehe CHECKLISTE, EarTastic/#status) —
+        // dort meldet die API Erfolg samt Embed, und die Nachricht ist danach leer.
         if (!res?.embeds?.length) {
             console.log(
                 `status: Embed wurde verworfen (${botName}) — fehlt EMBED_LINKS in #${channel.name}? ` +

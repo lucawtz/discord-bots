@@ -58,9 +58,26 @@ kein akuter Bug, alles läuft (BeatByte 31/31, EarTastic 13/13 grün getestet).
       **Einrichtung 2026-07-19 erledigt:** `#status` liegt in der Kategorie 📢 Info (ID `1528421307698511952`,
       `@everyone` = nur lesen, beide Bot-Rollen View/Send/Embed/Read-History), und `STATUS_CHANNEL_ID` ist bei
       **beiden** Coolify-Apps gesetzt (`POST /applications/<uuid>/envs`, Key-Zahl 10→11 bzw. 12→13).
-      - [ ] **Letzter Schritt: beide Bots in Coolify redeployen** — Env-Änderungen greifen erst beim
-            Container-Neustart, bis dahin bleibt `libs/status.js` ein No-op. Danach prüfen, ob in `#status`
-            zwei Nachrichten stehen (🎵 BeatByte / 🔊 EarTastic) und der relative Zeitstempel alle 5 Min wandert.
+      - [x] **Beide Bots deployed** (2026-07-19) → **BeatByte läuft korrekt**: Embed steht in `#status`,
+            Zeitstempel wandert im 5-Minuten-Takt.
+      - [ ] 🐞 **OFFEN — EarTastic postet eine LEERE Nachricht** (`embeds: []`). Eingegrenzt:
+            - Nicht die Rechte: `EMBED_LINKS` ist in Rolle **und** Kanal-Overwrite gesetzt.
+            - Nicht der Code: derselbe `buildEmbed`+`edit`-Pfad **funktioniert lokal** mit demselben
+              Prod-Token auf derselben Nachricht (`embeds: 1`).
+            - Nicht das Image: Force-Rebuild ohne Cache, `COPY libs ./libs` lief, Image auf `2afb901`.
+            - **Kern des Befunds:** Die API meldet **Erfolg samt Embed** — und die Nachricht ist ~90 s
+              später leer, **ohne neuen `edited_timestamp`**. Das Embed wird also *nachträglich*
+              entfernt, nicht überschrieben. Passierte identisch bei manuellem `PATCH` (15:45) und
+              beim lokalen discord.js-Test (15:56).
+            - **Verdacht (nicht bewiesen):** AutoMod-Regel **„Spam blockieren"** (`trigger_type=3`,
+              Discord-ML-Filter) — sie hat **keine** `exempt_roles`/`exempt_channels`. Gegen den Verdacht
+              spricht: im Audit-Log stehen 0 AutoMod-Einträge. Unerklärt bleibt auch, warum BeatByte
+              nicht betroffen ist (dessen Embed ändert sich pro Tick stärker).
+            - **Nächster Schritt (Discord-UI, 1 Min):** Servereinstellungen → AutoMod → „Spam blockieren"
+              → **#status als ausgenommenen Kanal** eintragen (gern auch bei den beiden anderen Regeln —
+              in #status posten nur Bots). Dann 5 Min warten und prüfen, ob EarTastics Embed stehen bleibt.
+              Bleibt es leer, ist AutoMod ausgeschlossen und der nächste Verdacht ist ein
+              account-/bot-spezifischer Content-Scan auf Discord-Seite.
 - [ ] Optional: **Backup-Restore einmal testen** — die täglichen `data/backups/` (7 behalten,
       `database.js`) wurden noch nie zurückgespielt; einmal durchspielen + Mini-Runbook festhalten.
 
@@ -221,7 +238,17 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
       Web Player, Soundboard-Dashboard (werden auch fürs App Directory gebraucht)
 - [ ] **Mehrsprachig** (DE + EN) konsistent in jede Beschreibung — passend zur Website-Positionierung
       (2026-07-15), nicht mehr als „nur deutscher Bot" vermarkten
-- [ ] Optional: top.gg-Vote-Webhook einbauen, Votern kleinen Perk geben
+- [ ] **top.gg-Vote-Webhooks einbauen** (2026-07-19 von Luca gesetzt: **gewollt**, nicht mehr optional) —
+      top.gg schickt bei jedem Vote einen POST an eine eigene URL; daraus einen Perk fuer Voter bauen.
+      - [ ] Webhook-Endpoint pro Bot in der bestehenden Web-App (music-bot `api.js` :3001,
+            soundboard `web/` :3002) — POST `/api/topgg/vote`, Auth ueber den `Authorization`-Header
+            gegen ein Secret (neue Env `TOPGG_WEBHOOK_AUTH`, in Coolify setzen; lokal `MUSIC_`/`SOUNDBOARD_`-Praefix)
+      - [ ] Im top.gg-Dashboard pro Bot Webhook-URL + dasselbe Secret eintragen
+            (BeatByte ist gelistet, EarTastic muss erst eingetragen werden — s. Punkt oben)
+      - [ ] Votes persistieren (User-ID + Zeitstempel, SQLite) — top.gg erlaubt alle 12 h eine Stimme
+      - [ ] Perk definieren und umsetzen (Idee: 12/24 h laenger Queue-Limit / exklusive Filter /
+            Voter-Badge im Now-Playing), plus Danke-DM oder Hinweis im Support-Server
+      - [ ] Strings fuer Vote-Perk in `de.js` + `en.js` beider Bots (i18n-Pflicht)
 
 ---
 
