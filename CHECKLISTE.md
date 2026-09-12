@@ -177,11 +177,19 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 - [ ] Regeln-Screening prüfen (Spam-Schutz beim Beitritt)
 
 **Mit Code (Repo — kann Claude umsetzen):**
-- [ ] **Changelog→`#changelog`-Webhook**: neue `CHANGELOG.md`-Einträge automatisch nach Discord
-      posten → erledigt „Changelog auf Support-Server aktuell halten" dauerhaft
+- [x] **Changelog→`#changelog`-Webhook** — **erledigt 2026-08-01** (`scripts/post-changelog.js` +
+      CI-Job `changelog-notify` in `.github/workflows/ci.yml`). Läuft bei Push auf `coolify-deploy`
+      **nach** grünem Build (`needs: lint-and-build`), difft `CHANGELOG.md` über `github.event.before..sha`
+      und postet jeden **neu** hinzugekommenen Bullet als Embed (Bereich→Farbe/Emoji, Datum als Autor-Zeile)
+      per Discord-Webhook. Kein Bot-Feature, weil die `CHANGELOG.md` in kein Image kopiert wird; kein
+      „zuletzt gepostet"-State nötig, weil der Push-Diff „neu" definiert. Nur Node-Builtins (kein Lockfile).
+      Parsing gegen echte History getestet (Einzel-/Mehrfach-Eintrag, neuer Datums-Header, No-op, First-Push-Fallback).
+      **OFFEN (2 Nicht-Code-Schritte):** (1) in Discord für `#changelog` einen **Webhook** anlegen (Kanal →
+      Integrationen → Webhooks), (2) dessen URL als GitHub-Actions-**Secret `CHANGELOG_WEBHOOK_URL`** hinterlegen
+      (Repo → Settings → Secrets → Actions). Ohne das Secret ist der Job ein No-op.
 - [x] **`/support`- + `/invite`-Command** in beide Bots (2026-07-14, `libs/links.js`). **Prod-Deploy erledigt**
       (2026-07-19 verifiziert: global registriert sind BeatByte 26 Commands, EarTastic 8 — inkl. `/support`,
-      `/invite`, `/language`). Offen bleibt nur: `bytebots.de`-Footer auch in die Now-Playing-/Sound-Embeds
+      `/invite`, `/language`). `bytebots.de`-Footer in Now-Playing-/Sound-Embeds **erledigt 2026-08-01**
       (s. „Ideen für später")
 - [x] **`#status`-Kanal**: „🟢 BeatByte / 🟢 EarTastic online" — Code erledigt 2026-07-19
       (`libs/status.js`, s. Abschnitt „Monitoring & Alerting"). Offen nur noch: Kanal anlegen +
@@ -297,7 +305,10 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
       AutoMod), Reaction-Roles, Willkommen/Onboarding, Ticket-System, Audit-Logging. Rundet das
       Trio mit BeatByte + EarTastic ab, gleiche mehrsprachige Nische, gleiche Web-Dashboard-Logik.
 - [x] `/invite`-Command in beide Bots (teilt Invite-Link + Website) — erledigt 2026-07-14 (zusammen mit `/support`)
-- [ ] Dezenter „bytebots.de"-Footer in Embeds
+- [x] Dezenter „bytebots.de"-Footer in Embeds — **erledigt 2026-08-01**: als Marken-Konstante
+      `FOOTER` in `libs/links.js` (eine Quelle, kein i18n — Domain ist DE=EN identisch), eingehängt in
+      die beiden Primär-Embeds: music-bot Now-Playing (`buildNowPlayingEmbed`, neuer Footer) und
+      soundboard Panel (`interactionHandler.js`, an den bestehenden Pagination-Footer angehängt: „… · bytebots.de")
 - [ ] Demo-Video/GIF für Website & Listings
 - [x] SEO-Content: „Discord Musik Bot deutsch", „Rythm Alternative" — **erledigt 2026-07-15**
       (keyword-reicher Titel/Description in `index.html` inkl. beider Keywords, `keywords`/`author`/`canonical`,

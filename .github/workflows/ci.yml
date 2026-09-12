@@ -39,3 +39,29 @@ jobs:
 
       - name: Build website
         run: pnpm --filter bytebots-website build
+
+  # Postet neu hinzugekommene CHANGELOG.md-Eintraege nach #changelog (Discord-Webhook).
+  # Nur bei push auf coolify-deploy und NUR nach gruenem Build (needs) — ein Changelog
+  # fuer einen kaputten Build waere schlimmer als keiner. No-op ohne das Secret
+  # CHANGELOG_WEBHOOK_URL, bricht den Deploy nie (Skript endet immer mit Exit 0).
+  changelog-notify:
+    needs: lint-and-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/coolify-deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # fetch-depth: 0 -> volle History, damit github.event.before im Repo aufloesbar ist.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Post new CHANGELOG.md entries to Discord
+        env:
+          CHANGELOG_WEBHOOK_URL: ${{ secrets.CHANGELOG_WEBHOOK_URL }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: node scripts/post-changelog.js
