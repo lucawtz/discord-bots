@@ -1,0 +1,20 @@
+# ByteBots Reverse-Proxy (ersetzt Traefik/Coolify seit 2026-09-13).
+# Caddy holt/erneuert die TLS-Zertifikate automatisch (Let's Encrypt), leitet
+# HTTP -> HTTPS um, setzt X-Forwarded-Proto (Soundboard-Secure-Cookies) und
+# reicht WebSockets (Web-Player) ohne Extra-Config durch.
+#
+# Die Domains laufen ueber den Cloudflare-Proxy; Zertifikate kommen per HTTP-01
+# durch Cloudflare hindurch (wie vorher bei Traefik). www.bytebots.de hat KEINEN
+# DNS-Eintrag -> bewusst nicht hier, sonst scheitert Caddy dauerhaft an der ACME-Challenge.
+
+beatbyte.bytebots.de {
+	reverse_proxy music-bot:3001
+}
+
+soundboard.bytebots.de {
+	reverse_proxy soundboard-bot:3002
+}
+
+bytebots.de {
+	reverse_proxy website:3003
+}
