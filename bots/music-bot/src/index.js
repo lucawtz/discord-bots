@@ -162,10 +162,23 @@ const YT_EXTRACTOR_ARGS = YT_DIRECT
     : [
         '--proxy', YTDLP_PROXY,
         '--remote-components', 'ejs:github',
-        '--extractor-args', 'youtube:player_client=web;fetch_pot=always',
+        // Bewusst KEIN player_client=web mehr: YouTube erzwingt dort SABR-Streaming,
+        // die https-Formate fehlen -> "Requested format is not available" (2026-09-12).
+        // yt-dlps Default-Clients liefern weiterhin normale Audio-Formate.
+        '--extractor-args', 'youtube:fetch_pot=always',
         '--extractor-args', `youtubepot-bgutilhttp:base_url=${POT_PROVIDER_URL}`,
     ];
 if (YT_DIRECT) console.log('yt-dlp: DIRECT-Modus (ohne Proxy/POT — nur lokal gedacht)');
+
+// Nur YouTube braucht WARP/POT. SoundCloud & Co. sind ueber WARP nicht erreichbar
+// ("Host unreachable") und laufen direkt ueber die Server-IP.
+const isYoutubeTarget = (target) => /^ytsearch\d*:|youtube\.com|youtu\.be/i.test(target || '');
+const ytArgsFor = (target) => (isYoutubeTarget(target) ? YT_EXTRACTOR_ARGS : []);
+// SoundCloud liefert bei Major-Label-Tracks oft nur 30-s-Vorschauen (format_id "*_preview")
+// -> ausschliessen, damit yt-dlp sauber scheitert statt still einen Schnipsel zu spielen.
+const audioFormatFor = (target) => (/soundcloud\.com/i.test(target || '')
+    ? 'bestaudio[format_id!*=preview]/best[format_id!*=preview]'
+    : 'bestaudio/bestaudio*/best');
 
 // ── yt-dlp Auto-Update (im Hintergrund, blockiert nicht den Start) ──
 spawn(ytdlpPath, ['-U']).on('close', (code) => {
@@ -932,7 +945,7 @@ function searchTrackYtdlp(searchQuery) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', searchQuery,
+            ...cookieArgs, ...ytArgsFor(searchQuery), '--js-runtimes', 'node', searchQuery,
         ]);
 
         let stdout = '';
@@ -1219,7 +1232,7 @@ async function searchPlaylist(url) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', url,
+            ...cookieArgs, ...ytArgsFor(url), '--js-runtimes', 'node', url,
         ]);
 
         let stdout = '';
@@ -1323,10 +1336,10 @@ const AUDIO_FILTERS = {
 function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
     // localFile: vorgeladene Audio-Datei (Prefetch) -> yt-dlp entfaellt komplett
     const ytdlp = localFile ? null : spawn(ytdlpPath, [
-        '-f', 'bestaudio/bestaudio*/best',
+        '-f', audioFormatFor(url),
         '-o', '-', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
-        ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', url,
+        ...cookieArgs, ...ytArgsFor(url), '--js-runtimes', 'node', url,
     ]);
 
     let filterArgs = AUDIO_FILTERS[queue.filter] || [];
@@ -1403,10 +1416,10 @@ function prefetchNext(guildId) {
 
     const file = path.join(os.tmpdir(), `prefetch-${guildId}`);
     const proc = spawn(ytdlpPath, [
-        '-f', 'bestaudio/bestaudio*/best',
+        '-f', audioFormatFor(next.url),
         '-o', file, '--force-overwrites', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
-        ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', next.url,
+        ...cookieArgs, ...ytArgsFor(next.url), '--js-runtimes', 'node', next.url,
     ]);
     const pf = { url: next.url, file, proc, done: false };
     queue._prefetch = pf;
@@ -1851,7 +1864,10 @@ async function playNext(guildId) {
         }
 
         const stream = createStream(track.url, queue, (err) => {
-            const ytBlocked = /not a bot|confirm you.?re not a bot|sign in to confirm/i.test(err.message);
+            // YouTube-Sperren der Proxy-IP sehen verschieden aus: "not a bot", bei lizenzierter
+            // Musik aber auch "Video unavailable" (UNPLAYABLE, 2026-09-12); dazu SABR ohne
+            // Formate und ein toter WARP-Proxy (ProxyError) -> in allen Faellen SoundCloud.
+            const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|proxyerror|host unreachable/i.test(err.message);
             const isYtUrl = /youtube\.com|youtu\.be/.test(track.url || '');
             if (ytBlocked && isYtUrl && !track._scTried) {
                 // Einmalig auf SoundCloud ausweichen (neue Quelle -> Retry erlaubt)
