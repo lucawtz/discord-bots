@@ -1865,9 +1865,10 @@ async function playNext(guildId) {
 
         const stream = createStream(track.url, queue, (err) => {
             // YouTube-Sperren der Proxy-IP sehen verschieden aus: "not a bot", bei lizenzierter
-            // Musik aber auch "Video unavailable" (UNPLAYABLE, 2026-09-12); dazu SABR ohne
-            // Formate und ein toter WARP-Proxy (ProxyError) -> in allen Faellen SoundCloud.
-            const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|proxyerror|host unreachable/i.test(err.message);
+            // Musik "Video unavailable" (UNPLAYABLE) oder - Extraktion klappt, Download nicht -
+            // "HTTP Error 403: Forbidden" (2026-09-13); dazu SABR ohne Formate und ein toter
+            // WARP-Proxy (ProxyError) -> in allen Faellen SoundCloud.
+            const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|http error 403|proxyerror|host unreachable/i.test(err.message);
             const isYtUrl = /youtube\.com|youtu\.be/.test(track.url || '');
             if (ytBlocked && isYtUrl && !track._scTried) {
                 // Einmalig auf SoundCloud ausweichen (neue Quelle -> Retry erlaubt)
@@ -1926,6 +1927,9 @@ async function playNext(guildId) {
 
 // ── Nachrichten mit Auto-Delete senden ────────────────────────────
 function autoDelete(msgPromise, ms = DELETE_EMBED_MS) {
+    // queue.channel?.send(...) liefert undefined, wenn kein Text-Kanal gesetzt ist
+    // (Wiedergabe ueber Web-Player/Admin-API) -> sonst Uncaught TypeError.
+    if (!msgPromise) return;
     msgPromise
         .then(msg => setTimeout(() => msg.delete().catch(() => {}), ms))
         .catch(() => {});
