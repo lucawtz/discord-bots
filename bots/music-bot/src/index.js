@@ -13,6 +13,7 @@ const db = require('./database');
 const { t, normalizeLocale } = require('./i18n');
 const { notifyError, notifyOnline } = require('../../../libs/notify');
 const { startStatusUpdater } = require('../../../libs/status');
+const { FOOTER } = require('../../../libs/links');
 // Server-Sprache fuer Hintergrund-Nachrichten ohne Interaction (Now-Playing-Embed):
 // explizite Einstellung (guild_settings.language), sonst Default 'de'.
 function guildLocaleFor(guildId) {
@@ -1609,7 +1610,8 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed, loc = 
         .setAuthor({ name: isPaused ? t('np.paused', loc) : t('np.nowPlaying', loc), iconURL: botUser.displayAvatarURL() })
         .setDescription(descLines.join('\n'))
         .setThumbnail(track.albumArt || track.thumbnail || null)
-        .setColor(isPaused ? 0x95a5a6 : 0x6E41CC);
+        .setColor(isPaused ? 0x95a5a6 : 0x6E41CC)
+        .setFooter({ text: FOOTER });
 
     return embed;
 }

@@ -9,6 +9,7 @@ const {
 const db = require('../database');
 const { playSound, stopSound } = require('../utils/player');
 const { t, localeFor } = require('../i18n');
+const { FOOTER } = require('../../../../libs/links');
 
 const SOUNDS_PER_PAGE = 10; // Max 5 Rows x 5 Buttons = 25, aber wir brauchen Platz fuer Navigation
 
@@ -67,7 +68,7 @@ function buildSoundboardPanel(userId, view = 'predefined', page = 0, loc = 'de')
         : description
     )
     .setColor(0x5865F2)
-    .setFooter({ text: t('sb.footer', loc, { page: page + 1, total: totalPages, n: sounds.length }) });
+    .setFooter({ text: `${t('sb.footer', loc, { page: page + 1, total: totalPages, n: sounds.length })} · ${FOOTER}` });
 
   const components = [];
 
