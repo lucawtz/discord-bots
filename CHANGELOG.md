@@ -7,6 +7,29 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-13
 
+- **infra:** **Coolify komplett vom Server gelöscht.** Auf Lucas Wunsch vorgezogen (geplant war ~2026-09-20), nach ~12 h stabilem compose-Betrieb.
+
+  **Vorher gesichert** in `/root/backup-coolify-migration-2026-09-13/`: `/data/coolify`, das Coolify-DB-Volume und `root/.ssh/authorized_keys`.
+
+  **Gelöscht:**
+  - 11 Coolify- und alte App-Container; vorher geprüft, dass keiner lief
+  - die Volumes `coolify-db`/`coolify-redis`, das Netz `coolify`, `/data/coolify`
+  - ~8,1 GB ungenutzte Images
+  - **Coolifys interner root-SSH-Schlüssel** in `authorized_keys`. Das Skript hätte abgebrochen und den alten Stand zurückgespielt, falls der verbleibende Admin-Schlüssel gefehlt hätte.
+  - `COOLIFY_API_TOKEN` in der lokalen Root-`.env`; deren Kommentare verweisen jetzt auf die Server-Env-Dateien
+
+  Die 5 Volumes des compose-Stacks blieben unangetastet.
+
+  **Verifiziert:**
+  - alle 7 Container laufen, die mit Healthcheck `healthy`
+  - frischer Schlüssel-Login ok
+  - öffentlich nur noch 22/80/443
+  - Heim-Tunnel aktiv
+  - `bytebots.de`, `beatbyte…/status` und `soundboard…/api/health` antworten mit 200
+  - Disk: 19 GB → 11 GB belegt (26 GB frei)
+
+  **Ein Rollback auf Coolify ist nicht mehr möglich.** `MIGRATION-COOLIFY.md` und `CLAUDE.md` sind nachgezogen.
+
 - **infra + music-bot:** **YouTube läuft wieder vollständig — über einen Heim-Tunnel (Raspberry Pi Zero W) statt WARP; Passwort-Login am Server abgeschaltet.**
 
   **Ausgangslage:** Die WARP-Exit-IPs sind für lizenzierte Musik gesperrt. Auch eine **neue WARP-Registrierung** (andere IP, temporärer Zweit-Container, danach entfernt) lieferte „Video unavailable". Ein Test-Tunnel über einen privaten Internetanschluss lud dieselben Songs problemlos. Kostenlose Lösung auf Wunsch von Luca, kein bezahlter Proxy.

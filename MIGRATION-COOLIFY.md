@@ -1,6 +1,6 @@
 # Coolify-Ablösung — Migrationsplan
 
-Stand: 2026-09-13 · Status: **Phase 0 + 1 umgesetzt (Umschalten 2026-09-13, 22:57 UTC) — Phase 2 offen** · Entscheidung: Luca (Coolify komplett abschaffen, Server nur noch per Terminal)
+Stand: 2026-09-13 · Status: **abgeschlossen** (Umschalten 2026-09-12, 22:57 UTC; Coolify am 2026-09-13 komplett gelöscht) · Entscheidung: Luca (Coolify komplett abschaffen, Server nur noch per Terminal)
 
 > **Umsetzung 2026-09-13 — Abweichungen vom ursprünglichen Plan:**
 > - **Images werden auf dem Server gebaut, nicht über GHCR.** Das Repo ist öffentlich, der Server klont ohne Token. GHCR hätte einen PAT bzw. das manuelle Freischalten der Paket-Sichtbarkeit gebraucht. Build aller 3 Images ≈ 3,5 min. Deploy: `scripts/deploy.sh <service>`.
@@ -8,8 +8,12 @@ Stand: 2026-09-13 · Status: **Phase 0 + 1 umgesetzt (Umschalten 2026-09-13, 22:
 > - **Kein Hetzner-Snapshot, keine Cloud-Firewall** (kein hcloud-Token vorhanden). Stattdessen gibt es Volume-Backups: Server `/root/backup-coolify-migration-2026-09-13/`, Mac `~/Documents/Luca_Wirtz/Backups/bytebots-2026-09-13/`. Seit dem Umschalten lauschen öffentlich nur noch 22/80/443.
 > - `pot-provider` ist auf `1.3.1` gepinnt; `warp` bekam das Volume `warp-data`. Die Env-Dateien wurden aus den laufenden Coolify-Containern erzeugt (11 bzw. 13 Keys).
 > - **Ergebnis:** alle Checks grün (Details im CHANGELOG 2026-09-13); belegter RAM 901 MiB statt ~1,2 GiB.
-> - **Rollback bis Phase 2:** `docker compose down`, dann `docker start coolify-db coolify-redis coolify-proxy $(cat /opt/bytebots/rollback-old-containers.txt) coolify coolify-realtime coolify-sentinel`.
-> - **Phase 2** (Coolify-Container und `/data/coolify` löschen) frühestens ab ~2026-09-20, wenn es bis dahin stabil läuft.
+> - **Phase 2 erledigt am 2026-09-13**, auf Lucas Wunsch vorgezogen (nach ~12 h stabilem Betrieb):
+>   - gelöscht: 11 Coolify- und Alt-Container, die Volumes `coolify-db`/`coolify-redis`, das Netz `coolify`, `/data/coolify`, ~8 GB Images, `COOLIFY_API_TOKEN` in der Root-`.env`
+>   - Coolifys interner root-Schlüssel ist aus `authorized_keys` entfernt; es bleibt nur Lucas Mac-Schlüssel (Notfall: Hetzner-Konsole)
+>   - vorher gesichert in `/root/backup-coolify-migration-2026-09-13/` (`data-coolify.tar.gz`, `coolify-db-volume.tar.gz`, `root-authorized_keys.before`)
+>   - Disk danach: 11 GB belegt, 26 GB frei
+>   - **Ein Rollback auf Coolify ist nicht mehr vorgesehen.**
 
 Ziel: Bots, Website, WARP und POT-Provider laufen per `docker compose` direkt auf dem Hetzner-Server. Coolify (6 Container) fällt weg. Deploy, Logs und Env laufen per SSH.
 
