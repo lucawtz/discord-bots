@@ -1,5 +1,7 @@
 # YouTube über die Heim-IP (Raspberry Pi Zero W)
 
+**Status: eingerichtet und live seit 2026-09-13.** Im Live-Test spielten zuvor gesperrte Chart-Songs direkt von YouTube, ohne SoundCloud-Fallback.
+
 YouTube sperrt die Cloudflare-WARP-IPs für lizenzierte Musik („Video unavailable“ / 403, Stand 2026-09-12). Über einen normalen Telekom-Anschluss funktionieren dieselben Songs; am 2026-09-13 per Test-Tunnel über den Mac verifiziert.
 
 Deshalb hält der **Pi Zero W** (`pi-hole`, 192.168.178.42, läuft sonst AdGuard Home) eine SSH-Verbindung zum Server offen und stellt dort einen SOCKS-Proxy auf `10.0.0.1:1080` (docker0) bereit. Der music-bot schickt **nur YouTube** darüber (`YTDLP_PROXY` in `deploy/compose.yml`).

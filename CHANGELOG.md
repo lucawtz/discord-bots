@@ -7,6 +7,35 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-13
 
+- **infra + music-bot:** **YouTube läuft wieder vollständig — über einen Heim-Tunnel (Raspberry Pi Zero W) statt WARP; Passwort-Login am Server abgeschaltet.**
+
+  **Ausgangslage:** Die WARP-Exit-IPs sind für lizenzierte Musik gesperrt. Auch eine **neue WARP-Registrierung** (andere IP, temporärer Zweit-Container, danach entfernt) lieferte „Video unavailable". Ein Test-Tunnel über einen privaten Internetanschluss lud dieselben Songs problemlos. Kostenlose Lösung auf Wunsch von Luca, kein bezahlter Proxy.
+
+  **Aufbau:**
+  - Ein Pi Zero W hält per systemd-Dienst `yt-tunnel` eine `ssh -N -R 10.0.0.1:1080`-Verbindung zum Server → dynamischer SOCKS-Proxy auf docker0.
+  - music-bot: `YTDLP_PROXY=socks5://host.docker.internal:1080` + `extra_hosts host-gateway` (`c1c304a`). Nur YouTube läuft darüber (`ytArgsFor`), SoundCloud, Website usw. bleiben direkt.
+
+  **Absicherung:**
+  - Eigener Server-Nutzer `ytproxy` (nologin); dessen Schlüssel mit `restrict,port-forwarding,permitlisten="10.0.0.1:1080"`; `Match User ytproxy` erlaubt nur Remote-Forwarding, kein TTY.
+  - Global `PasswordAuthentication no` + `PermitRootLogin prohibit-password` in `/etc/ssh/sshd_config.d/10-bytebots.conf`. Die Datei sortiert vor `50-cloud-init.conf`, das `PasswordAuthentication yes` setzte; bei sshd gewinnt der erste Wert.
+  - Auf dem Pi läuft der Dienst als eigener Nutzer `yttunnel` mit `Restart=always`, `Nice=10`, `MemoryMax=64M` (der Pi macht nebenbei DNS/Werbeblocker fürs Heimnetz).
+
+  **Vorab gemessen:** Pi ChaCha20-Poly1305 ≈ 290 Mbit/s, Upload der Leitung ≈ 25 Mbit/s, Bedarf ≈ 0,13 Mbit/s pro Song.
+
+  **Durchführung:** Setup-Skripte in `deploy/yt-tunnel/` (`0b4436e`). Die Persistenz-Schritte (Nutzer, Schlüssel, sshd, systemd) hat der Auto-Mode-Classifier trotz Freigabe blockiert → `setup-server.sh` und `setup-pi.sh install` hat Luca selbst ausgeführt.
+
+  **Verifiziert:**
+  - Schlüssel-Login ok; Passwort-Login → `Permission denied (publickey)`
+  - `ytproxy` effektiv nur `allowtcpforwarding remote` / `permitlisten 10.0.0.1:1080`; Listener aktiv
+  - **Live-Test in DevBotServer:** „Sonne über Berlin" per Link 35 s und „Casanova" per Textsuche 24 s **direkt von YouTube** abgespielt; im Log 0 SoundCloud-Fallbacks, 0 Stream-Fehler, 0 ProxyError, 0 Uncaught
+  - Pi-Last danach 0,42, Tunnel 0 Neustarts
+
+  **Einschränkungen / OFFEN:**
+  - Ist der Pi offline, scheitert YouTube mit ProxyError → SoundCloud-Fallback. Einen automatischen Rückfall auf WARP gibt es noch nicht.
+  - YouTube sieht die Anfragen vom Heimanschluss; bei sehr viel Nutzung sind dort Captchas denkbar.
+  - Der WARP-Container läuft weiter, wird für YouTube aber nicht mehr genutzt.
+  - Rollback: `deploy/yt-tunnel/README.md`.
+
 - **music-bot:** **SoundCloud-Fallback greift jetzt auch bei YouTube-403, und `autoDelete` stürzt ohne Text-Kanal nicht mehr ab** (`7dd43a1`, deployed per `scripts/deploy.sh music-bot` — erster Lauf des neuen Deploy-Wegs, Idle-Check vorgeschaltet).
 
   **Befund aus dem Wiedergabe-Test nach dem Umschalten:** Mit den Default-Clients (seit `38c8858`) klappt bei gesperrten Musik-Tracks die **Extraktion** (Client `visionos`, Format 251), erst der **Download** scheitert mit `HTTP Error 403: Forbidden`. Diese Meldung fehlte in der Fallback-Regex → nur Retry, kein SoundCloud. Nach dem zweiten Fehlschlag warf `autoDelete(queue.channel?.send(…))` bei Wiedergabe ohne Text-Kanal (Admin-API/Web-Player) `Cannot read properties of undefined (reading 'then')` als **Uncaught exception**. Der Bot lief weiter, aber der Fehler war echt und bestand schon vorher.
