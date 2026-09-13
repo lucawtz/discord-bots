@@ -1,0 +1,22 @@
+[Unit]
+Description=ByteBots: SOCKS-Tunnel fuer YouTube ueber die Heim-IP zum Hetzner-Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=yttunnel
+# -R 10.0.0.1:1080 ohne Ziel = dynamischer SOCKS-Proxy auf der Server-Seite (docker0).
+# Der Server erlaubt diesem Schluessel nichts anderes (restrict + PermitListen).
+ExecStart=/usr/bin/ssh -N \
+    -i /var/lib/yttunnel/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes \
+    -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/lib/yttunnel/.ssh/known_hosts \
+    -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+    -R 10.0.0.1:1080 ytproxy@167.233.237.112
+Restart=always
+RestartSec=10
+# Der Pi ist zugleich DNS/Werbeblocker (AdGuard Home) fuers Heimnetz -> Tunnel nachrangig.
+Nice=10
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target
