@@ -39,6 +39,14 @@ services:
     image: bytebots/music-bot:latest
     restart: unless-stopped
     env_file: /opt/bytebots/env/music-bot.env
+    environment:
+      # YouTube ueber die Heim-IP: der Raspberry Pi Zero W (pi-hole, Luca zuhause) haelt
+      # per ssh -R einen SOCKS-Tunnel auf 10.0.0.1:1080 (docker0) offen. WARP-Exit-IPs
+      # sind fuer lizenzierte Musik gesperrt (2026-09-12). Faellt der Pi aus -> ProxyError
+      # -> SoundCloud-Fallback. Zurueck auf WARP: diese Zeile entfernen (Code-Default).
+      YTDLP_PROXY: socks5://host.docker.internal:1080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - music-data:/repo/bots/music-bot/data
       - /opt/bytebots/secrets/cookies.txt:/repo/bots/music-bot/cookies.txt
