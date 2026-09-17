@@ -77,6 +77,7 @@ function destroyQueue(guildId) {
     if (!queue) return;
     clearTimeout(queue.leaveTimer);
     clearTimeout(queue._leaveWarningTimer);
+    clearTimeout(queue._audioSettingsTimer);
     clearTimeout(queue._aloneTimer);
     queue._aloneTimer = null;
     releaseNowPlaying(queue);
@@ -809,11 +810,11 @@ async function searchTrack(query) {
         track = pipedToTrack(items[0]);
     } catch {
         try {
-            track = await searchTrackYtdlp(`ytsearch1:${query}`);
+            track = await searchBestYtdlp(query);
         } catch (ytErr) {
             // YouTube blockiert/leer -> SoundCloud als Ausweichquelle
             try {
-                track = await searchTrackYtdlp(`scsearch1:${query}`);
+                track = await searchSoundcloudBest(query);
             } catch {
                 throw ytErr;
             }
@@ -976,6 +977,230 @@ function searchTrackYtdlp(searchQuery) {
     });
 }
 
+// ── Trefferauswahl fuer Textsuchen ───────────────────────────────
+// Bearbeitungen, die nur gewinnen duerfen wenn der User sie auch gesucht hat.
+const EDIT_VARIANTS = ['sped up', 'speed up', 'nightcore', 'slowed', 'reverb', '8d audio',
+    'remix', 'cover', 'karaoke', 'instrumental', 'mashup', 'tiktok', 'bass boosted',
+    'live', 'unplugged', 'acoustic', 'akustik', 'loop', '1 hour', '1 stunde'];
+
+// Titel-Varianten, die nicht das Original sind. Auf SoundCloud dominieren sie
+// die Treffer: Sped-Up- und Tekk-Uploads stehen dort vor dem Original.
+const BAD_VARIANT = /sped\s?-?\s?up|spedup|nightcore|slowed|reverb|8d\s?audio|\bremix\b|mashup|preview|snippet|karaoke|instrumental|chipmunk|pitched|hardtekk|\btekk\b|hardstyle/i;
+
+// Ein Upload mit veraenderter Geschwindigkeit weicht in der Laenge ab. 5% ist
+// eng genug fuer den Fall, der diesen Filter noetig gemacht hat (147s gegen das
+// 160s-Original von "Millionaer", also 8%), und weit genug fuer abweichende
+// Ein-/Ausblenden desselben Masters.
+const DURATION_TOLERANCE = 0.05;
+// Label-Uploads auf SoundCloud sind oft nur 30-Sekunden-Vorschauen
+const MIN_TRACK_SECONDS = 60;
+// Mindestens die Haelfte der Woerter aus Suchbegriff + Referenz-Interpret muss
+// im Treffer vorkommen. Sonst ist es ein fremder Song, der nur zufaellig gleich
+// heisst — auf SoundCloud der Normalfall, wenn das Original dort fehlt.
+const MIN_MATCH_RATIO = 0.5;
+const durationMatches = (candidate, reference) =>
+    !reference || !candidate || Math.abs(candidate - reference) <= reference * DURATION_TOLERANCE;
+
+function normalizeText(text) {
+    return (text || '')
+        .toLowerCase()
+        .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+        .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+// Bewertet einen YouTube-Treffer fuer eine Textsuche. Ohne das nimmt ytsearch1
+// blind den Top-Treffer, und der ist bei Songtiteln oft ein Talkshow-, Story-
+// oder Stream-Video statt des Songs.
+function scoreSearchResult(entry, query, rank) {
+    const title = normalizeText(entry.title);
+    const channelRaw = entry.channel || entry.uploader || '';
+    const normQuery = normalizeText(query);
+    let score = 0;
+
+    // YouTubes eigene Relevanz zaehlt mit, dominiert aber nicht
+    score += Math.max(0, 10 - rank) * 0.4;
+
+    // "<Artist> - Topic" sind die automatisch erzeugten YouTube-Music-Kanaele
+    if (/-\s*topic\s*$/i.test(channelRaw)) score += 6;
+    if (/\b(official|offiziell)\b/.test(title)) score += 3;
+    if (/\b(audio|lyrics?|musikvideo|music video)\b/.test(title)) score += 1;
+    if (entry.channel_is_verified) score += 2;
+
+    // Deckung mit der Suchanfrage
+    const words = normQuery.split(' ').filter(w => w.length > 2);
+    if (words.length > 0) {
+        const hits = words.filter(w => title.includes(w)).length;
+        score += (hits / words.length) * 5;
+        if (hits === 0) score -= 6;
+    }
+    if (title === normQuery) score += 4;
+
+    // Typische Songlaenge
+    const dur = entry.duration || 0;
+    if (dur >= 60 && dur <= 420) score += 3;
+    else if (dur >= 30 && dur <= 600) score += 1;
+    else score -= 3;
+
+    // Popularitaet logarithmisch, damit ein Ausreisser nicht alles kippt
+    const views = entry.view_count || 0;
+    if (views > 0) score += Math.min(Math.log10(views), 9) * 0.8;
+
+    // Bearbeitungen abwerten, ausser der User hat sie selbst gesucht
+    for (const variant of EDIT_VARIANTS) {
+        // Wortweise, sonst wuerde "live" in "believe" treffen
+        const pattern = new RegExp(`\\b${normalizeText(variant)}\\b`);
+        if (pattern.test(title) && !pattern.test(normQuery)) score -= 4;
+    }
+
+    return score;
+}
+
+function isMusicEntry(entry) {
+    if (!entry) return false;
+    if (entry.live_status === 'is_live' || entry.live_status === 'is_upcoming') return false;
+    return isMusicResult({
+        type: 'stream',
+        url: entry.webpage_url || entry.url || entry.id,
+        title: entry.title,
+        uploader: entry.channel || entry.uploader,
+        duration: entry.duration,
+    });
+}
+
+// Holt mehrere YouTube-Treffer und waehlt den besten aus. ytsearch1 nimmt blind
+// den Top-Treffer — bei "millionaer" stehen auf den vorderen Plaetzen eine
+// Talkshow, eine vorgelesene Geschichte und ein 28-Minuten-Video.
+function searchBestYtdlp(query, poolSize = 10) {
+    return new Promise((resolve, reject) => {
+        const proc = spawn(ytdlpPath, [
+            '--dump-single-json', '--no-playlist', '--no-check-certificates',
+            '--no-warnings', '--flat-playlist', '--force-ipv4',
+            ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', `ytsearch${poolSize}:${query}`,
+        ]);
+
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d) => stdout += d);
+        proc.stderr.on('data', (d) => stderr += d);
+        proc.on('close', (code) => {
+            if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            let entries;
+            try {
+                const data = JSON.parse(stdout);
+                entries = data.entries || [data];
+            } catch {
+                return reject(new Error('Konnte Suchergebnisse nicht parsen'));
+            }
+
+            // Rang merken, bevor gefiltert wird — er geht in die Bewertung ein
+            const ranked = entries.filter(Boolean).map((entry, rank) => ({ entry, rank }));
+            // Bevorzugt echte Musiktreffer; wenn der Filter alles wegwirft,
+            // lieber irgendein Ergebnis als gar keins.
+            const musical = ranked.filter(r => isMusicEntry(r.entry));
+            const pool = musical.length > 0 ? musical : ranked;
+            if (pool.length === 0) return reject(new Error('Kein Ergebnis gefunden'));
+
+            let best = pool[0];
+            let bestScore = -Infinity;
+            for (const candidate of pool) {
+                const score = scoreSearchResult(candidate.entry, query, candidate.rank);
+                if (score > bestScore) { bestScore = score; best = candidate; }
+            }
+
+            const info = best.entry;
+            resolve({
+                title: info.title || 'Unbekannter Titel',
+                url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
+                duration: formatDuration(info.duration),
+                durationSec: info.duration || 0,
+                thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
+                artist: info.artist || info.creator || info.channel || info.uploader || null,
+                album: info.album || null,
+                albumArt: info.thumbnail || info.thumbnails?.find(t => t.width >= 300)?.url || null,
+            });
+        });
+        proc.on('error', (e) => reject(new Error(`yt-dlp konnte nicht gestartet werden: ${e.message}`)));
+    });
+}
+
+// Kanonische Metadaten (Interpret, Titel, Laenge) zu einer Textsuche.
+// Ohne diese Referenzlaenge laesst sich eine beschleunigte Fassung nicht vom
+// Original unterscheiden — genau daran scheitert scsearch1.
+async function deezerReference(query) {
+    try {
+        const data = await deezerFetch(`/search?q=${encodeURIComponent(query)}&limit=1`);
+        const track = (data.data || [])[0];
+        if (!track) return null;
+        return {
+            artist: track.artist?.name || '',
+            title: track.title || '',
+            query: [track.artist?.name, track.title].filter(Boolean).join(' ').trim(),
+            durationSec: track.duration || 0,
+        };
+    } catch {
+        return null;
+    }
+}
+
+// Wortueberdeckung zwischen Suchbegriff/Interpret und Titel+Uploader.
+function soundcloudScore(result, query, reference) {
+    const haystack = normalizeText(`${result.title} ${result.uploader}`);
+    const wanted = normalizeText(`${query} ${reference?.artist || ''}`);
+    const words = wanted.split(' ').filter(w => w.length > 2);
+    if (words.length === 0) return 0;
+    return words.filter(w => haystack.includes(w)).length / words.length;
+}
+
+// SoundCloud-Suche fuer eine Textanfrage. Ersetzt scsearch1, das blind den
+// Top-Treffer nimmt — bei "millionaer" ein Fremd-Upload mit 147s statt 160s,
+// also hoerbar zu schnell, dahinter Tekk-Remixe und eine 30s-Vorschau.
+async function searchSoundcloudBest(query) {
+    const reference = await deezerReference(query);
+    const scQuery = reference?.query || query;
+
+    let results = [];
+    try { results = await soundcloudSearchRaw(scQuery, 10); } catch { results = []; }
+    if (results.length === 0 && scQuery !== query) {
+        try { results = await soundcloudSearchRaw(query, 10); } catch { results = []; }
+    }
+
+    const usable = results.filter(r =>
+        !BAD_VARIANT.test(r.title)
+        && (r.duration || 0) >= MIN_TRACK_SECONDS
+        && durationMatches(r.duration, reference?.durationSec));
+
+    // Lieber ehrlich scheitern als eine beschleunigte Fremdfassung spielen —
+    // genau das war der gemeldete Fehler ("falsches Lied, doppelte Geschwindigkeit").
+    if (usable.length === 0) {
+        throw new Error('Auf SoundCloud kein passender Treffer (nur Varianten oder Vorschauen)');
+    }
+
+    const scored = usable
+        .map(r => ({ result: r, score: soundcloudScore(r, query, reference) }))
+        .filter(c => c.score >= MIN_MATCH_RATIO)
+        .sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) {
+        throw new Error('Auf SoundCloud kein passender Treffer (nur fremde Songs gleichen Namens)');
+    }
+
+    const pick = scored[0].result;
+    console.log(`SoundCloud-Treffer für "${query}": ${pick.uploader} — ${pick.title} (${pick.duration}s)`);
+
+    return {
+        title: pick.title || 'Unbekannter Titel',
+        url: pick.url,
+        duration: formatDuration(pick.duration),
+        durationSec: pick.duration || 0,
+        thumbnail: null,
+        artist: pick.uploader || null,
+        album: null,
+        albumArt: null,
+    };
+}
+
 // ── SoundCloud-Ausweichquelle (wenn YouTube den Server als "Bot" blockt) ──
 // Rohe SoundCloud-Suche (Liste mit Titel/Uploader/Dauer)
 function soundcloudSearchRaw(query, limit = 5) {
@@ -1013,12 +1238,11 @@ async function resolveSoundcloudUrl(track) {
     try { results = await soundcloudSearchRaw(query, 5); } catch { results = []; }
     if (!results.length) return searchTrackYtdlp(`scsearch1:${query}`).then(r => r.url);
 
-    const bad = /sped\s?-?\s?up|spedup|nightcore|slowed|reverb|8d\s?audio|\bremix\b|mashup|preview|snippet|karaoke|instrumental|chipmunk|pitched/i;
     const orig = track.durationSec || 0;
-    const durOk = (d) => !orig || !d || Math.abs(d - orig) <= orig * 0.25;
+    const durOk = (d) => durationMatches(d, orig);
 
-    const pick = results.find(r => !bad.test(r.title) && durOk(r.duration))
-              || results.find(r => !bad.test(r.title))
+    const pick = results.find(r => !BAD_VARIANT.test(r.title) && durOk(r.duration))
+              || results.find(r => !BAD_VARIANT.test(r.title))
               || results[0];
     return pick.url;
 }
@@ -1324,13 +1548,37 @@ function updateActivity(guildId) {
     }
 }
 
-// ── Audio-Filter für FFmpeg ──────────────────────────────────────
+// ── Audio-Filter für FFmpeg (reine Filterketten, ohne -af) ───────
 const AUDIO_FILTERS = {
-    off: [],
-    bassboost: ['-af', 'bass=g=8,acompressor=threshold=-20dB:ratio=4'],
-    nightcore: ['-af', 'aresample=48000,asetrate=48000*1.25'],
-    slowed: ['-af', 'aresample=48000,asetrate=48000*0.85'],
+    off: null,
+    bassboost: 'bass=g=8,acompressor=threshold=-20dB:ratio=4',
+    nightcore: 'aresample=48000,asetrate=48000*1.25',
+    slowed: 'aresample=48000,asetrate=48000*0.85',
 };
+
+// Baut die komplette -af Kette inklusive Lautstaerke.
+// Die Lautstaerke laeuft bewusst ueber FFmpeg statt ueber den inlineVolume-
+// Transformer von @discordjs/voice: dieser waehlt trotz inputType OggOpus nicht
+// den Passthrough, sondern die Kette ffmpeg-pcm -> volume -> opus-encoder. Damit
+// laeuft pro Track ein zweiter FFmpeg plus Opus-Encoding in purem JS (opusscript,
+// kein natives Modul). Faellt der Event-Loop dadurch hinter den 20ms-Takt, holt
+// @discordjs/voice den Rueckstand auf (setTimeout mit Math.max(1, ...)) und die
+// Frames feuern im 1ms-Takt — das Audio spielt dann zu schnell.
+function buildFilterArgs(queue) {
+    const chain = [];
+
+    if (queue.filter === 'custom' && Array.isArray(queue.eqBands) && queue.eqBands.some(v => v !== 0)) {
+        const freqs = [60, 150, 400, 1000, 2500, 6000, 16000];
+        chain.push(queue.eqBands.map((gain, i) => `equalizer=f=${freqs[i]}:width_type=o:width=1.5:g=${gain}`).join(','));
+    } else if (AUDIO_FILTERS[queue.filter]) {
+        chain.push(AUDIO_FILTERS[queue.filter]);
+    }
+
+    const volume = typeof queue.volume === 'number' ? queue.volume : 1;
+    if (Math.abs(volume - 1) > 0.005) chain.push(`volume=${volume.toFixed(3)}`);
+
+    return chain.length ? ['-af', chain.join(',')] : [];
+}
 
 // ── Audio-Stream (yt-dlp → FFmpeg → OggOpus) ────────────────────
 function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
@@ -1342,24 +1590,25 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
         ...cookieArgs, ...ytArgsFor(url), '--js-runtimes', 'node', url,
     ]);
 
-    let filterArgs = AUDIO_FILTERS[queue.filter] || [];
-    // Custom EQ: build FFmpeg equalizer chain from band values
-    if (queue.filter === 'custom' && Array.isArray(queue.eqBands) && queue.eqBands.some(v => v !== 0)) {
-        const freqs = [60, 150, 400, 1000, 2500, 6000, 16000];
-        const eqChain = queue.eqBands.map((gain, i) => `equalizer=f=${freqs[i]}:width_type=o:width=1.5:g=${gain}`).join(',');
-        filterArgs = ['-af', eqChain];
-    }
+    const filterArgs = buildFilterArgs(queue);
 
     const ffmpeg = spawn(ffmpegPath, [
+        '-loglevel', 'error',
+        // Input-Optionen muessen VOR -i stehen, sonst ignoriert FFmpeg sie
+        '-analyzeduration', '0',
         ...(seekSeconds > 0 ? ['-ss', String(seekSeconds)] : []),
         '-i', localFile || 'pipe:0',
-        '-analyzeduration', '0',
-        '-loglevel', 'error',
+        // Nur die erste Audiospur, kein Video/Cover/Untertitel
+        '-map', '0:a:0', '-vn', '-sn', '-dn',
         ...filterArgs,
-        '-f', 'ogg',
-        '-acodec', 'libopus',
+        '-c:a', 'libopus',
+        '-b:a', '128k',
         '-ar', '48000',
         '-ac', '2',
+        // Discord erwartet 20ms-Frames
+        '-frame_duration', '20',
+        '-application', 'audio',
+        '-f', 'ogg',
         'pipe:1',
     ]);
 
@@ -1394,6 +1643,30 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
 
     queue.processes.add(ffmpeg);
     return ffmpeg.stdout;
+}
+
+// ── AudioResource bauen (Ogg-Opus Passthrough) ───────────────────
+// Bewusst OHNE inlineVolume: dann besteht die Pipeline in @discordjs/voice nur
+// aus dem Ogg-Demuxer und die Opus-Pakete von FFmpeg gehen unveraendert an
+// Discord. Lautstaerke und Filter macht der FFmpeg in createStream.
+function createResource(url, queue, onError, seekSeconds = 0, localFile = null) {
+    const stream = createStream(url, queue, onError, seekSeconds, localFile);
+    const resource = createAudioResource(stream, { inputType: StreamType.OggOpus });
+    queue._resource = resource;
+    return resource;
+}
+
+// Uebernimmt geaenderte Lautstaerke auf den laufenden Song. Gebuendelt, damit
+// ein Slider im Web-Player nicht bei jedem Schritt einen Stream neu startet.
+function applyAudioSettings(guildId) {
+    const queue = queues.get(guildId);
+    if (!queue?.current) return;
+
+    clearTimeout(queue._audioSettingsTimer);
+    queue._audioSettingsTimer = setTimeout(() => {
+        queue._audioSettingsTimer = null;
+        restartCurrentWithFilter(queue);
+    }, 400);
 }
 
 // ── Naechsten Track vorladen (macht /skip nahezu verzoegerungsfrei) ──
@@ -1863,7 +2136,7 @@ async function playNext(guildId) {
             }
         }
 
-        const stream = createStream(track.url, queue, (err) => {
+        const resource = createResource(track.url, queue, (err) => {
             // YouTube-Sperren der Proxy-IP sehen verschieden aus: "not a bot", bei lizenzierter
             // Musik "Video unavailable" (UNPLAYABLE) oder - Extraktion klappt, Download nicht -
             // "HTTP Error 403: Forbidden" (2026-09-13); dazu SABR ohne Formate und ein toter
@@ -1885,9 +2158,6 @@ async function playNext(guildId) {
                 autoDelete(queue.channel?.send(`❌ Stream-Fehler bei **${track.title}**: ${err.message}`), DELETE_ERROR_MS);
             }
         }, 0, localFile);
-        const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
-        resource.volume.setVolume(queue.volume);
-        queue._resource = resource;
         queue.player.play(resource);
         updateActivity(guildId);
 
@@ -1958,13 +2228,10 @@ function restartCurrentWithFilter(queue) {
     }
     queue.processes.clear();
 
-    const stream = createStream(queue.current.url, queue, (err) => {
+    const resource = createResource(queue.current.url, queue, (err) => {
         if (queue.channel) autoDelete(queue.channel.send(`❌ Filter-Fehler: ${err.message}`), DELETE_ERROR_MS);
     }, elapsed);
 
-    const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
-    resource.volume.setVolume(queue.volume);
-    queue._resource = resource;
     queue.player.play(resource);
     queue._playbackStart = Date.now();
     queue._seekOffset = elapsed;
@@ -1986,7 +2253,7 @@ for (const file of commandFiles) {
 // ── Context-Objekt für Commands ───────────────────────────────────
 const ctx = {
     db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, preResolveTrack, spotifyFetch, searchPlaylist, isPlaylistUrl, fetchPlaylistMeta, resolvePlaylistInBackground, fetchSpotifyEmbed,
-    playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
+    playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, createResource, applyAudioSettings, ffmpegPath,
     prefetchNext, ensureAlbumArt, releaseNowPlaying, restartCurrentWithFilter,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,

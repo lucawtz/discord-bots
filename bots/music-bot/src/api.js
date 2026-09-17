@@ -908,7 +908,7 @@ function startAPI(ctx, client) {
                     if (!queue) return json(res, { error: 'Keine Queue' }, 400);
                     const vol = Math.max(0, Math.min(200, parseInt(volume) || 100));
                     queue.volume = vol / 100;
-                    if (queue._resource?.volume) queue._resource.volume.setVolume(queue.volume);
+                    ctx.applyAudioSettings(volumeMatch[1]);
                     broadcast('stateUpdate', getGuildState(volumeMatch[1]));
                     return json(res, { volume: vol });
                 }

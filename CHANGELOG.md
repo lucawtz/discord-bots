@@ -5,6 +5,43 @@ Fortlaufendes Log aller Änderungen — auch solche, die NICHT im Code landen
 Neueste Einträge oben. Format: `## YYYY-MM-DD`, ein Bullet pro Änderung,
 mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
+## 2026-09-17
+
+- **music-bot:** **Falscher Song bei der Textsuche.** Piped ist tot (alle drei Instanzen), also lief
+  immer der yt-dlp-Fallback — und der nahm mit `ytsearch1` blind YouTubes Top-Treffer, ohne jeden
+  Filter. Bei "millionär" stehen dort auf den Plätzen 2–4 eine Talkshow, eine vorgelesene Geschichte
+  und ein 28-Minuten-Video. Jetzt werden 10 Treffer geholt, über `isMusicResult` gefiltert und
+  bewertet (Topic-Kanal, "official", Query-Abdeckung, Songlänge, Views; Remix/Cover/Karaoke/Live
+  abgewertet, außer sie wurden gesucht).
+
+- **music-bot:** **SoundCloud-Ausweichquelle lieferte beschleunigte Fremd-Uploads.** Griff YouTube
+  nicht, ging es mit `scsearch1` weiter — ebenfalls ungefiltert. Für "millionär" ist SoundClouds
+  Top-Treffer ein Fremd-Upload mit 147 s statt der 160 s des Originals (~8 % zu schnell), dahinter
+  zwei Tekk-Remixe; das Original selbst gibt es dort nur als 30-s-Label-Vorschau. Der vorhandene
+  Sped-Up/Nightcore/Remix-Filter lag in `resolveSoundcloudUrl` und griff auf diesem Pfad nicht.
+  Neu: Referenzlänge und Interpret kommen von Deezer, danach fliegen Varianten, Vorschauen (< 60 s)
+  und Längenabweichungen über 5 % raus, und es braucht mindestens 50 % Wortüberdeckung mit
+  Suchbegriff + Interpret. Bleibt nichts übrig, meldet der Bot einen Fehler, statt irgendetwas zu
+  spielen — für "millionär" ist das der Fall, weil SoundCloud das Original nicht hat.
+
+- **music-bot:** **`inlineVolume` entfernt.** `createAudioResource` mit `inputType: OggOpus` *und*
+  `inlineVolume: true` wählt nicht den Ogg-Passthrough: @discordjs/voice löst das zu
+  `ffmpeg pcm → volume transformer → opus encoder` auf. Pro Track lief damit ein zweiter FFmpeg plus
+  Opus-Encoding in purem JS (`opusscript`, kein natives Modul). Hinkt der Event-Loop dadurch hinter
+  den 20-ms-Takt, holt @discordjs/voice den Rückstand auf
+  (`setTimeout(…, Math.max(1, nextTime - Date.now()))`) und feuert Frames im 1-ms-Takt — Audio spielt
+  dann zu schnell. Die Pipeline ist jetzt nur noch der Ogg-Demuxer; Lautstärke läuft über den
+  ohnehin laufenden FFmpeg (`-af volume=…`), Änderungen starten den Song neu (400 ms gebündelt).
+
+- **music-bot:** FFmpeg-Argumente korrigiert: `-analyzeduration 0` stand hinter `-i` und war damit
+  wirkungslos; `-map 0:a:0 -vn -sn -dn`, `-b:a 128k` und `-frame_duration 20` fehlten.
+
+- **infra:** Branch `coolify-deploy` → **`prod`** umbenannt (13 Referenzen in `scripts/deploy.sh`,
+  `.github/workflows/ci.yml`, `CLAUDE.md`, `CHECKLISTE.md`, `deploy/compose.yml`,
+  `scripts/post-changelog.js`). Der Name stammte aus der Coolify-Zeit, die seit 2026-09-13 vorbei
+  ist. **Am Server nachzuziehen:** `cd /opt/bytebots/repo && git fetch origin && git checkout prod`,
+  sonst zeigt der Checkout weiter auf den alten Branch.
+
 ## 2026-09-13
 
 - **infra:** **Coolify komplett vom Server gelöscht.** Auf Lucas Wunsch vorgezogen (geplant war ~2026-09-20), nach ~12 h stabilem compose-Betrieb.

@@ -1,11 +1,11 @@
 # ByteBots-Prod-Stack — ersetzt Coolify seit 2026-09-13.
 #
 # Server-Layout:
-#   /opt/bytebots/repo       Git-Checkout (Branch coolify-deploy), diese Datei liegt unter deploy/
+#   /opt/bytebots/repo       Git-Checkout (Branch prod), diese Datei liegt unter deploy/
 #   /opt/bytebots/env/       music-bot.env, soundboard-bot.env (chmod 600, NIE ins Repo)
 #   /opt/bytebots/secrets/   cookies.txt (yt-dlp schreibt zurueck -> muss beschreibbar sein)
 #
-# Deploy: scripts/deploy.sh <service>   (git reset auf origin/coolify-deploy + build + up)
+# Deploy: scripts/deploy.sh <service>   (git reset auf origin/prod + build + up)
 # Logs:   ssh root@<server> 'cd /opt/bytebots/repo/deploy && docker compose logs -f music-bot'
 #
 # Die Service-Namen warp / pot-provider sind zugleich die DNS-Namen im Compose-Netz —

@@ -22,9 +22,7 @@ module.exports = {
         }
 
         queue.volume = percent / 100;
-        if (queue._resource?.volume) {
-            queue._resource.volume.setVolume(queue.volume);
-        }
+        ctx.applyAudioSettings(interaction.guildId);
 
         ctx.autoDelete(interaction.reply({ content: t('volume.set', loc, { percent }), fetchReply: true }), ctx.DELETE_SHORT_MS);
     },

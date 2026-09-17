@@ -1,5 +1,4 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { createAudioResource, StreamType } = require('@discordjs/voice');
 const { requirePlaying, killQueueProcesses } = require('../utils/checks');
 const { t } = require('../i18n');
 
@@ -30,13 +29,9 @@ module.exports = {
         killQueueProcesses(queue);
 
         // Neuen Stream ab Seek-Position starten
-        const stream = ctx.createStream(queue.current.url, queue, (err) => {
+        const resource = ctx.createResource(queue.current.url, queue, (err) => {
             ctx.autoDelete(queue.channel?.send(t('seek.failed', loc, { message: err.message })), ctx.DELETE_ERROR_MS);
         }, seconds);
-
-        const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
-        resource.volume.setVolume(queue.volume);
-        queue._resource = resource;
         queue.player.play(resource);
 
         queue._playbackStart = Date.now();

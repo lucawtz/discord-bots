@@ -3,7 +3,7 @@
 #
 #   scripts/deploy.sh <music-bot|soundboard-bot|website|all>
 #
-# Holt origin/coolify-deploy in den Server-Checkout (/opt/bytebots/repo), baut das
+# Holt origin/prod in den Server-Checkout (/opt/bytebots/repo), baut das
 # Image dort und startet NUR den genannten Service neu. Push != Deploy bleibt:
 # erst pushen, dann dieses Skript. "all" baut nacheinander (1 vCPU / 1,9 GB RAM).
 # Secrets liegen ausschliesslich auf dem Server in /opt/bytebots/env (chmod 600).
@@ -19,8 +19,8 @@ esac
 
 ssh "$HOST" "set -eu
 cd /opt/bytebots/repo
-git fetch --quiet origin coolify-deploy
-git reset --hard --quiet origin/coolify-deploy
+git fetch --quiet origin prod
+git reset --hard --quiet origin/prod
 echo \"Deploy \$(git rev-parse --short HEAD): $TARGETS\"
 cd deploy
 for s in $TARGETS; do
