@@ -989,7 +989,7 @@ function startAPI(ctx, client) {
                     if (!queue) return json(res, { error: 'Keine Queue' }, 400);
                     const vol = Math.max(0, Math.min(200, parseInt(volume) || 100));
                     queue.volume = vol / 100;
-                    if (queue._resource?.volume) queue._resource.volume.setVolume(queue.volume);
+                    ctx.applyAudioSettings(volumeMatch[1]);
                     broadcast('stateUpdate', getGuildState(volumeMatch[1]));
                     return json(res, { volume: vol });
                 }
@@ -1006,6 +1006,7 @@ function startAPI(ctx, client) {
                     if (filter === 'custom' && Array.isArray(eqBands) && eqBands.length === 7) {
                         queue.eqBands = eqBands.map(v => Math.max(-12, Math.min(12, parseInt(v) || 0)));
                     }
+                    ctx.applyAudioSettings(guildId);
                     broadcast('stateUpdate', getGuildState(guildId));
                     return json(res, { ok: true, filter, eqBands: queue.eqBands });
                 }

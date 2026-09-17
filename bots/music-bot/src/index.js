@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 const { startAPI } = require('./api');
+const { killQueueProcesses } = require('./utils/checks');
 const db = require('./database');
 
 // ── Konstanten ────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ function destroyQueue(guildId) {
     if (!queue) return;
     clearTimeout(queue.leaveTimer);
     clearTimeout(queue._leaveWarningTimer);
+    clearTimeout(queue._audioSettingsTimer);
     if (queue._nowPlayingMsg) queue._nowPlayingMsg.delete().catch(() => {});
     for (const proc of queue.processes) {
         if (!proc.killed) proc.kill();
@@ -639,29 +641,102 @@ async function pipedFetch(endpoint) {
     }
 }
 
+const NON_MUSIC_WORDS = [
+    'gameplay', 'tutorial', 'review', 'unboxing', 'reaction', 'podcast',
+    'compilat', 'highlights', 'trailer', 'vlog', 'how to', 'news', 'politics',
+    'cooking', 'rezept', 'recipe', 'schnell und einfach', 'kochen', 'backen',
+    'stiftung warentest', 'warentest', 'test der', 'im test',
+    'geheimnisse', 'dokumentation', 'doku', 'reportage',
+    'mukbang', 'asmr essen', 'food hack', 'lifehack',
+    'prank', 'challenge', 'experiment', 'try not to',
+    'nachrichten', 'tagesschau', 'interview', 'pressekonferenz',
+    'debattiert', 'erklaert', 'hoerbuch', 'horbuch', 'ganzer film', 'folge',
+];
+
+const NON_MUSIC_CHANNELS = ['zdf', 'ard', 'rtl', 'sat.1', 'stiftung', 'warentest', 'chefkoch',
+    'tasty', 'buzzfeed', 'galileo', 'spiegel', 'bild', 'focus', 'welt'];
+
+// Bearbeitungen, die nur gewinnen duerfen wenn der User sie auch gesucht hat.
+const EDIT_VARIANTS = ['sped up', 'speed up', 'nightcore', 'slowed', 'reverb', '8d audio',
+    'remix', 'cover', 'karaoke', 'instrumental', 'mashup', 'tiktok', 'bass boosted',
+    'live', 'unplugged', 'acoustic', 'akustik', 'loop', '1 hour', '1 stunde'];
+
+// Kleinschreibung + Umlaute falten + alles Nicht-Alphanumerische zu Leerzeichen,
+// damit "Millionär" und "millionaer" gleich behandelt werden.
+function normalizeText(text) {
+    return (text || '')
+        .toLowerCase()
+        .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+        .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+// Gemeinsamer Nicht-Musik-Filter fuer Piped- und yt-dlp-Treffer.
+function looksLikeMusic({ title, channel, duration, live }) {
+    if (live) return false;
+    const dur = duration || 0;
+    if (dur > 0 && (dur < 30 || dur > 900)) return false;
+    const combined = normalizeText(`${title} ${channel}`);
+    if (NON_MUSIC_WORDS.some(w => combined.includes(normalizeText(w)))) return false;
+    if (NON_MUSIC_CHANNELS.some(c => normalizeText(channel).includes(normalizeText(c)))) return false;
+    return true;
+}
+
 function isMusicResult(item) {
     if (!item || !item.url || item.type !== 'stream') return false;
-    const dur = item.duration || 0;
-    if (dur > 0 && (dur < 30 || dur > 900)) return false;
-    const title = (item.title || '').toLowerCase();
-    const uploader = (item.uploaderName || item.uploader || '').toLowerCase();
-    const combined = title + ' ' + uploader;
-    const nonMusic = [
-        'gameplay', 'tutorial', 'review', 'unboxing', 'reaction', 'podcast',
-        'compilat', 'highlights', 'trailer', 'vlog', 'how to', 'news', 'politics',
-        'cooking', 'rezept', 'recipe', 'schnell und einfach', 'kochen', 'backen',
-        'stiftung warentest', 'warentest', 'test der', 'im test',
-        'geheimnisse', 'dokumentation', 'doku', 'reportage',
-        'mukbang', 'asmr essen', 'food hack', 'lifehack',
-        'prank', 'challenge', 'experiment', 'try not to',
-        'nachrichten', 'tagesschau', 'interview', 'pressekonferenz',
-    ];
-    if (nonMusic.some(w => combined.includes(w))) return false;
-    // Known non-music channels
-    const nonMusicChannels = ['zdf', 'ard', 'rtl', 'sat.1', 'stiftung', 'warentest', 'chefkoch',
-        'tasty', 'buzzfeed', 'galileo', 'spiegel', 'bild', 'focus', 'welt'];
-    if (nonMusicChannels.some(c => uploader.includes(c))) return false;
-    return true;
+    return looksLikeMusic({
+        title: item.title,
+        channel: item.uploaderName || item.uploader || '',
+        duration: item.duration,
+    });
+}
+
+// Bewertet einen YouTube-Treffer fuer eine Textsuche. Ohne das nimmt
+// ytsearch1 blind den Top-Treffer, und der ist bei Songtiteln oft ein
+// Talkshow-, Story- oder Stream-Video statt des Songs.
+function scoreSearchResult(entry, query, index) {
+    const title = normalizeText(entry.title);
+    const channelRaw = entry.channel || entry.uploader || '';
+    const normQuery = normalizeText(query);
+    let score = 0;
+
+    // YouTubes eigene Relevanz zaehlt mit, dominiert aber nicht
+    score += Math.max(0, 10 - index) * 0.4;
+
+    // "<Artist> - Topic" sind die automatisch erzeugten YouTube-Music-Kanaele
+    if (/-\s*topic\s*$/i.test(channelRaw)) score += 6;
+    if (/\b(official|offiziell)\b/.test(title)) score += 3;
+    if (/\b(audio|lyrics?|musikvideo|music video)\b/.test(title)) score += 1;
+    if (entry.channel_is_verified) score += 2;
+
+    // Deckung mit der Suchanfrage
+    const words = normQuery.split(' ').filter(w => w.length > 2);
+    if (words.length > 0) {
+        const hits = words.filter(w => title.includes(w)).length;
+        score += (hits / words.length) * 5;
+        if (hits === 0) score -= 6;
+    }
+    if (title === normQuery) score += 4;
+
+    // Typische Songlaenge
+    const dur = entry.duration || 0;
+    if (dur >= 60 && dur <= 420) score += 3;
+    else if (dur >= 30 && dur <= 600) score += 1;
+    else score -= 3;
+
+    // Popularitaet logarithmisch, damit ein Ausreisser nicht alles kippt
+    const views = entry.view_count || 0;
+    if (views > 0) score += Math.min(Math.log10(views), 9) * 0.8;
+
+    // Bearbeitungen abwerten, ausser der User hat sie selbst gesucht
+    for (const variant of EDIT_VARIANTS) {
+        // Wortweise, sonst wuerde "live" in "believe" treffen
+        const pattern = new RegExp(`\\b${normalizeText(variant)}\\b`);
+        if (pattern.test(title) && !pattern.test(normQuery)) score -= 4;
+    }
+
+    return score;
 }
 
 async function pipedSearch(query, limit = 5) {
@@ -742,7 +817,7 @@ async function searchTrack(query) {
         const items = await pipedSearch(query, 1);
         track = pipedToTrack(items[0]);
     } catch {
-        track = await searchTrackYtdlp(`ytsearch1:${query}`);
+        track = await searchBestYtdlp(query);
     }
     trackCache.set(query, { track, ts: Date.now() });
     return track;
@@ -865,6 +940,76 @@ function fuzzyMatch(a, b) {
 }
 
 // ── yt-dlp Fallback-Suche ────────────────────────────────────────
+function isMusicEntry(entry) {
+    if (!entry) return false;
+    return looksLikeMusic({
+        title: entry.title,
+        channel: entry.channel || entry.uploader || '',
+        duration: entry.duration,
+        live: entry.live_status === 'is_live' || entry.live_status === 'is_upcoming',
+    });
+}
+
+function ytdlpEntryToTrack(info) {
+    return {
+        title: info.title || 'Unbekannter Titel',
+        url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
+        duration: formatDuration(info.duration),
+        durationSec: info.duration || 0,
+        thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
+        artist: info.artist || info.creator || info.channel || info.uploader || null,
+        album: info.album || null,
+        albumArt: info.thumbnail || info.thumbnails?.find(t => t.width >= 300)?.url || null,
+    };
+}
+
+// Holt mehrere YouTube-Treffer und waehlt den besten aus.
+// ytsearch1 nimmt blind den Top-Treffer von YouTube — bei "millionaer"
+// stehen auf den vorderen Plaetzen Talkshows und vorgelesene Geschichten,
+// nicht der Song.
+function searchBestYtdlp(query, poolSize = 10) {
+    return new Promise((resolve, reject) => {
+        const proc = spawn(ytdlpPath, [
+            '--dump-single-json', '--no-playlist', '--no-check-certificates',
+            '--no-warnings', '--flat-playlist', '--force-ipv4',
+            ...cookieArgs, '--js-runtimes', 'node', `ytsearch${poolSize}:${query}`,
+        ]);
+
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d) => stdout += d);
+        proc.stderr.on('data', (d) => stderr += d);
+        proc.on('close', (code) => {
+            if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            let entries;
+            try {
+                const data = JSON.parse(stdout);
+                entries = data.entries || [data];
+            } catch {
+                return reject(new Error('Konnte Suchergebnisse nicht parsen'));
+            }
+
+            // Rang merken, bevor gefiltert wird — er geht in die Bewertung ein
+            const ranked = entries.filter(Boolean).map((entry, rank) => ({ entry, rank }));
+            // Bevorzugt echte Musiktreffer; wenn der Filter alles wegwirft,
+            // lieber irgendein Ergebnis als gar keins.
+            const musical = ranked.filter(r => isMusicEntry(r.entry));
+            const pool = musical.length > 0 ? musical : ranked;
+            if (pool.length === 0) return reject(new Error('Kein Ergebnis gefunden'));
+
+            let best = pool[0];
+            let bestScore = -Infinity;
+            for (const candidate of pool) {
+                const score = scoreSearchResult(candidate.entry, query, candidate.rank);
+                if (score > bestScore) { bestScore = score; best = candidate; }
+            }
+
+            resolve(ytdlpEntryToTrack(best.entry));
+        });
+        proc.on('error', (e) => reject(new Error(`yt-dlp konnte nicht gestartet werden: ${e.message}`)));
+    });
+}
+
 function searchTrackYtdlp(searchQuery) {
     return new Promise((resolve, reject) => {
         const proc = spawn(ytdlpPath, [
@@ -918,37 +1063,7 @@ function searchTracksYtdlp(query, limit = 5) {
             try {
                 const data = JSON.parse(stdout);
                 const entries = data.entries || [data];
-                const tracks = entries.filter(i => {
-                    if (!i) return false;
-                    const dur = i.duration || 0;
-                    if (dur > 0 && (dur < 30 || dur > 900)) return false;
-                    const title = (i.title || '').toLowerCase();
-                    const channel = (i.channel || i.uploader || '').toLowerCase();
-                    const combined = title + ' ' + channel;
-                    const nonMusic = [
-                        'gameplay', 'tutorial', 'review', 'unboxing', 'reaction', 'podcast',
-                        'compilat', 'highlights', 'trailer', 'vlog', 'how to',
-                        'cooking', 'rezept', 'recipe', 'schnell und einfach', 'kochen', 'backen',
-                        'stiftung warentest', 'warentest', 'im test', 'test der',
-                        'geheimnisse', 'dokumentation', 'doku', 'reportage',
-                        'mukbang', 'prank', 'challenge', 'experiment',
-                        'nachrichten', 'interview', 'pressekonferenz',
-                    ];
-                    if (nonMusic.some(w => combined.includes(w))) return false;
-                    const nonChannels = ['zdf', 'ard', 'rtl', 'stiftung', 'chefkoch', 'tasty', 'galileo', 'spiegel', 'bild'];
-                    if (nonChannels.some(c => channel.includes(c))) return false;
-                    return true;
-                }).map(info => ({
-                    title: info.title || 'Unbekannter Titel',
-                    url: info.webpage_url || info.url || `https://www.youtube.com/watch?v=${info.id}`,
-                    duration: formatDuration(info.duration),
-                    durationSec: info.duration || 0,
-                    thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
-                    artist: info.artist || info.creator || info.channel || info.uploader || null,
-                    album: info.album || null,
-                    albumArt: info.thumbnail || info.thumbnails?.find(t => t.width >= 300)?.url || null,
-                }));
-                resolve(tracks);
+                resolve(entries.filter(isMusicEntry).map(ytdlpEntryToTrack));
             } catch {
                 reject(new Error('Konnte Suchergebnisse nicht parsen'));
             }
@@ -1202,13 +1317,35 @@ function updateActivity(guildId) {
     }
 }
 
-// ── Audio-Filter für FFmpeg ──────────────────────────────────────
+// ── Audio-Filter für FFmpeg (reine Filterketten, ohne -af) ───────
 const AUDIO_FILTERS = {
-    off: [],
-    bassboost: ['-af', 'bass=g=8,acompressor=threshold=-20dB:ratio=4'],
-    nightcore: ['-af', 'aresample=48000,asetrate=48000*1.25'],
-    slowed: ['-af', 'aresample=48000,asetrate=48000*0.85'],
+    off: null,
+    bassboost: 'bass=g=8,acompressor=threshold=-20dB:ratio=4',
+    nightcore: 'aresample=48000,asetrate=48000*1.25',
+    slowed: 'aresample=48000,asetrate=48000*0.85',
 };
+
+// Baut die komplette -af Kette inkl. Lautstaerke.
+// Die Lautstaerke laeuft bewusst ueber FFmpeg und nicht ueber den
+// inlineVolume-Transformer von @discordjs/voice: der wuerde einen
+// zweiten FFmpeg-Prozess plus Opus-Encoding in JS erzwingen und damit
+// den Event-Loop so stark belasten, dass die 20ms-Frames nicht mehr
+// rechtzeitig fertig werden (Audio spielt dann zu schnell).
+function buildFilterArgs(queue) {
+    const chain = [];
+
+    if (queue.filter === 'custom' && Array.isArray(queue.eqBands) && queue.eqBands.some(v => v !== 0)) {
+        const freqs = [60, 150, 400, 1000, 2500, 6000, 16000];
+        chain.push(queue.eqBands.map((gain, i) => `equalizer=f=${freqs[i]}:width_type=o:width=1.5:g=${gain}`).join(','));
+    } else if (AUDIO_FILTERS[queue.filter]) {
+        chain.push(AUDIO_FILTERS[queue.filter]);
+    }
+
+    const volume = typeof queue.volume === 'number' ? queue.volume : 1;
+    if (Math.abs(volume - 1) > 0.005) chain.push(`volume=${volume.toFixed(3)}`);
+
+    return chain.length ? ['-af', chain.join(',')] : [];
+}
 
 // ── Audio-Stream (yt-dlp → FFmpeg → OggOpus) ────────────────────
 function createStream(url, queue, onError, seekSeconds = 0) {
@@ -1219,24 +1356,25 @@ function createStream(url, queue, onError, seekSeconds = 0) {
         ...cookieArgs, '--js-runtimes', 'node', url,
     ]);
 
-    let filterArgs = AUDIO_FILTERS[queue.filter] || [];
-    // Custom EQ: build FFmpeg equalizer chain from band values
-    if (queue.filter === 'custom' && Array.isArray(queue.eqBands) && queue.eqBands.some(v => v !== 0)) {
-        const freqs = [60, 150, 400, 1000, 2500, 6000, 16000];
-        const eqChain = queue.eqBands.map((gain, i) => `equalizer=f=${freqs[i]}:width_type=o:width=1.5:g=${gain}`).join(',');
-        filterArgs = ['-af', eqChain];
-    }
+    const filterArgs = buildFilterArgs(queue);
 
     const ffmpeg = spawn(ffmpegPath, [
+        '-loglevel', 'error',
+        // Input-Optionen muessen VOR -i stehen, sonst ignoriert FFmpeg sie
+        '-analyzeduration', '0',
         ...(seekSeconds > 0 ? ['-ss', String(seekSeconds)] : []),
         '-i', 'pipe:0',
-        '-analyzeduration', '0',
-        '-loglevel', 'error',
+        // Nur die erste Audiospur, kein Video/Cover/Untertitel
+        '-map', '0:a:0', '-vn', '-sn', '-dn',
         ...filterArgs,
-        '-f', 'ogg',
-        '-acodec', 'libopus',
+        '-c:a', 'libopus',
+        '-b:a', '128k',
         '-ar', '48000',
         '-ac', '2',
+        // Discord erwartet 20ms-Frames
+        '-frame_duration', '20',
+        '-application', 'audio',
+        '-f', 'ogg',
         'pipe:1',
     ]);
 
@@ -1267,6 +1405,51 @@ function createStream(url, queue, onError, seekSeconds = 0) {
     queue.processes.add(ytdlp);
     queue.processes.add(ffmpeg);
     return ffmpeg.stdout;
+}
+
+// ── AudioResource bauen (Ogg-Opus Passthrough) ───────────────────
+// Bewusst OHNE inlineVolume: dann ist die Pipeline in @discordjs/voice
+// nur der Ogg-Demuxer, die Opus-Pakete von FFmpeg gehen unveraendert
+// an Discord. Mit inlineVolume wuerde stattdessen ein zweiter FFmpeg
+// (ogg -> PCM) plus Opus-Encoder in JS laufen. Lautstaerke und Filter
+// macht deshalb der FFmpeg in createStream.
+function createResource(url, queue, onError, seekSeconds = 0) {
+    const stream = createStream(url, queue, onError, seekSeconds);
+    const resource = createAudioResource(stream, { inputType: StreamType.OggOpus });
+    queue._resource = resource;
+    return resource;
+}
+
+// Startet den laufenden Song neu ab der aktuellen Position.
+// Noetig, weil Lautstaerke und Filter im FFmpeg stecken und damit nur
+// beim Start eines Streams gesetzt werden koennen.
+function restartStream(queue, onError) {
+    if (!queue.current || !queue.player) return null;
+
+    const elapsed = getElapsed(queue);
+    killQueueProcesses(queue);
+
+    const resource = createResource(queue.current.url, queue, onError, elapsed);
+    queue.player.play(resource);
+    queue._playbackStart = Date.now();
+    queue._seekOffset = elapsed;
+    return resource;
+}
+
+// Uebernimmt geaenderte Lautstaerke/Filter auf den laufenden Song.
+// Gebuendelt, damit ein Slider im Webapp nicht bei jedem Schritt einen
+// neuen Stream startet.
+function applyAudioSettings(guildId) {
+    const queue = queues.get(guildId);
+    if (!queue?.current) return;
+
+    clearTimeout(queue._audioSettingsTimer);
+    queue._audioSettingsTimer = setTimeout(() => {
+        queue._audioSettingsTimer = null;
+        restartStream(queue, (err) => {
+            autoDelete(queue.channel?.send(`❌ Audio-Fehler: ${err.message}`), DELETE_ERROR_MS);
+        });
+    }, 400);
 }
 
 // ── Voice-Verbindung aufbauen (gemeinsame Logik) ─────────────────
@@ -1571,6 +1754,9 @@ async function playNext(guildId) {
         queue.skipVotes.clear();
         queue._playbackStart = Date.now();
         queue._seekOffset = 0;
+        // Ein noch ausstehender Lautstaerke/Filter-Neustart gilt dem alten Song
+        clearTimeout(queue._audioSettingsTimer);
+        queue._audioSettingsTimer = null;
 
         // Reset Auto-DJ counter when user manually queued a track
         if (track.requestedBy && track.requestedBy !== '\uD83E\uDD16 Auto-DJ') {
@@ -1583,7 +1769,7 @@ async function playNext(guildId) {
             db.addToHistory(historyUserId, guildId, track);
         } catch { /* non-critical */ }
 
-        const stream = createStream(track.url, queue, (err) => {
+        const resource = createResource(track.url, queue, (err) => {
             if (!track._retried) {
                 track._retried = true;
                 queue._failedTrack = track;
@@ -1592,9 +1778,6 @@ async function playNext(guildId) {
                 autoDelete(queue.channel?.send(`❌ Stream-Fehler bei **${track.title}**: ${err.message}`), DELETE_ERROR_MS);
             }
         });
-        const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
-        resource.volume.setVolume(queue.volume);
-        queue._resource = resource;
         queue.player.play(resource);
         updateActivity(guildId);
 
@@ -1638,7 +1821,7 @@ for (const file of commandFiles) {
 // ── Context-Objekt für Commands ───────────────────────────────────
 const ctx = {
     db, queues, getQueue, destroyQueue, searchTrack, searchTracks, searchEnhanced, preResolveTrack, spotifyFetch, searchPlaylist, isPlaylistUrl, fetchPlaylistMeta, resolvePlaylistInBackground, fetchSpotifyEmbed,
-    playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, ffmpegPath,
+    playNext, joinChannel, ensureConnection, scheduleLeave, autoDelete, createStream, createResource, restartStream, applyAudioSettings, ffmpegPath,
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,

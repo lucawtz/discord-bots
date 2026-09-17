@@ -1,6 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { createAudioResource, StreamType } = require('@discordjs/voice');
-const { requirePlaying, killQueueProcesses } = require('../utils/checks');
+const { requirePlaying } = require('../utils/checks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -26,19 +25,9 @@ module.exports = {
         queue.filter = filter;
 
         // Stream mit neuem Filter neu starten (ab aktueller Position)
-        const elapsed = ctx.getElapsed(queue);
-        killQueueProcesses(queue);
-
-        const stream = ctx.createStream(queue.current.url, queue, (err) => {
+        ctx.restartStream(queue, (err) => {
             ctx.autoDelete(queue.channel?.send(`❌ Filter-Fehler: ${err.message}`), ctx.DELETE_ERROR_MS);
-        }, elapsed);
-
-        const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
-        resource.volume.setVolume(queue.volume);
-        queue._resource = resource;
-        queue.player.play(resource);
-        queue._playbackStart = Date.now();
-        queue._seekOffset = elapsed;
+        });
 
         ctx.updateNowPlayingMsg(queue);
         const labels = { off: '-# 🎛️ Filter deaktiviert', bassboost: '-# 🎛️ Bassboost aktiviert', nightcore: '-# 🎛️ Nightcore aktiviert', slowed: '-# 🎛️ Slowed aktiviert' };

@@ -19,9 +19,7 @@ module.exports = {
         }
 
         queue.volume = percent / 100;
-        if (queue._resource?.volume) {
-            queue._resource.volume.setVolume(queue.volume);
-        }
+        ctx.applyAudioSettings(interaction.guildId);
 
         ctx.autoDelete(interaction.reply({ content: `-# 🔊 Lautstaerke auf **${percent}%** gesetzt`, fetchReply: true }), ctx.DELETE_SHORT_MS);
     },
