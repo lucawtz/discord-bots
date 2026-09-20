@@ -101,4 +101,26 @@ function notifyOnline(bot, detail) {
     });
 }
 
-module.exports = { notifyError, notifyOnline };
+/**
+ * Neutrale Info-Meldung (gruen), z.B. Entwarnung nach einem behobenen Ausfall.
+ * Bewusst getrennt von notifyOnline: dessen Titel ("Bot online") wuerde einen
+ * Restart suggerieren, den es gar nicht gab. Gedrosselt wie notifyError.
+ * @param {string} bot      - Botname
+ * @param {string} title    - kurze Ueberschrift
+ * @param {string} [detail] - optionaler Text
+ */
+function notifyInfo(bot, title, detail) {
+    if (!WEBHOOK) return;
+    if (_throttled(`${bot}:info:${title}:${detail || ''}`)) return;
+    _send({
+        username: `${bot} Alerts`,
+        embeds: [{
+            title: `🟢 ${bot}: ${title}`.slice(0, 256),
+            description: detail ? String(detail).slice(0, 2000) : undefined,
+            color: COLORS.info,
+            timestamp: new Date().toISOString(),
+        }],
+    });
+}
+
+module.exports = { notifyError, notifyOnline, notifyInfo };

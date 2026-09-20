@@ -11,7 +11,7 @@ require('../../../libs/loadEnv').loadEnv('MUSIC', path.join(__dirname, '..'));
 const { startAPI } = require('./api');
 const db = require('./database');
 const { t, normalizeLocale } = require('./i18n');
-const { notifyError, notifyOnline } = require('../../../libs/notify');
+const { notifyError, notifyOnline, notifyInfo } = require('../../../libs/notify');
 const { startStatusUpdater } = require('../../../libs/status');
 const { FOOTER } = require('../../../libs/links');
 // Server-Sprache fuer Hintergrund-Nachrichten ohne Interaction (Now-Playing-Embed):
@@ -145,40 +145,13 @@ if (fs.existsSync(cookiePath)) {
     console.log('yt-dlp: Keine cookies.txt gefunden (optional)');
 }
 
-// YouTube auf einer Rechenzentrums-IP funktioniert nur dreifach abgesichert:
-//  1) --proxy WARP            -> saubere Cloudflare-IP (umgeht den harten IP-Block)
-//  2) POT-Token (fetch_pot=always) via bgutil-Provider -> "kein Bot"-Nachweis
-//  3) --remote-components ejs  -> löst die neue YouTube JS-Signatur / n-challenge
-// Hinweis: Der POT-Request an den Provider läuft NICHT über den Proxy (das
-// bgutil-Plugin umgeht ihn), daher reicht der interne Alias pot-provider:4416.
-const POT_PROVIDER_URL = process.env.POT_PROVIDER_URL || 'http://pot-provider:4416';
-const YTDLP_PROXY = process.env.YTDLP_PROXY || 'socks5://warp:1080';
-// Lokaler Opt-out: YTDLP_PROXY=direct laesst yt-dlp OHNE Proxy/POT-Provider ueber
-// die lokale IP laufen (die Coolify-Aliasse warp:1080/pot-provider:4416 existieren
-// nur im Server-Docker-Netz). Prod setzt den echten Proxy -> Args unveraendert.
-const YT_DIRECT = ['direct', 'none', 'off', 'local'].includes(YTDLP_PROXY.toLowerCase());
-const YT_EXTRACTOR_ARGS = YT_DIRECT
-    ? ['--remote-components', 'ejs:github']
-    : [
-        '--proxy', YTDLP_PROXY,
-        '--remote-components', 'ejs:github',
-        // Bewusst KEIN player_client=web mehr: YouTube erzwingt dort SABR-Streaming,
-        // die https-Formate fehlen -> "Requested format is not available" (2026-09-12).
-        // yt-dlps Default-Clients liefern weiterhin normale Audio-Formate.
-        '--extractor-args', 'youtube:fetch_pot=always',
-        '--extractor-args', `youtubepot-bgutilhttp:base_url=${POT_PROVIDER_URL}`,
-    ];
-if (YT_DIRECT) console.log('yt-dlp: DIRECT-Modus (ohne Proxy/POT — nur lokal gedacht)');
-
-// Nur YouTube braucht WARP/POT. SoundCloud & Co. sind ueber WARP nicht erreichbar
-// ("Host unreachable") und laufen direkt ueber die Server-IP.
-const isYoutubeTarget = (target) => /^ytsearch\d*:|youtube\.com|youtu\.be/i.test(target || '');
-const ytArgsFor = (target) => (isYoutubeTarget(target) ? YT_EXTRACTOR_ARGS : []);
-// SoundCloud liefert bei Major-Label-Tracks oft nur 30-s-Vorschauen (format_id "*_preview")
-// -> ausschliessen, damit yt-dlp sauber scheitert statt still einen Schnipsel zu spielen.
-const audioFormatFor = (target) => (/soundcloud\.com/i.test(target || '')
-    ? 'bestaudio[format_id!*=preview]/best[format_id!*=preview]'
-    : 'bestaudio/bestaudio*/best');
+// YouTube auf einer Rechenzentrums-IP funktioniert nur mehrfach abgesichert
+// (Proxy + POT-Token + EJS) — und der Primaer-Proxy ist seit 2026-09-13 der
+// Heim-Tunnel des Raspberry Pi, weil YouTube WARP-IPs fuer lizenzierte Musik
+// sperrt. Konfiguration, Ausweich-Kette (YTDLP_PROXY_FALLBACK) und die
+// Format-Wahl stecken in ytProxy.js.
+const ytProxy = require('./ytProxy');
+const { ytArgsFor, audioFormatFor } = ytProxy;
 
 // ── yt-dlp Auto-Update (im Hintergrund, blockiert nicht den Start) ──
 spawn(ytdlpPath, ['-U']).on('close', (code) => {
@@ -811,11 +784,18 @@ async function searchTrack(query) {
         try {
             track = await searchTrackYtdlp(`ytsearch1:${query}`);
         } catch (ytErr) {
+            // Proxy-Ausfall: einmal ueber die Ausweich-Kette wiederholen (ytProxy hat beim
+            // ersten Fehlschlag umgeschaltet) — sonst faellt auch generisches YouTube aus.
+            if (ytProxy.isProxyError(ytErr.message)) {
+                try { track = await searchTrackYtdlp(`ytsearch1:${query}`); } catch { /* unten SoundCloud */ }
+            }
             // YouTube blockiert/leer -> SoundCloud als Ausweichquelle
-            try {
-                track = await searchTrackYtdlp(`scsearch1:${query}`);
-            } catch {
-                throw ytErr;
+            if (!track) {
+                try {
+                    track = await searchTrackYtdlp(`scsearch1:${query}`);
+                } catch {
+                    throw ytErr;
+                }
             }
         }
     }
@@ -953,7 +933,10 @@ function searchTrackYtdlp(searchQuery) {
         proc.stdout.on('data', (d) => stdout += d);
         proc.stderr.on('data', (d) => stderr += d);
         proc.on('close', (code) => {
-            if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            if (code !== 0) {
+                ytProxy.noteYtdlpError(stderr);   // Proxy-Ausfall -> Ausweich-Kette
+                return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            }
             try {
                 const data = JSON.parse(stdout);
                 const info = data.entries ? data.entries[0] : data;
@@ -1028,7 +1011,7 @@ function searchTracksYtdlp(query, limit = 5) {
         const proc = spawn(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
-            ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', `ytsearch${limit}:${query}`,
+            ...cookieArgs, ...ytArgsFor('ytsearch:'), '--js-runtimes', 'node', `ytsearch${limit}:${query}`,
         ]);
 
         let stdout = '';
@@ -1036,7 +1019,10 @@ function searchTracksYtdlp(query, limit = 5) {
         proc.stdout.on('data', (d) => stdout += d);
         proc.stderr.on('data', (d) => stderr += d);
         proc.on('close', (code) => {
-            if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            if (code !== 0) {
+                ytProxy.noteYtdlpError(stderr);   // Proxy-Ausfall -> Ausweich-Kette
+                return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            }
             try {
                 const data = JSON.parse(stdout);
                 const entries = data.entries || [data];
@@ -1240,7 +1226,10 @@ async function searchPlaylist(url) {
         proc.stdout.on('data', (d) => stdout += d);
         proc.stderr.on('data', (d) => stderr += d);
         proc.on('close', (code) => {
-            if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            if (code !== 0) {
+                ytProxy.noteYtdlpError(stderr);   // Proxy-Ausfall -> Ausweich-Kette
+                return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            }
             try {
                 const data = JSON.parse(stdout);
                 const entries = data.entries || [];
@@ -1864,13 +1853,19 @@ async function playNext(guildId) {
         }
 
         const stream = createStream(track.url, queue, (err) => {
+            // Proxy-Ausfall zuerst: dann hilft kein Quellenwechsel, sondern ein Retry
+            // ueber die Ausweich-Kette (ytProxy hat dabei schon umgeschaltet).
+            const proxyIssue = ytProxy.noteYtdlpError(err.message, track.url);
             // YouTube-Sperren der Proxy-IP sehen verschieden aus: "not a bot", bei lizenzierter
             // Musik "Video unavailable" (UNPLAYABLE) oder - Extraktion klappt, Download nicht -
-            // "HTTP Error 403: Forbidden" (2026-09-13); dazu SABR ohne Formate und ein toter
-            // WARP-Proxy (ProxyError) -> in allen Faellen SoundCloud.
-            const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|http error 403|proxyerror|host unreachable/i.test(err.message);
+            // "HTTP Error 403: Forbidden" (2026-09-13); dazu SABR ohne Formate.
+            const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|http error 403/i.test(err.message);
             const isYtUrl = /youtube\.com|youtu\.be/.test(track.url || '');
-            if (ytBlocked && isYtUrl && !track._scTried) {
+            if (proxyIssue && !track._retried) {
+                track._retried = true;
+                queue._failedTrack = track;
+                console.error(`Proxy-Ausfall bei "${track.title}" – Retry ueber ${ytProxy.activeProxy()}`);
+            } else if ((ytBlocked || proxyIssue) && isYtUrl && !track._scTried) {
                 // Einmalig auf SoundCloud ausweichen (neue Quelle -> Retry erlaubt)
                 track._scTried = true;
                 track._needsSoundcloud = true;
@@ -2213,6 +2208,19 @@ client.once(Events.ClientReady, () => {
     _generateAccessCode = api.generateAccessCode;
 
     // Periodischer #status-Post (No-op ohne STATUS_CHANNEL_ID)
+    // Heim-Tunnel ueberwachen: bei Ausfall auf die Ausweich-Kette umschalten und melden,
+    // damit ein toter Proxy nicht wieder wochenlang unbemerkt bleibt (WARP 2026-08/09).
+    ytProxy.startWatch((next, reason) => {
+        if (next === 'down') {
+            console.error(`yt-dlp: Primaer-Proxy ausgefallen (${reason}) -> ${ytProxy.activeProxy()}`);
+            notifyError('BeatByte', 'YouTube-Proxy ausgefallen', reason,
+                `Ausweich-Proxy: ${ytProxy.activeProxy()} — generische YouTube-Videos laufen weiter, lizenzierte Musik bleibt gesperrt, bis der Primaer-Proxy zurueck ist.`);
+        } else {
+            console.log(`yt-dlp: Primaer-Proxy wieder erreichbar (${ytProxy.activeProxy()})`);
+            notifyInfo('BeatByte', 'YouTube-Proxy wieder erreichbar', `Wieder ueber ${ytProxy.activeProxy()}.`);
+        }
+    });
+
     startStatusUpdater({
         client,
         botName: 'BeatByte',
@@ -2223,6 +2231,7 @@ client.once(Events.ClientReady, () => {
             extra: {
                 'Aktive Wiedergaben': [...queues.values()].filter(q => q.current).length,
                 'Web-API': `Port ${process.env.API_PORT || 3001} ✓`,
+                'YouTube-Quelle': ytProxy.shortState(),
             },
         }),
     });
