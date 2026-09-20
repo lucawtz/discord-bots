@@ -89,9 +89,14 @@ function argsForProxy(proxy) {
     return [
         '--proxy', proxy,
         '--remote-components', 'ejs:github',
-        // Bewusst KEIN player_client=web: YouTube erzwingt dort SABR-Streaming,
+        // player_client=mweb ist gemessen, nicht geraten (2026-09-20): Bei lizenzierter
+        // Musik liefern yt-dlps Default-Clients zwar Formate, deren Download scheitert
+        // dann aber mit "HTTP Error 403: Forbidden"; web_safari liefert gar keine
+        // Formate, tv bricht mit "The page needs to be reloaded" ab. Mit mweb laden
+        // Chart-Songs UND generische Videos ueber beide Proxys.
+        // Weiterhin bewusst KEIN player_client=web: dort erzwingt YouTube SABR-Streaming,
         // die https-Formate fehlen -> "Requested format is not available" (2026-09-12).
-        '--extractor-args', 'youtube:fetch_pot=always',
+        '--extractor-args', 'youtube:player_client=mweb;fetch_pot=always',
         '--extractor-args', `youtubepot-bgutilhttp:base_url=${POT_PROVIDER_URL}`,
     ];
 }
