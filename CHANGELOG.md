@@ -7,23 +7,40 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
-- **music-bot/infra:** **Lavalink-Beweislauf gefahren — Lavalink funktioniert, YouTube-Abdeckung nicht.**
-  Gegen den echten Dev-Bot in einem Voice-Channel getestet. **Was steht:** Voice-Verbindung in 2,5 s,
-  Wiedergabestart nach 1,2 s, **Seek auf 1:00 in 820 ms wieder unterwegs** (die heutige FFmpeg-Pipe
-  laedt dafuer den ganzen Track ab Byte 0 neu), Bassboost und Lautstaerke im laufenden Strom — und
-  **kein einziges TrackEndEvent** dabei, also nachweislich kein Track-Neustart.
-  **Was nicht steht:** nur **1 von 4** YouTube-Tracks spielt (`All clients failed to load the item`;
-  ANDROID_VR: "requires login", WEB: SABR ohne Audio-Formate, WEBEMBEDDED: "unavailable"). Das ist
-  kein Lavalink-Problem, sondern derselbe poToken-Zwang, den die yt-dlp-Pipeline heute mit dem
-  bgutil-POT-Provider loest — und der Test lief von einer **Privat-IP**, liegt also nicht am Server.
-  Zwei Wege: OAuth (Wegwerf-Google-Konto, Device-Code, Refresh-Token) oder poToken+visitorData, die
-  das Plugin zur Laufzeit per `POST /youtube` annimmt — dafuer laeuft der Provider in Prod bereits.
-  **Gefundener Protokoll-Fehler:** Lavalink 4.2 verlangt `channelId` im Voice-Objekt; fehlt es, kommt
-  ein nacktes `Bad Request` ohne Begruendung (die steht nur im Server-Log). Client korrigiert, und
-  der Test-Fake prueft das Voice-Objekt jetzt genauso streng wie der echte Server — der nachgiebige
-  Fake hatte den Fehler gruen durchgewunken.
-  Neu: `test/yt-probe.js` (welche Tracks spielen) und `test/voice-probe.js` (Voice-Pfad isoliert
-  ueber eine lokale Audiodatei, unabhaengig von YouTube).
+- **music-bot/infra:** **OAuth + Remote-Cipher getestet — und festgestellt, dass der Testrechner
+  die Frage gar nicht beantworten kann.** Drei Schichten nacheinander aufgebaut, jede hat die
+  Fehler der vorigen behoben und die naechste sichtbar gemacht:
+  (1) **OAuth** (Wegwerf-Konto, Device-Code, Refresh-Token) — vorher wurden nur 3 Clients ueberhaupt
+  versucht, danach alle 8. (2) **Remote-Cipher** (`remoteCipher`, oeffentliche Instanz
+  cipher.kikkia.dev) gegen `Must find sig function from script` — youtube-source 1.18.2 ist vom
+  27.07., Issue #225 zum kaputten Signatur-Muster vom 29.07. wurde als *not planned* geschlossen,
+  die Maintainer verweisen auf den Cipher-Dienst (das Gegenstueck zu `--remote-components
+  ejs:github` bei yt-dlp). (3) **poToken** aus der bereits gebauten Bruecke.
+  **Abdeckung blieb bei allen Kombinationen 1 von 4.**
+  **ABER — Gegenprobe mit yt-dlp von derselben IP: `HTTP Error 403: Forbidden`, und zwar auch bei
+  dem Track, den Lavalink abspielt.** Diese Leitung ist fuer YouTube-Downloads selbst degradiert
+  (Suche geht, Medienabruf nicht). Damit ist die lokale 1/4-Messung KEIN Urteil ueber Lavalink —
+  Lavalink schnitt hier sogar besser ab als yt-dlp. Die Frage laesst sich nur dort entscheiden, wo
+  der Zugang gesund ist: auf dem Server durch den Pi-Tunnel.
+  Werkzeuge dafuer stehen: `test/lavalink-local.js --oauth --cipher --socks <port> --port <port>`,
+  `test/yt-probe.js` (welche Tracks spielen), `test/yt-clients.js` (Grund pro Client).
+  Nebenbei gefixt: der Flag-Parser nahm ein nachfolgendes `--flag` als Wert (`--cipher --port 2334`
+  ergab die Cipher-URL `--port`).
+
+- **music-bot/infra:** **OAuth-Test vorbereitet — startklar bis auf die Google-Anmeldung.**
+  `test/lavalink-local.js --oauth` schreibt die Konfiguration mit `oauth.enabled`, stellt die
+  OAuth-faehigen Clients nach vorn (`TV`, `TVHTML5_SIMPLY`, `IOS`, …) und liest Lavalinks Ausgabe
+  mit: Device-Code, Refresh-Token und die Fehlerfaelle (Code abgelaufen, Zugriff verweigert)
+  erscheinen als hervorgehobener Kasten statt in der Log-Flut. Der Token wird zusaetzlich in
+  `test/fixtures/lavalink/refresh-token.txt` abgelegt und gehoert als
+  `MUSIC_YOUTUBE_REFRESH_TOKEN` in die Root-`.env.local` — dann entfaellt die Anmeldung kuenftig.
+  Trockenlauf bestaetigt: Client-Liste laedt als `TVHTML5, TVHTML5_SIMPLY, IOS, WEB_REMIX,
+  ANDROID_MUSIC, MWEB, WEB, WEB_EMBEDDED_PLAYER`, Device-Code erscheint.
+  `deploy/lavalink/application.yml` entsprechend nachgezogen (`refreshToken` aus
+  `${YOUTUBE_REFRESH_TOKEN}`, `skipInitialization: true` — ein Prod-Container darf nie auf eine
+  interaktive Anmeldung warten).
+  **Die Anmeldung selbst macht bewusst der Mensch:** sie haengt an einem Google-Konto, und das
+  Plugin warnt ausdruecklich davor, dafuer den Haupt-Account zu nehmen.
 
 - **music-bot:** **poToken-Bruecke gebaut — und gemessen, dass sie NICHT reicht.**
   `src/audio/potoken.js` holt visitorData von youtube.com, laesst den bgutil-Provider einen daran
@@ -44,6 +61,24 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
   ist damit erledigt; die Bruecke bleibt als einzige Nicht-OAuth-Massnahme liegen (nur aktiv mit
   gesetztem `POT_PROVIDER_URL`). Offen und zu entscheiden: OAuth mit einem Wegwerf-Google-Konto.
 
+- **music-bot/infra:** **Lavalink-Beweislauf gefahren — Lavalink funktioniert, YouTube-Abdeckung nicht.**
+  Gegen den echten Dev-Bot in einem Voice-Channel getestet. **Was steht:** Voice-Verbindung in 2,5 s,
+  Wiedergabestart nach 1,2 s, **Seek auf 1:00 in 820 ms wieder unterwegs** (die heutige FFmpeg-Pipe
+  laedt dafuer den ganzen Track ab Byte 0 neu), Bassboost und Lautstaerke im laufenden Strom — und
+  **kein einziges TrackEndEvent** dabei, also nachweislich kein Track-Neustart.
+  **Was nicht steht:** nur **1 von 4** YouTube-Tracks spielt (`All clients failed to load the item`;
+  ANDROID_VR: "requires login", WEB: SABR ohne Audio-Formate, WEBEMBEDDED: "unavailable"). Das ist
+  kein Lavalink-Problem, sondern derselbe poToken-Zwang, den die yt-dlp-Pipeline heute mit dem
+  bgutil-POT-Provider loest — und der Test lief von einer **Privat-IP**, liegt also nicht am Server.
+  Zwei Wege: OAuth (Wegwerf-Google-Konto, Device-Code, Refresh-Token) oder poToken+visitorData, die
+  das Plugin zur Laufzeit per `POST /youtube` annimmt — dafuer laeuft der Provider in Prod bereits.
+  **Gefundener Protokoll-Fehler:** Lavalink 4.2 verlangt `channelId` im Voice-Objekt; fehlt es, kommt
+  ein nacktes `Bad Request` ohne Begruendung (die steht nur im Server-Log). Client korrigiert, und
+  der Test-Fake prueft das Voice-Objekt jetzt genauso streng wie der echte Server — der nachgiebige
+  Fake hatte den Fehler gruen durchgewunken.
+  Neu: `test/yt-probe.js` (welche Tracks spielen) und `test/voice-probe.js` (Voice-Pfad isoliert
+  ueber eine lokale Audiodatei, unabhaengig von YouTube).
+
 - **music-bot/infra:** **Lavalink als Audio-Backend vorbereitet — noch NICHT aktiv.**
   Machbarkeits-Pruefstand gelaufen (Lavalink 4.2.2 + youtube-plugin 1.18.2, Java 21): Start in
   1,9 s, Suche im Schnitt 764 ms gegen 1169 ms bei yt-dlp (warm 311 ms), 242 MB RSS mit
@@ -60,32 +95,6 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
   echter Voice-Channel. Dafuer `test/lavalink-live.js` — startklar, braucht nur
   `MUSIC_DISCORD_TOKEN` + `MUSIC_GUILD_ID`. Erst wenn der gruen ist, wird umgebaut.
 
-- **music-bot:** **Testbarkeit: `pnpm --filter discord-music-bot test`** — 8 Offline-Tests in ~5 s,
-  ohne Token und ohne Netz, jetzt auch in CI. Sie laufen gegen den ECHTEN Bot-Code inklusive FFmpeg
-  und `AudioPlayer`; gefaelscht sind nur Discord und yt-dlp. Moeglich durch drei Nahtstellen:
-  `BEATBYTE_TEST=1` (kein Login, kein yt-dlp-Update, Timer per `unref`), `ctx.setSpawn()` und
-  `attachPlayerEvents()` (aus `setupVoiceConnection` herausgezogen). Dazu 3 Netz-Tests gegen die
-  echte Deezer-API (`test:net`, nicht in CI) und `test:live` fuer den vorhandenen `dev-test.js`.
-  Anleitung: `bots/music-bot/test/README.md`.
-- **music-bot:** **Timing-Logs** trennen die Wartezeit auf: `search+connect`, `extract` (erstes Byte
-  von yt-dlp — davor Extraktion/POT, danach Download) und `first-audio` (bis zum ersten Opus-Frame).
-  Dazu FFmpeg mit `-probesize 524288` statt der 5-MB-Default.
-
-- **music-bot:** **Drei Haertungen, die die Wiedergabe abreissen konnten** — gefunden durch die neuen
-  Tests: `updateActivity` (ungesichertes `client.user.setActivity` mitten in `playNext`, Fehler
-  loeste eine Retry-Schleife aus), das Rendern der Player-Karte (lag im selben try wie die
-  Wiedergabe — ab `player.play()` jetzt eigener Block), und `spawn(yt-dlp, -U)` ohne
-  `error`-Handler (fehlendes yt-dlp riss den Prozess ab). Dazu `localeFor`/`localeForGuild`
-  gegen DB-Lesefehler und der Avatar-Lookup in beiden Embeds abgesichert.
-
-- **music-bot:** **Autocomplete fuer `/play`** (Deezer, `Titel — Interpret · 2:32`). Der User waehlt
-  den Song aus, statt dass die Textsuche raet, und der Top-Treffer wird schon beim Tippen im
-  Hintergrund aufgeloest (`preResolveTrack` mit In-Flight-Sperre und Deckel auf 2 Prozesse).
-  **Braucht ein `npm run deploy` in `bots/music-bot`, sonst erscheinen keine Vorschlaege.**
-
-- **music-bot:** **Voice-Check laeuft vor `deferReply`.** Der Fehler "Du musst in einem Voice Channel
-  sein" war eine oeffentliche, nie geloeschte Kanalnachricht — jetzt ephemer.
-
 - **music-bot:** **`/play` fühlte sich unfertig an — jetzt eine Nachricht mit drei Zuständen.**
   Vorher: Antwort auf `/play` wurde geloescht, bis zu 2,5 s Wartezeit aufs Cover, dann eine NEUE
   "Lädt…"-Nachricht am Kanalende, die spaeter nochmal umgebaut wurde. Dazwischen stand im Kanal
@@ -94,6 +103,32 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
   mit aktiven Buttons. Kein `deleteReply`, keine zweite Nachricht, kein Springen. Das Warten aufs
   Cover ist ersatzlos weg (wird nachgezogen), Voice-Handshake und Quellensuche laufen parallel.
 
+- **music-bot:** **Voice-Check laeuft vor `deferReply`.** Der Fehler "Du musst in einem Voice Channel
+  sein" war eine oeffentliche, nie geloeschte Kanalnachricht — jetzt ephemer.
+
+- **music-bot:** **Autocomplete fuer `/play`** (Deezer, `Titel — Interpret · 2:32`). Der User waehlt
+  den Song aus, statt dass die Textsuche raet, und der Top-Treffer wird schon beim Tippen im
+  Hintergrund aufgeloest (`preResolveTrack` mit In-Flight-Sperre und Deckel auf 2 Prozesse).
+  **Braucht ein `npm run deploy` in `bots/music-bot`, sonst erscheinen keine Vorschlaege.**
+
+- **music-bot:** **Drei Haertungen, die die Wiedergabe abreissen konnten** — gefunden durch die neuen
+  Tests: `updateActivity` (ungesichertes `client.user.setActivity` mitten in `playNext`, Fehler
+  loeste eine Retry-Schleife aus), das Rendern der Player-Karte (lag im selben try wie die
+  Wiedergabe — ab `player.play()` jetzt eigener Block), und `spawn(yt-dlp, -U)` ohne
+  `error`-Handler (fehlendes yt-dlp riss den Prozess ab). Dazu `localeFor`/`localeForGuild`
+  gegen DB-Lesefehler und der Avatar-Lookup in beiden Embeds abgesichert.
+
+- **music-bot:** **Timing-Logs** trennen die Wartezeit auf: `search+connect`, `extract` (erstes Byte
+  von yt-dlp — davor Extraktion/POT, danach Download) und `first-audio` (bis zum ersten Opus-Frame).
+  Dazu FFmpeg mit `-probesize 524288` statt der 5-MB-Default.
+
+- **music-bot:** **Testbarkeit: `pnpm --filter discord-music-bot test`** — 8 Offline-Tests in ~5 s,
+  ohne Token und ohne Netz, jetzt auch in CI. Sie laufen gegen den ECHTEN Bot-Code inklusive FFmpeg
+  und `AudioPlayer`; gefaelscht sind nur Discord und yt-dlp. Moeglich durch drei Nahtstellen:
+  `BEATBYTE_TEST=1` (kein Login, kein yt-dlp-Update, Timer per `unref`), `ctx.setSpawn()` und
+  `attachPlayerEvents()` (aus `setupVoiceConnection` herausgezogen). Dazu 3 Netz-Tests gegen die
+  echte Deezer-API (`test:net`, nicht in CI) und `test:live` fuer den vorhandenen `dev-test.js`.
+  Anleitung: `bots/music-bot/test/README.md`.
 ## 2026-09-17
 
 - **music-bot:** **Falscher Song bei der Textsuche.** Piped ist tot (alle drei Instanzen), also lief
