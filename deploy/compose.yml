@@ -152,8 +152,17 @@ services:
         -XX:MaxMetaspaceSize=128m
         -DsocksProxyHost=host.docker.internal
         -DsocksProxyPort=1080
-      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:?LAVALINK_PASSWORD fehlt in /opt/bytebots/env/lavalink.env}
-    env_file: /opt/bytebots/env/lavalink.env
+      # KEIN ${VAR:?...} hier: Compose interpoliert die GANZE Datei, bevor
+      # Profile ausgewertet werden. Ein Pflicht-Platzhalter blockiert damit
+      # jeden compose-Befehl auf dem Server — auch Deploys anderer Dienste
+      # (am 2026-09-22 genau so passiert). Der Dienst startet ohnehin nur mit
+      # --profile lavalink, und ohne gesetztes Passwort verweigert Lavalink
+      # selbst den Start.
+      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:-}
+    env_file:
+      # required: false — die Datei existiert nur, wenn Lavalink genutzt wird.
+      - path: /opt/bytebots/env/lavalink.env
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
