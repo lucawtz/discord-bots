@@ -5,6 +5,240 @@ Fortlaufendes Log aller Änderungen — auch solche, die NICHT im Code landen
 Neueste Einträge oben. Format: `## YYYY-MM-DD`, ein Bullet pro Änderung,
 mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
+## 2026-09-22
+
+- **music-bot:** **Ein Deploy killt die laufende Wiedergabe nicht mehr.** Bisher baute
+  `scripts/deploy.sh music-bot` den Container neu, und Musik wie Warteschlange waren weg — mitten
+  im Abend. Jetzt liegt der Zustand pro Server als JSON in der neuen Tabelle `queue_state`
+  (aktueller Track, Position, Warteschlange, Loop, Lautstaerke, Filter, EQ, Auto-DJ) und wird beim
+  Start wieder aufgenommen. Geschrieben wird beim Trackwechsel, im vorhandenen 10-Sekunden-Tick
+  und — zuerst — beim SIGTERM, bevor die Prozesse sterben; ein Deploy kostet damit hoechstens
+  zehn Sekunden Position.
+  **Der Mitschnitt liegt dafuer im Daten-Volume statt in `/tmp`:** ein Deploy baut den Container
+  neu, `/tmp` ist dann weg. Im Volume ueberlebt er — und das Fortsetzen kostet keinen einzigen
+  Byte Netzverkehr, obwohl der Song in der Mitte weiterlaeuft.
+  Zwei bewusste Grenzen: ein Zustand aelter als 15 Minuten wird verworfen (mitten im Song
+  weiterzuspielen waere nach einer langen Auszeit eher irritierend), und in einen inzwischen
+  leeren Kanal kehrt der Bot nicht zurueck. Beim Start werden Mitschnitte aufgeraeumt, die
+  niemand mehr braucht, sowie alles aelter als ein Tag.
+  `bots/*/data/` ist jetzt in `.gitignore` — die Mitschnitte liegen dort.
+
+- **music-bot:** `destroyQueue` brach ab, wenn die Voice-Verbindung nur halb aufgebaut oder schon
+  zerstoert war (`removeAllListeners is not a function`) — danach blieben Timer und Prozesse
+  zurueck. Jetzt abgesichert.
+
+
+- **music-bot:** **Seek und Filterwechsel ziehen den Song nicht mehr komplett neu durch den Tunnel.**
+  FFmpeg bekam den Ton als PIPE von yt-dlp, und auf einer Pipe kann es nicht springen: `-ss 120`
+  vor `-i pipe:0` hiess, yt-dlp laedt ab Byte 0 NEU und FFmpeg wirft zwei Minuten weg. Dasselbe bei
+  jedem Filter-, EQ- und Lautstaerkewechsel — ein Zug am Regler im Web-Player kostete einen
+  kompletten Download ueber den Heim-Tunnel.
+  Jetzt wird der Download nebenbei auf Platte mitgeschnitten. Ein Sprung an eine Stelle, die schon
+  lief, ist damit eine reine Dateioperation: kein Netz, kein Tunnel. Kein Raten dabei — der
+  Mitschnitt gilt nur als abgedeckt, wenn der Download fertig ist ODER die Zielstelle nicht hinter
+  dem liegt, was bereits gespielt wurde. Weiter nach vorn springen nutzt weiter das Netz.
+  Livestreams brechen den Mitschnitt bei 150 MB ab, die Wiedergabe laeuft weiter. Vorgeladene
+  Tracks (Prefetch) zaehlen direkt als vollstaendiger Mitschnitt.
+  Dabei einen Fehler vermieden, den der Umbau erst erzeugt haette: FFmpeg loeschte beim Beenden
+  seine Quelldatei — beim zweiten Filterwechsel waere der Mitschnitt weg gewesen. Die Lebensdauer
+  haengt jetzt am Mitschnitt (Trackwechsel, `destroyQueue`), nicht am Prozess.
+  6 Tests gegen den echten `playNext` mit echtem FFmpeg: Filterwechsel und drei Reglerbewegungen
+  duerfen **kein** weiteres yt-dlp starten.
+
+- **music-bot:** **Aufraeum-Timer halten den Prozess nicht mehr wach.** `releaseNowPlaying` legte pro
+  gespieltem Track einen 24-Stunden-Timer an ("Karte spaeter loeschen"), `autoDelete` einen pro
+  Nachricht. Im Dauerbetrieb stapeln die sich, und ein Shutdown musste darauf warten. Beide jetzt
+  mit `unref()` — in Prod aendert das nichts, weil der Discord-Client den Prozess ohnehin haelt.
+
+
+- **music-bot:** **Die Wiedergabe-Kette meldet sich jetzt selbst, wenn sie bricht.** Bisher zeigte
+  `/status` IMMER einen gruenen Punkt und "Online", solange Node lief — ob yt-dlp, POT-Provider,
+  Heim-Tunnel und YouTube zusammen noch einen Song liefern, stand nirgends. Genau deshalb war der
+  WARP-Daemon 2026-08/09 vierundzwanzig Tage unbemerkt tot, und am 2026-09-22 brauchte es einen
+  Menschen mit einer Kommandozeile, um ueberhaupt festzustellen, ob der Bot noch spielt.
+  Neu `src/health.js` mit zwei Quellen:
+  **(1) Synthetische Probe** — laedt alle 15 Min. wirklich die ersten 64 KB eines bekannten Tracks
+  durch dieselben yt-dlp-Argumente wie die Wiedergabe (Proxy, POT, Cookies — ein vereinfachter
+  Aufruf wuerde genau die Schichten uebergehen, an denen es scheitert). Erfolg heisst *Bytes
+  angekommen*, nicht *Exit-Code 0*: yt-dlp endet auch sauber, wenn es nichts geladen hat.
+  Alarm erst nach der zweiten Fehlprobe und nur beim Uebergang, Entwarnung ebenso — ueber das
+  vorhandene `libs/notify`, das schon dedupliziert.
+  **(2) Passive Zaehler** aus der echten Wiedergabe: Start-bis-Ton (p50/p95), Fehler nach Grund und
+  vor allem der **SoundCloud-Anteil** — steigt er, bricht YouTube gerade weg. Das schlaegt frueher
+  an als die Probe.
+  Sichtbar an drei Stellen: `GET /health` (maschinenlesbar), die Statusseite (Punkt wird rot, der
+  Grund steht dabei) und der #status-Post. Bewusst **nicht** am Docker-Healthcheck: eine
+  YouTube-Sperre repariert kein Container-Neustart, autoheal liefe nur in eine Neustartschleife —
+  `/health` antwortet darum immer mit 200, der Zustand steht im Rumpf.
+  15 neue Tests (Probe-Auswertung, Alarm-Schwelle, keine Wiederholungsalarme, Erholung,
+  Zeitueberschreitung, und die Endpunkte gegen den echten API-Server).
+
+- **libs:** **`createRateLimiter` liess seinen Aufraeum-Timer laufen.** Drei Limiter in `api.js`,
+  drei Timer, und damit endete kein Testprozess, der die API startet. `unref()` ergaenzt; in Prod
+  aendert das nichts, weil Discord-Client und HTTP-Server den Prozess ohnehin wach halten.
+  Ebenso der Cleanup-Timer in `api.js`. `startAPI` gibt jetzt zusaetzlich `server` zurueck, damit
+  Tests den mit `API_PORT=0` vergebenen Port erfahren.
+
+
+- **music-bot/infra:** **OAuth + Remote-Cipher getestet — und festgestellt, dass der Testrechner
+  die Frage gar nicht beantworten kann.** Drei Schichten nacheinander aufgebaut, jede hat die
+  Fehler der vorigen behoben und die naechste sichtbar gemacht:
+  (1) **OAuth** (Wegwerf-Konto, Device-Code, Refresh-Token) — vorher wurden nur 3 Clients ueberhaupt
+  versucht, danach alle 8. (2) **Remote-Cipher** (`remoteCipher`, oeffentliche Instanz
+  cipher.kikkia.dev) gegen `Must find sig function from script` — youtube-source 1.18.2 ist vom
+  27.07., Issue #225 zum kaputten Signatur-Muster vom 29.07. wurde als *not planned* geschlossen,
+  die Maintainer verweisen auf den Cipher-Dienst (das Gegenstueck zu `--remote-components
+  ejs:github` bei yt-dlp). (3) **poToken** aus der bereits gebauten Bruecke.
+  **Abdeckung blieb bei allen Kombinationen 1 von 4.**
+  **ABER — Gegenprobe mit yt-dlp von derselben IP: `HTTP Error 403: Forbidden`, und zwar auch bei
+  dem Track, den Lavalink abspielt.** Diese Leitung ist fuer YouTube-Downloads selbst degradiert
+  (Suche geht, Medienabruf nicht). Damit ist die lokale 1/4-Messung KEIN Urteil ueber Lavalink —
+  Lavalink schnitt hier sogar besser ab als yt-dlp. Die Frage laesst sich nur dort entscheiden, wo
+  der Zugang gesund ist: auf dem Server durch den Pi-Tunnel.
+  Werkzeuge dafuer stehen: `test/lavalink-local.js --oauth --cipher --socks <port> --port <port>`,
+  `test/yt-probe.js` (welche Tracks spielen), `test/yt-clients.js` (Grund pro Client).
+  Nebenbei gefixt: der Flag-Parser nahm ein nachfolgendes `--flag` als Wert (`--cipher --port 2334`
+  ergab die Cipher-URL `--port`).
+
+- **music-bot/infra:** **OAuth-Test vorbereitet — startklar bis auf die Google-Anmeldung.**
+  `test/lavalink-local.js --oauth` schreibt die Konfiguration mit `oauth.enabled`, stellt die
+  OAuth-faehigen Clients nach vorn (`TV`, `TVHTML5_SIMPLY`, `IOS`, …) und liest Lavalinks Ausgabe
+  mit: Device-Code, Refresh-Token und die Fehlerfaelle (Code abgelaufen, Zugriff verweigert)
+  erscheinen als hervorgehobener Kasten statt in der Log-Flut. Der Token wird zusaetzlich in
+  `test/fixtures/lavalink/refresh-token.txt` abgelegt und gehoert als
+  `MUSIC_YOUTUBE_REFRESH_TOKEN` in die Root-`.env.local` — dann entfaellt die Anmeldung kuenftig.
+  Trockenlauf bestaetigt: Client-Liste laedt als `TVHTML5, TVHTML5_SIMPLY, IOS, WEB_REMIX,
+  ANDROID_MUSIC, MWEB, WEB, WEB_EMBEDDED_PLAYER`, Device-Code erscheint.
+  `deploy/lavalink/application.yml` entsprechend nachgezogen (`refreshToken` aus
+  `${YOUTUBE_REFRESH_TOKEN}`, `skipInitialization: true` — ein Prod-Container darf nie auf eine
+  interaktive Anmeldung warten).
+  **Die Anmeldung selbst macht bewusst der Mensch:** sie haengt an einem Google-Konto, und das
+  Plugin warnt ausdruecklich davor, dafuer den Haupt-Account zu nehmen.
+
+- **music-bot:** **poToken-Bruecke gebaut — und gemessen, dass sie NICHT reicht.**
+  `src/audio/potoken.js` holt visitorData von youtube.com, laesst den bgutil-Provider einen daran
+  gebundenen poToken erzeugen (`POST /get_pot`, `content_binding`) und schiebt das Paar per
+  `POST /youtube` in Lavalink; ein Refresher erneuert vor Ablauf (30 min Sicherheitsabstand,
+  Backoff bei Fehlern). 9 Offline-Tests gegen gefaelschte Gegenstellen.
+  **End-to-end gegen den echten Provider 1.3.1 geprueft** (lokal ohne Docker aus dem Quelltext
+  gebaut, dieselbe Version wie in Prod): visitorData 518 Zeichen in 280 ms, poToken 800 Zeichen in
+  441 ms, korrekt gebunden, 6 h gueltig — **Abdeckung trotzdem unveraendert 1 von 4.**
+  Grund, sichtbar erst in den Fehlern pro Client (`test/yt-clients.js`): `WEB` scheitert an
+  **SABR** ("No supported audio streams available" — YouTube liefert dort gar keine https-Formate
+  mehr, genau der Grund fuer `player_client=web`-Verzicht bei yt-dlp), `WEB_EMBEDDED_PLAYER` an
+  "unavailable", `ANDROID_VR` an "requires login". Der poToken betrifft laut README nur WEB und
+  WEBEMBEDDED — also genau die kaputten. Die Clients mit brauchbaren Formaten (TVHTML5 & Co.)
+  werden fuer die Wiedergabe nicht einmal versucht: es sind OAuth-Clients
+  (`Tv.supportsOAuth() == true`). Auch eine auf alle neun Clients erweiterte Liste aenderte nichts.
+  **Schlussfolgerung: ohne OAuth ist youtube-source in Lavalink nicht brauchbar.** Der poToken-Weg
+  ist damit erledigt; die Bruecke bleibt als einzige Nicht-OAuth-Massnahme liegen (nur aktiv mit
+  gesetztem `POT_PROVIDER_URL`). Offen und zu entscheiden: OAuth mit einem Wegwerf-Google-Konto.
+
+- **music-bot/infra:** **Lavalink-Beweislauf gefahren — Lavalink funktioniert, YouTube-Abdeckung nicht.**
+  Gegen den echten Dev-Bot in einem Voice-Channel getestet. **Was steht:** Voice-Verbindung in 2,5 s,
+  Wiedergabestart nach 1,2 s, **Seek auf 1:00 in 820 ms wieder unterwegs** (die heutige FFmpeg-Pipe
+  laedt dafuer den ganzen Track ab Byte 0 neu), Bassboost und Lautstaerke im laufenden Strom — und
+  **kein einziges TrackEndEvent** dabei, also nachweislich kein Track-Neustart.
+  **Was nicht steht:** nur **1 von 4** YouTube-Tracks spielt (`All clients failed to load the item`;
+  ANDROID_VR: "requires login", WEB: SABR ohne Audio-Formate, WEBEMBEDDED: "unavailable"). Das ist
+  kein Lavalink-Problem, sondern derselbe poToken-Zwang, den die yt-dlp-Pipeline heute mit dem
+  bgutil-POT-Provider loest — und der Test lief von einer **Privat-IP**, liegt also nicht am Server.
+  Zwei Wege: OAuth (Wegwerf-Google-Konto, Device-Code, Refresh-Token) oder poToken+visitorData, die
+  das Plugin zur Laufzeit per `POST /youtube` annimmt — dafuer laeuft der Provider in Prod bereits.
+  **Gefundener Protokoll-Fehler:** Lavalink 4.2 verlangt `channelId` im Voice-Objekt; fehlt es, kommt
+  ein nacktes `Bad Request` ohne Begruendung (die steht nur im Server-Log). Client korrigiert, und
+  der Test-Fake prueft das Voice-Objekt jetzt genauso streng wie der echte Server — der nachgiebige
+  Fake hatte den Fehler gruen durchgewunken.
+  Neu: `test/yt-probe.js` (welche Tracks spielen) und `test/voice-probe.js` (Voice-Pfad isoliert
+  ueber eine lokale Audiodatei, unabhaengig von YouTube).
+
+- **music-bot/infra:** **Lavalink als Audio-Backend vorbereitet — noch NICHT aktiv.**
+  Machbarkeits-Pruefstand gelaufen (Lavalink 4.2.2 + youtube-plugin 1.18.2, Java 21): Start in
+  1,9 s, Suche im Schnitt 764 ms gegen 1169 ms bei yt-dlp (warm 311 ms), 242 MB RSS mit
+  `-Xmx192m` statt 433 MB bei Default-Heap. **Die kritische Unbekannte ist geklaert:**
+  `youtube-source` hat keine Proxy-Option, aber JVM-global per `-DsocksProxyHost` laeuft der
+  YouTube-Verkehr durch den Tunnel — mit einem protokollierenden SOCKS5-Proxy nachgewiesen
+  (`CONNECT 172.217.119.4:443`). Gegenprobe: bei totem Proxy faellt Lavalink sauber aus
+  (`loadType: error`) statt auf die Server-IP auszuweichen, also kein IP-Leak.
+  Neu im Repo: `deploy/lavalink/application.yml`, ein Compose-Dienst **hinter dem Profil
+  `lavalink`** (ein normales `docker compose up -d` startet ihn bewusst NICHT), der Client
+  `src/audio/lavalink.js` (selbst geschrieben, keine neue Abhaengigkeit — `ws` liegt schon da)
+  und 11 Offline-Tests gegen einen gefaelschten Lavalink-Server.
+  **Offen und bewusst nicht umgebaut:** ob lizenzierte Musik wirklich klingt, zeigt erst ein
+  echter Voice-Channel. Dafuer `test/lavalink-live.js` — startklar, braucht nur
+  `MUSIC_DISCORD_TOKEN` + `MUSIC_GUILD_ID`. Erst wenn der gruen ist, wird umgebaut.
+
+- **music-bot:** **`/play` fühlte sich unfertig an — jetzt eine Nachricht mit drei Zuständen.**
+  Vorher: Antwort auf `/play` wurde geloescht, bis zu 2,5 s Wartezeit aufs Cover, dann eine NEUE
+  "Lädt…"-Nachricht am Kanalende, die spaeter nochmal umgebaut wurde. Dazwischen stand im Kanal
+  nichts. Jetzt bleibt die Interaction-Antwort die Player-Karte und wird nur noch editiert:
+  Sofort-Karte aus Deezer (~200 ms, Titel/Interpret/Cover/Laenge) → Player-Karte → "Spielt jetzt"
+  mit aktiven Buttons. Kein `deleteReply`, keine zweite Nachricht, kein Springen. Das Warten aufs
+  Cover ist ersatzlos weg (wird nachgezogen), Voice-Handshake und Quellensuche laufen parallel.
+
+- **music-bot:** **Voice-Check laeuft vor `deferReply`.** Der Fehler "Du musst in einem Voice Channel
+  sein" war eine oeffentliche, nie geloeschte Kanalnachricht — jetzt ephemer.
+
+- **music-bot:** **Autocomplete fuer `/play`** (Deezer, `Titel — Interpret · 2:32`). Der User waehlt
+  den Song aus, statt dass die Textsuche raet, und der Top-Treffer wird schon beim Tippen im
+  Hintergrund aufgeloest (`preResolveTrack` mit In-Flight-Sperre und Deckel auf 2 Prozesse).
+  **Braucht ein `npm run deploy` in `bots/music-bot`, sonst erscheinen keine Vorschlaege.**
+
+- **music-bot:** **Drei Haertungen, die die Wiedergabe abreissen konnten** — gefunden durch die neuen
+  Tests: `updateActivity` (ungesichertes `client.user.setActivity` mitten in `playNext`, Fehler
+  loeste eine Retry-Schleife aus), das Rendern der Player-Karte (lag im selben try wie die
+  Wiedergabe — ab `player.play()` jetzt eigener Block), und `spawn(yt-dlp, -U)` ohne
+  `error`-Handler (fehlendes yt-dlp riss den Prozess ab). Dazu `localeFor`/`localeForGuild`
+  gegen DB-Lesefehler und der Avatar-Lookup in beiden Embeds abgesichert.
+
+- **music-bot:** **Timing-Logs** trennen die Wartezeit auf: `search+connect`, `extract` (erstes Byte
+  von yt-dlp — davor Extraktion/POT, danach Download) und `first-audio` (bis zum ersten Opus-Frame).
+  Dazu FFmpeg mit `-probesize 524288` statt der 5-MB-Default.
+
+- **music-bot:** **Testbarkeit: `pnpm --filter discord-music-bot test`** — 8 Offline-Tests in ~5 s,
+  ohne Token und ohne Netz, jetzt auch in CI. Sie laufen gegen den ECHTEN Bot-Code inklusive FFmpeg
+  und `AudioPlayer`; gefaelscht sind nur Discord und yt-dlp. Moeglich durch drei Nahtstellen:
+  `BEATBYTE_TEST=1` (kein Login, kein yt-dlp-Update, Timer per `unref`), `ctx.setSpawn()` und
+  `attachPlayerEvents()` (aus `setupVoiceConnection` herausgezogen). Dazu 3 Netz-Tests gegen die
+  echte Deezer-API (`test:net`, nicht in CI) und `test:live` fuer den vorhandenen `dev-test.js`.
+  Anleitung: `bots/music-bot/test/README.md`.
+## 2026-09-17
+
+- **music-bot:** **Falscher Song bei der Textsuche.** Piped ist tot (alle drei Instanzen), also lief
+  immer der yt-dlp-Fallback — und der nahm mit `ytsearch1` blind YouTubes Top-Treffer, ohne jeden
+  Filter. Bei "millionär" stehen dort auf den Plätzen 2–4 eine Talkshow, eine vorgelesene Geschichte
+  und ein 28-Minuten-Video. Jetzt werden 10 Treffer geholt, über `isMusicResult` gefiltert und
+  bewertet (Topic-Kanal, "official", Query-Abdeckung, Songlänge, Views; Remix/Cover/Karaoke/Live
+  abgewertet, außer sie wurden gesucht).
+
+- **music-bot:** **SoundCloud-Ausweichquelle lieferte beschleunigte Fremd-Uploads.** Griff YouTube
+  nicht, ging es mit `scsearch1` weiter — ebenfalls ungefiltert. Für "millionär" ist SoundClouds
+  Top-Treffer ein Fremd-Upload mit 147 s statt der 160 s des Originals (~8 % zu schnell), dahinter
+  zwei Tekk-Remixe; das Original selbst gibt es dort nur als 30-s-Label-Vorschau. Der vorhandene
+  Sped-Up/Nightcore/Remix-Filter lag in `resolveSoundcloudUrl` und griff auf diesem Pfad nicht.
+  Neu: Referenzlänge und Interpret kommen von Deezer, danach fliegen Varianten, Vorschauen (< 60 s)
+  und Längenabweichungen über 5 % raus, und es braucht mindestens 50 % Wortüberdeckung mit
+  Suchbegriff + Interpret. Bleibt nichts übrig, meldet der Bot einen Fehler, statt irgendetwas zu
+  spielen — für "millionär" ist das der Fall, weil SoundCloud das Original nicht hat.
+
+- **music-bot:** **`inlineVolume` entfernt.** `createAudioResource` mit `inputType: OggOpus` *und*
+  `inlineVolume: true` wählt nicht den Ogg-Passthrough: @discordjs/voice löst das zu
+  `ffmpeg pcm → volume transformer → opus encoder` auf. Pro Track lief damit ein zweiter FFmpeg plus
+  Opus-Encoding in purem JS (`opusscript`, kein natives Modul). Hinkt der Event-Loop dadurch hinter
+  den 20-ms-Takt, holt @discordjs/voice den Rückstand auf
+  (`setTimeout(…, Math.max(1, nextTime - Date.now()))`) und feuert Frames im 1-ms-Takt — Audio spielt
+  dann zu schnell. Die Pipeline ist jetzt nur noch der Ogg-Demuxer; Lautstärke läuft über den
+  ohnehin laufenden FFmpeg (`-af volume=…`), Änderungen starten den Song neu (400 ms gebündelt).
+
+- **music-bot:** FFmpeg-Argumente korrigiert: `-analyzeduration 0` stand hinter `-i` und war damit
+  wirkungslos; `-map 0:a:0 -vn -sn -dn`, `-b:a 128k` und `-frame_duration 20` fehlten.
+
+- **infra:** Branch `coolify-deploy` → **`prod`** umbenannt (13 Referenzen in `scripts/deploy.sh`,
+  `.github/workflows/ci.yml`, `CLAUDE.md`, `CHECKLISTE.md`, `deploy/compose.yml`,
+  `scripts/post-changelog.js`). Der Name stammte aus der Coolify-Zeit, die seit 2026-09-13 vorbei
+  ist. **Am Server nachzuziehen:** `cd /opt/bytebots/repo && git fetch origin && git checkout prod`,
+  sonst zeigt der Checkout weiter auf den alten Branch.
+
 ## 2026-09-13
 
 - **infra:** **Coolify komplett vom Server gelöscht.** Auf Lucas Wunsch vorgezogen (geplant war ~2026-09-20), nach ~12 h stabilem compose-Betrieb.

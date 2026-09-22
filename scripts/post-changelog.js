@@ -11,7 +11,7 @@
  *     hinzugefuegt hat. Kein "zuletzt gepostet"-State noetig.
  *
  * Eingehaengt in .github/workflows/ci.yml als eigener Job `changelog-notify`, der nur
- * bei push auf coolify-deploy UND nach gruenem Build laeuft (needs: lint-and-build) —
+ * bei push auf prod UND nach gruenem Build laeuft (needs: lint-and-build) —
  * ein Changelog fuer einen kaputten Build waere schlimmer als keiner.
  *
  * Aktivierung ausschliesslich ueber die Env-Var CHANGELOG_WEBHOOK_URL (GitHub-Actions-

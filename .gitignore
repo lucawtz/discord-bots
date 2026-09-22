@@ -10,3 +10,6 @@ dashboard/audit.json
 dashboard/metrics-history.json
 *.db
 .devtools/
+
+# Laufzeitdaten der Bots (DB, Backups, Audio-Mitschnitte)
+bots/*/data/

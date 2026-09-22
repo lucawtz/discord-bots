@@ -22,9 +22,8 @@ module.exports = {
         }
 
         queue.volume = percent / 100;
-        if (queue._resource?.volume) {
-            queue._resource.volume.setVolume(queue.volume);
-        }
+        // volumeOnly: greift sofort, ohne den Stream neu zu starten.
+        ctx.applyAudioSettings(interaction.guildId, { volumeOnly: true });
 
         ctx.autoDelete(interaction.reply({ content: t('volume.set', loc, { percent }), fetchReply: true }), ctx.DELETE_SHORT_MS);
     },

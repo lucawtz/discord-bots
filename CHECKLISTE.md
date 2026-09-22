@@ -178,7 +178,7 @@ dann Bot-Listen, Verifizierung erst ab 75 Servern (pro Bot!).
 
 **Mit Code (Repo — kann Claude umsetzen):**
 - [x] **Changelog→`#changelog`-Webhook** — **erledigt 2026-08-01** (`scripts/post-changelog.js` +
-      CI-Job `changelog-notify` in `.github/workflows/ci.yml`). Läuft bei Push auf `coolify-deploy`
+      CI-Job `changelog-notify` in `.github/workflows/ci.yml`). Läuft bei Push auf `prod`
       **nach** grünem Build (`needs: lint-and-build`), difft `CHANGELOG.md` über `github.event.before..sha`
       und postet jeden **neu** hinzugekommenen Bullet als Embed (Bereich→Farbe/Emoji, Datum als Autor-Zeile)
       per Discord-Webhook. Kein Bot-Feature, weil die `CHANGELOG.md` in kein Image kopiert wird; kein

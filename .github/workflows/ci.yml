@@ -1,10 +1,10 @@
 name: CI
 
-# push auf coolify-deploy ist der Deploy-Weg (Coolify baut von diesem Branch) —
+# push auf prod ist der Branch, von dem der Server baut —
 # ohne den Trigger liefe die CI faktisch nie, da PRs gegen main die Ausnahme sind.
 on:
   push:
-    branches: [coolify-deploy, main]
+    branches: [prod, main]
   pull_request:
     branches: [main]
 
@@ -34,6 +34,12 @@ jobs:
           echo ">> Soundboard Bot"
           find bots/soundboard-bot/src -name "*.js" -exec node --check {} +
 
+      # Offline-Tests: echter Bot-Code gegen Fakes fuer Discord und yt-dlp.
+      # Netz-Tests (Deezer) sind hier bewusst uebersprungen — CI soll nicht an
+      # einer fremden API haengen. Lokal: pnpm --filter discord-music-bot test:net
+      - name: Test music-bot
+        run: pnpm --filter discord-music-bot test
+
       - name: Build music-bot webapp
         run: pnpm --filter discord-music-bot-app build
 
@@ -41,12 +47,12 @@ jobs:
         run: pnpm --filter bytebots-website build
 
   # Postet neu hinzugekommene CHANGELOG.md-Eintraege nach #changelog (Discord-Webhook).
-  # Nur bei push auf coolify-deploy und NUR nach gruenem Build (needs) — ein Changelog
+  # Nur bei push auf prod und NUR nach gruenem Build (needs) — ein Changelog
   # fuer einen kaputten Build waere schlimmer als keiner. No-op ohne das Secret
   # CHANGELOG_WEBHOOK_URL, bricht den Deploy nie (Skript endet immer mit Exit 0).
   changelog-notify:
     needs: lint-and-build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/coolify-deploy'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/prod'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

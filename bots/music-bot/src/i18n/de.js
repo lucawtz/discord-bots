@@ -85,7 +85,7 @@ module.exports = {
     'np.paused': '⏸ Pausiert',
     'np.inQueue': (v) => `${v.n} in Warteschlange`,
     'np.loadingTitle': 'Lädt…',
-    'np.loadingLine': '-# ⏳ Wird geladen…',
+    'np.buffering': '⏳ Puffert…',
 
     // ── /queue ──
     'queue.nowPlaying': '**▶️ Spielt jetzt:**',

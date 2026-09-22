@@ -1,5 +1,4 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { createAudioResource, StreamType } = require('@discordjs/voice');
 const { requirePlaying, killQueueProcesses } = require('../utils/checks');
 const { t } = require('../i18n');
 
@@ -29,14 +28,14 @@ module.exports = {
         // Alte Prozesse beenden
         killQueueProcesses(queue);
 
-        // Neuen Stream ab Seek-Position starten
-        const stream = ctx.createStream(queue.current.url, queue, (err) => {
+        // Zuerst im Mitschnitt nachsehen. Ein Sprung ZURUECK oder an eine schon
+        // gespielte Stelle braucht dann kein Netz: FFmpeg springt in der Datei.
+        // Ohne das laedt yt-dlp den Song ab Byte 0 neu und FFmpeg wirft alles
+        // vor der Zielstelle weg — auf einer Pipe geht es nicht anders.
+        const cached = ctx.cachedSourceFor(queue, seconds);
+        const resource = ctx.createResource(queue.current.url, queue, (err) => {
             ctx.autoDelete(queue.channel?.send(t('seek.failed', loc, { message: err.message })), ctx.DELETE_ERROR_MS);
-        }, seconds);
-
-        const resource = createAudioResource(stream, { inputType: StreamType.OggOpus, inlineVolume: true });
-        resource.volume.setVolume(queue.volume);
-        queue._resource = resource;
+        }, seconds, cached);
         queue.player.play(resource);
 
         queue._playbackStart = Date.now();

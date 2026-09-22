@@ -106,6 +106,18 @@ async function init() {
     )
   `);
 
+  // ── Warteschlange ueber Neustarts retten ──────────────────────
+  // Bisher killte jedes deploy.sh die laufende Wiedergabe und die Queue war
+  // weg. Ein Zustand pro Server, als JSON — die Struktur aendert sich mit
+  // jedem Feature, eine eigene Spalte pro Feld waere Dauer-Migration.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS queue_state (
+      guild_id TEXT PRIMARY KEY,
+      state TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlists_guild ON playlists(guild_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_history_user ON listening_history(user_id, guild_id, played_at)`);
@@ -405,6 +417,31 @@ function getFollowedArtists(userId) {
 
 // ── User Settings ──────────────────────────────────────────────
 
+// ── Warteschlangen-Zustand ────────────────────────────────────────
+function saveQueueState(guildId, state) {
+  run(`INSERT INTO queue_state (guild_id, state, updated_at)
+       VALUES (:g, :s, datetime('now'))
+       ON CONFLICT(guild_id) DO UPDATE SET state = :s, updated_at = datetime('now')`,
+    { ':g': String(guildId), ':s': JSON.stringify(state) });
+}
+
+// Gibt { guildId, state, updatedAt } zurueck. Kaputte Eintraege werden
+// uebersprungen statt den ganzen Start zu verhindern.
+function getQueueStates() {
+  const rows = getAll(`SELECT guild_id, state, updated_at FROM queue_state`);
+  const out = [];
+  for (const row of rows) {
+    try {
+      out.push({ guildId: row.guild_id, state: JSON.parse(row.state), updatedAt: row.updated_at });
+    } catch { /* unlesbar -> ignorieren */ }
+  }
+  return out;
+}
+
+function clearQueueState(guildId) {
+  run(`DELETE FROM queue_state WHERE guild_id = :g`, { ':g': String(guildId) });
+}
+
 function getUserSettings(userId) {
   const row = getOne(`SELECT * FROM user_settings WHERE user_id = :uid`, { ':uid': userId });
   if (!row) return { eq_values: [0,0,0,0,0,0,0] };
@@ -494,6 +531,10 @@ module.exports = {
   getUserSettings,
   saveUserSettings,
   getTopArtistsGlobal,
+  // Warteschlange
+  saveQueueState,
+  getQueueStates,
+  clearQueueState,
   // Stats
   getTopArtistsFromHistory,
   getMostPlayedInGuild,
