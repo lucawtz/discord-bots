@@ -51,7 +51,7 @@ const DELETE_SHORT_MS = 30_000;     // 30 Sekunden (skip, pause, stop, join)
 const DELETE_EMBED_MS = 60_000;     // 60 Sekunden (play, queue, nowplaying)
 const DELETE_ERROR_MS = 10_000;     // 10 Sekunden (Fehler)
 const DELETE_NOWPLAYING_MS = 24 * 60 * 60_000; // 24 Stunden ("Now Playing" bleibt stehen)
-const LEAVE_TIMEOUT_MS = 5 * 60_000; // 5 Minuten
+const LEAVE_TIMEOUT_MS = Number(process.env.LEAVE_TIMEOUT_MS) || 5 * 60_000; // 5 Minuten
 const CONNECT_TIMEOUT_MS = 30_000;  // 30 Sekunden
 const DISCONNECT_CHECK_MS = 5_000;  // 5 Sekunden
 
@@ -2170,6 +2170,14 @@ async function setupVoiceConnection(guildId, voiceChannel, guild, textChannel) {
     if (textChannel) queue.channel = textChannel;
 
     attachPlayerEvents(guildId, player, queue);
+
+    // BUG-2: Der Leave-Timer wurde bisher NUR gestellt, wenn die Warteschlange
+    // leerlief oder jemand /stop drueckte. Wer den Bot per /join oder ueber den
+    // Web-Player holte und nichts abspielte, hatte ihn fuer immer im Kanal.
+    // Hier ist die Stelle, durch die JEDER Verbindungsaufbau laeuft.
+    // Harmlos bei sofortiger Wiedergabe: der Timer prueft beim Ablauf, ob
+    // wirklich nichts laeuft.
+    scheduleLeave(guildId);
 
     // Disconnect-Handling: Kick sauber akzeptieren, Netz-Blips reconnecten.
     // WICHTIG: Nach einem Kick haengt die Connection in "Signalling" — darauf

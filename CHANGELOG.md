@@ -7,6 +7,16 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot:** **BUG-2 behoben — der Bot blieb fuer immer im Channel.** `scheduleLeave` wurde nur
+  gerufen, wenn die Warteschlange leerlief oder jemand `/stop` drueckte. Wer den Bot per `/join`
+  oder ueber den Web-Player holte und nichts abspielte, hatte ihn dauerhaft drin: der Timer wurde
+  nie gestellt. Jetzt geschieht das in `setupVoiceConnection`, also bei JEDEM Verbindungsaufbau.
+  Harmlos bei sofortiger Wiedergabe, weil beim Ablauf geprueft wird, ob wirklich nichts laeuft.
+  `LEAVE_TIMEOUT_MS` ist dafuer aus der Umgebung ueberschreibbar geworden (Default unveraendert
+  5 Minuten), sonst liesse sich das nicht in unter fuenf Minuten testen. Drei Tests.
+  BUG-1 war bereits in `prod` behoben; `BUGS.md` entsprechend nachgezogen — beide Punkte zu.
+
+
 - **infra:** **Lavalink auf dem Server gemessen — und verworfen.** Der fruehere 1-von-4-Wert war
   wertlos, weil der Testrechner selbst 403 auf googlevideo liefert. Jetzt sauber auf dem Server
   durch den Pi-Tunnel gefahren, also auf derselben Leitung, ueber die yt-dlp problemlos spielt.
