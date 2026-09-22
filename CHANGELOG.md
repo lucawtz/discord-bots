@@ -7,6 +7,31 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **infra:** **Lavalink auf dem Server gemessen — und verworfen.** Der fruehere 1-von-4-Wert war
+  wertlos, weil der Testrechner selbst 403 auf googlevideo liefert. Jetzt sauber auf dem Server
+  durch den Pi-Tunnel gefahren, also auf derselben Leitung, ueber die yt-dlp problemlos spielt.
+  **Lavalink selbst funktioniert tadellos:** Voice in 2,5 s, Seek auf 1:00 nach 4,9 s wieder
+  unterwegs, Bassboost und Lautstaerke im laufenden Strom, **kein einziges TrackEndEvent** dabei.
+  **Die YouTube-Abdeckung bleibt 1 von 4** — mit OAuth (Wegwerf-Konto, Refresh-Token) UND poToken
+  aus dem vorhandenen bgutil-Provider UND allen acht Clients. Die Fehler pro Client: TVHTML5
+  *Read timed out*, TVHTML5_SIMPLY *Sign in to confirm you're not a bot*, IOS *400*, ANDROID_MUSIC
+  *requires login*, MWEB *403*, WEB *SABR ohne Audio-Formate*, WEBEMBEDDED *unavailable*.
+  Letzter Hebel geprueft: Client-Liste auf `MWEB` verengt, wie yt-dlp es seit dem 20.09. macht
+  (`player_client=mweb`, genau der Fix gegen 403). Ergebnis **0 von 4** — Lavalinks MWEB verhaelt
+  sich anders als yt-dlps.
+  **Fazit: kein Umbau.** Lavalink ist die bessere Audio-Maschine, aber die schlechtere
+  YouTube-Quelle — und Quelle ist hier das Nadeloehr. Der Dienst ist gestoppt und entfernt,
+  Konfiguration und Client bleiben hinter dem Compose-Profil liegen; ein spaeterer Versuch ist
+  drei Befehle entfernt. Die Vorteile (Seek, Filter, Deploy-Ueberleben) sind inzwischen ohnehin
+  in der bestehenden Pipeline umgesetzt.
+
+- **infra:** Zwei Fehler in meiner Lavalink-Compose-Konfiguration, beide erst auf dem Server
+  sichtbar: das Plugin-Volume gehoerte root, Lavalink laeuft aber als UID 322 (*Permission
+  denied* beim Plugin-Download) — einmalig per `chown 322:322` behoben. Und `environment` hat bei
+  Compose Vorrang vor `env_file`, mein leerer Default ueberschrieb damit das echte Passwort;
+  Lavalink lief ohne Schutz und wies jede Anfrage mit Passwort per 403 ab.
+
+
 - **music-bot:** **Haengendes yt-dlp blockierte die Wiedergabe unbegrenzt.** In Prod gemeldet:
   `/play` blieb auf "Puffert…" stehen und tat nichts mehr. Der Prozess lief zwei Minuten ohne ein
   einziges Byte und ohne CPU-Last — er wartete still auf ein Netz, das nicht antwortete. Erst ein

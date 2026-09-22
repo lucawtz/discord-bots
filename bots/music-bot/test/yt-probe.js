@@ -22,7 +22,7 @@ const QUERIES = rest.length ? rest : [
     await client.login(process.env.DISCORD_TOKEN);
     await new Promise(r => client.once(Events.ClientReady, r));
     const node = new LavalinkNode({
-        host: '127.0.0.1', port: LL_PORT, password: 'probe', userId: client.user.id,
+        host: '127.0.0.1', port: LL_PORT, password: process.env.LAVALINK_PASSWORD || 'probe', userId: client.user.id,
         sendGateway: (gid, p) => client.guilds.cache.get(gid)?.shard.send(p),
     });
     client.on(Events.Raw, (p) => {

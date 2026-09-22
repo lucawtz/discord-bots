@@ -18,7 +18,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await new Promise(r => client.once(Events.ClientReady, r));
 
     const node = new LavalinkNode({
-        host: '127.0.0.1', port: Number(arg('lavalink-port', 2333)), password: 'probe', userId: client.user.id,
+        host: '127.0.0.1', port: Number(arg('lavalink-port', 2333)), password: process.env.LAVALINK_PASSWORD || 'probe', userId: client.user.id,
         sendGateway: (gid, p) => client.guilds.cache.get(gid)?.shard.send(p),
     });
     client.on(Events.Raw, (p) => {
