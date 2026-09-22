@@ -7,6 +7,29 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot:** **Seek und Filterwechsel ziehen den Song nicht mehr komplett neu durch den Tunnel.**
+  FFmpeg bekam den Ton als PIPE von yt-dlp, und auf einer Pipe kann es nicht springen: `-ss 120`
+  vor `-i pipe:0` hiess, yt-dlp laedt ab Byte 0 NEU und FFmpeg wirft zwei Minuten weg. Dasselbe bei
+  jedem Filter-, EQ- und Lautstaerkewechsel — ein Zug am Regler im Web-Player kostete einen
+  kompletten Download ueber den Heim-Tunnel.
+  Jetzt wird der Download nebenbei auf Platte mitgeschnitten. Ein Sprung an eine Stelle, die schon
+  lief, ist damit eine reine Dateioperation: kein Netz, kein Tunnel. Kein Raten dabei — der
+  Mitschnitt gilt nur als abgedeckt, wenn der Download fertig ist ODER die Zielstelle nicht hinter
+  dem liegt, was bereits gespielt wurde. Weiter nach vorn springen nutzt weiter das Netz.
+  Livestreams brechen den Mitschnitt bei 150 MB ab, die Wiedergabe laeuft weiter. Vorgeladene
+  Tracks (Prefetch) zaehlen direkt als vollstaendiger Mitschnitt.
+  Dabei einen Fehler vermieden, den der Umbau erst erzeugt haette: FFmpeg loeschte beim Beenden
+  seine Quelldatei — beim zweiten Filterwechsel waere der Mitschnitt weg gewesen. Die Lebensdauer
+  haengt jetzt am Mitschnitt (Trackwechsel, `destroyQueue`), nicht am Prozess.
+  6 Tests gegen den echten `playNext` mit echtem FFmpeg: Filterwechsel und drei Reglerbewegungen
+  duerfen **kein** weiteres yt-dlp starten.
+
+- **music-bot:** **Aufraeum-Timer halten den Prozess nicht mehr wach.** `releaseNowPlaying` legte pro
+  gespieltem Track einen 24-Stunden-Timer an ("Karte spaeter loeschen"), `autoDelete` einen pro
+  Nachricht. Im Dauerbetrieb stapeln die sich, und ein Shutdown musste darauf warten. Beide jetzt
+  mit `unref()` — in Prod aendert das nichts, weil der Discord-Client den Prozess ohnehin haelt.
+
+
 - **music-bot:** **Die Wiedergabe-Kette meldet sich jetzt selbst, wenn sie bricht.** Bisher zeigte
   `/status` IMMER einen gruenen Punkt und "Online", solange Node lief — ob yt-dlp, POT-Provider,
   Heim-Tunnel und YouTube zusammen noch einen Song liefern, stand nirgends. Genau deshalb war der

@@ -103,6 +103,7 @@ function destroyQueue(guildId) {
     clearTimeout(queue._audioSettingsTimer);
     clearTimeout(queue._aloneTimer);
     queue._aloneTimer = null;
+    dropTrackCache(queue);
     releaseNowPlaying(queue);
     if (queue._prefetch) {
         const pf = queue._prefetch;
@@ -1650,6 +1651,60 @@ function buildFilterArgs(queue) {
     return chain.length ? ['-af', chain.join(',')] : [];
 }
 
+// ── Mitschnitt des laufenden Tracks ──────────────────────────────
+// Warum: FFmpeg bekommt den Ton als PIPE von yt-dlp, und auf einer Pipe kann
+// es nicht springen. "-ss 120" vor "-i pipe:0" heisst deshalb: yt-dlp laedt
+// den Song ab Byte 0 NEU und FFmpeg wirft zwei Minuten weg. Dasselbe bei jedem
+// Filter-, EQ- und Lautstaerkewechsel — der Regler im Web-Player zieht den
+// ganzen Song erneut durch den Tunnel.
+//
+// Also wird der Download nebenbei auf Platte geschrieben. Ein Sprung an eine
+// Stelle, die schon lief, ist damit eine reine Dateioperation: kein Netz, kein
+// Tunnel, kein Warten.
+const CACHE_LIMIT_BYTES = 150 * 1024 * 1024; // Livestreams sonst endlos
+
+function startTrackCache(queue, ytdlpStdout) {
+    dropTrackCache(queue);
+    const file = path.join(os.tmpdir(), `beatbyte-${queue.guildId || 'x'}-${Date.now()}.audio`);
+    let out;
+    try { out = fs.createWriteStream(file); } catch { return; }
+    const cache = { file, bytes: 0, complete: false, aborted: false, stream: out };
+    queue._cache = cache;
+
+    ytdlpStdout.on('data', (chunk) => {
+        if (cache.aborted || queue._cache !== cache) return;
+        cache.bytes += chunk.length;
+        if (cache.bytes > CACHE_LIMIT_BYTES) {
+            // Livestream oder Riesendatei: Mitschnitt aufgeben, Wiedergabe laeuft weiter.
+            cache.aborted = true;
+            out.end();
+            return;
+        }
+        out.write(chunk);
+    });
+    ytdlpStdout.on('end', () => { if (!cache.aborted) { out.end(); cache.complete = true; } });
+    out.on('error', () => { cache.aborted = true; });
+}
+
+function dropTrackCache(queue) {
+    const cache = queue?._cache;
+    if (!cache) return;
+    queue._cache = null;
+    try { cache.stream?.destroy(); } catch { /* egal */ }
+    fs.unlink(cache.file, () => {});
+}
+
+// Liefert den Dateipfad, wenn die Zielstelle SICHER im Mitschnitt liegt.
+// Kein Schaetzen: entweder ist der Download fertig, oder die Stelle liegt nicht
+// hinter dem, was bereits gespielt wurde — und das ist zwangslaeufig geladen.
+function cachedSourceFor(queue, seconds) {
+    const cache = queue?._cache;
+    if (!cache || cache.aborted || !cache.bytes) return null;
+    if (!cache.complete && seconds > getElapsed(queue) + 1) return null;
+    try { if (!fs.existsSync(cache.file)) return null; } catch { return null; }
+    return cache.file;
+}
+
 // ── Audio-Stream (yt-dlp → FFmpeg → OggOpus) ────────────────────
 function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
     const spawnedAt = Date.now();
@@ -1691,6 +1746,9 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
     if (ytdlp) {
         ytdlp.stdout.pipe(ffmpeg.stdin);
         ffmpeg.stdin.on('error', () => {}); // Broken pipe ignorieren
+        // Nebenbei mitschneiden — nur beim ersten Laden, nicht beim Neustart
+        // aus dem Mitschnitt heraus (sonst kopierte er sich selbst).
+        if (seekSeconds === 0) startTrackCache(queue, ytdlp.stdout);
 
         // Das erste Byte von yt-dlp trennt die zwei Wartezeiten sauber:
         // davor Extraktion (Player-JS, POT-Token), danach Download ueber den Tunnel.
@@ -1714,7 +1772,9 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
     ffmpeg.stderr.on('data', (d) => console.error('ffmpeg stderr:', d.toString().trim()));
     ffmpeg.on('close', () => {
         queue.processes.delete(ffmpeg);
-        if (localFile) fs.unlink(localFile, () => {}); // Prefetch-Datei aufraeumen
+        // Die Quelldatei wird hier BEWUSST nicht geloescht: beim Filterwechsel
+        // startet FFmpeg neu und braucht sie erneut. Ihre Lebensdauer haengt am
+        // Mitschnitt (dropTrackCache), nicht am Prozess.
     });
     ffmpeg.on('error', (e) => { console.error('ffmpeg spawn error:', e.message); onError?.(e); });
 
@@ -2200,6 +2260,10 @@ async function playNext(guildId, opts = {}) {
         }
         queue._npLoading = false;
 
+        // Mitschnitt des vorigen Tracks wegwerfen — sonst sammeln sich
+        // Dateien im tmp-Verzeichnis an.
+        dropTrackCache(queue);
+
         const track = queue.tracks.shift();
         queue.current = track;
         queue.skipVotes.clear();
@@ -2249,6 +2313,11 @@ async function playNext(guildId, opts = {}) {
             if (pf.url === track.url && pf.done) {
                 localFile = pf.file;
                 queue._prefetch = null;
+                // Vollstaendig vorgeladen: taugt direkt als Mitschnitt, damit
+                // Seek und Filter auch hier ohne Netz auskommen.
+                let size = 0;
+                try { size = fs.statSync(localFile).size; } catch { /* dann eben 0 */ }
+                queue._cache = { file: localFile, bytes: size, complete: true, aborted: false, stream: null };
             } else if (pf.url === track.url) {
                 // Laeuft noch -> abbrechen und normal streamen
                 queue._prefetch = null;
@@ -2344,7 +2413,10 @@ function autoDelete(msgPromise, ms = DELETE_EMBED_MS) {
     // (Wiedergabe ueber Web-Player/Admin-API) -> sonst Uncaught TypeError.
     if (!msgPromise) return;
     msgPromise
-        .then(msg => setTimeout(() => msg.delete().catch(() => {}), ms))
+        // unref: ein geplantes "loesch das spaeter" darf den Prozess nicht am
+        // Leben halten. In Prod haelt der Discord-Client ihn ohnehin wach, aber
+        // ein Shutdown soll nicht auf Aufraeum-Timer warten muessen.
+        .then(msg => setTimeout(() => msg.delete().catch(() => {}), ms).unref?.())
         .catch(() => {});
 }
 
@@ -2374,7 +2446,9 @@ function interactionCard(interaction, message) {
 function releaseNowPlaying(queue) {
     const msg = queue._nowPlayingMsg;
     queue._nowPlayingMsg = null;
-    if (msg) setTimeout(() => msg.delete().catch(() => {}), DELETE_NOWPLAYING_MS);
+    // 24 Stunden — ohne unref haelt JEDER gespielte Track den Prozess wach,
+    // und bei einem langen Betrieb stapeln sich die Timer.
+    if (msg) setTimeout(() => msg.delete().catch(() => {}), DELETE_NOWPLAYING_MS).unref?.();
 }
 
 // Aktuellen Song mit dem gesetzten queue.filter/queue.eqBands ab der aktuellen
@@ -2392,9 +2466,14 @@ function restartCurrentWithFilter(queue) {
     }
     queue.processes.clear();
 
+    // Die aktuelle Position liegt immer im Mitschnitt — ein Filter- oder
+    // Lautstaerkewechsel braucht deshalb NIE das Netz.
+    const cached = cachedSourceFor(queue, elapsed);
+    if (cached) console.log(`[audio] Filterwechsel aus dem Mitschnitt bei ${elapsed}s`);
+
     const resource = createResource(queue.current.url, queue, (err) => {
         if (queue.channel) autoDelete(queue.channel.send(`❌ Filter-Fehler: ${err.message}`), DELETE_ERROR_MS);
-    }, elapsed);
+    }, elapsed, cached);
 
     queue.player.play(resource);
     queue._playbackStart = Date.now();
@@ -2424,6 +2503,7 @@ const ctx = {
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
     parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, buildLoadingEmbed, updateNowPlayingMsg,
     quickMeta, deezerSuggest, interactionCard, client,
+    cachedSourceFor, dropTrackCache,
     TEST_MODE, setSpawn, attachPlayerEvents,
 };
 
