@@ -1,0 +1,102 @@
+# Lavalink 4.2.2 — Audio-Backend fuer BeatByte.
+#
+# Rolle: Lavalink holt den Track, dekodiert, filtert, encodiert nach Opus und
+# schickt die Voice-Pakete SELBST an Discord. Der Bot betritt weiterhin den
+# Voice-Channel (nur er hat das Token) und reicht die drei Werte aus dem
+# Gateway (session_id, token, endpoint) an Lavalink weiter.
+#
+# YouTube laeuft ueber denselben Heim-Tunnel wie bisher — aber NICHT ueber eine
+# Plugin-Option: youtube-source kennt keine. Der Weg ist JVM-global per
+# -DsocksProxyHost/-DsocksProxyPort (siehe JAVA_OPTS in compose.yml).
+# Nachgewiesen am 2026-09-22 mit einem protokollierenden SOCKS5-Proxy:
+# YouTube-Verkehr ging durch, und bei totem Proxy faellt Lavalink sauber aus
+# (loadType: error) statt auf die Server-IP auszuweichen — kein IP-Leak.
+
+server:
+  port: 2333
+  # Nur im Compose-Netz erreichbar, nie nach aussen. Caddy bekommt keinen Eintrag.
+  address: 0.0.0.0
+
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+      snapshot: false
+
+  server:
+    password: "${LAVALINK_PASSWORD}"
+    sources:
+      # MUSS aus sein: der eingebaute YouTube-Manager kollidiert sonst mit dem Plugin.
+      youtube: false
+      soundcloud: true
+      bandcamp: false
+      twitch: false
+      vimeo: false
+      nico: false
+      http: true
+      local: false
+
+    # Puffer vor dem Senden. Niedriger = schnellerer Start, empfindlicher gegen
+    # Netz-Zucken. 400 ms ist der Lavalink-Default und passt zum Tunnel.
+    bufferDurationMs: 400
+    # Wie viele Frames Lavalink vorausberechnet, bevor der Track startet.
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: LOW
+    # Haengt der Stream 10 s, gilt der Track als kaputt -> TrackStuckEvent,
+    # der Bot schaltet weiter statt stumm dazustehen.
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    playerUpdateInterval: 5
+
+plugins:
+  youtube:
+    enabled: true
+    # Reihenfolge = Failover-Reihenfolge. Zuerst die Clients, die noch echte
+    # Audio-Formate liefern — das sind OAuth-Clients (Tv.supportsOAuth() == true)
+    # und ohne Anmeldung werden sie fuer die Wiedergabe nicht einmal versucht.
+    # Gemessen am 2026-09-22 ohne OAuth: 1 von 4 Tracks spielbar. WEB scheitert
+    # an SABR (gar keine https-Formate), WEBEMBEDDED an "unavailable",
+    # ANDROID_VR an "requires login". Ein poToken hilft dort nicht — er betrifft
+    # laut Plugin-README nur WEB und WEBEMBEDDED, also genau die kaputten.
+    clients: ["TV", "TVHTML5_SIMPLY", "IOS", "MUSIC", "ANDROID_MUSIC", "MWEB", "WEB", "WEBEMBEDDED"]
+    oauth:
+      enabled: true
+      # Einmalig per Device-Code erzeugt (test/lavalink-local.js --oauth) und
+      # danach in /opt/bytebots/env/lavalink.env abgelegt. MUSS ein Wegwerf-
+      # Google-Konto sein — das Plugin warnt selbst ausdruecklich davor, dafuer
+      # den Haupt-Account zu verwenden.
+      refreshToken: "${YOUTUBE_REFRESH_TOKEN}"
+      # Kein Device-Code-Prompt beim Start, wenn der Token schon da ist.
+      skipInitialization: true
+
+    # Signatur-Entschluesselung auslagern — das Gegenstueck zu
+    # --remote-components ejs:github bei yt-dlp. Ohne das scheitert
+    # youtube-source 1.18.2 am aktuellen Player ("Must find sig function from
+    # script"); Issue #225 dazu wurde als "not planned" geschlossen, die
+    # Maintainer verweisen ausdruecklich auf einen Cipher-Dienst.
+    # Am 2026-09-22 lokal verifiziert: die Signatur-Fehler verschwinden damit.
+    #
+    # cipher.kikkia.dev ist die oeffentliche Instanz des Maintainers — fuer
+    # einen ersten Test in Ordnung, fuer Dauerbetrieb SELBST HOSTEN
+    # (https://github.com/kikkia/yt-cipher, docker compose up). Sonst haengt die
+    # Wiedergabe an einem fremden Dienst ohne Zusage.
+    remoteCipher:
+      url: "${YT_CIPHER_URL:https://cipher.kikkia.dev}"
+      # password: nur noetig, wenn die eigene Instanz API_TOKEN gesetzt hat
+      userAgent: "BeatByte"
+
+metrics:
+  prometheus:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO
+    dev.lavalink.youtube: INFO
+  request:
+    enabled: false
+  logback:
+    rollingpolicy:
+      max-history: 7
+      max-file-size: 10MB

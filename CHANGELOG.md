@@ -7,6 +7,22 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot/infra:** **Lavalink als Audio-Backend vorbereitet — noch NICHT aktiv.**
+  Machbarkeits-Pruefstand gelaufen (Lavalink 4.2.2 + youtube-plugin 1.18.2, Java 21): Start in
+  1,9 s, Suche im Schnitt 764 ms gegen 1169 ms bei yt-dlp (warm 311 ms), 242 MB RSS mit
+  `-Xmx192m` statt 433 MB bei Default-Heap. **Die kritische Unbekannte ist geklaert:**
+  `youtube-source` hat keine Proxy-Option, aber JVM-global per `-DsocksProxyHost` laeuft der
+  YouTube-Verkehr durch den Tunnel — mit einem protokollierenden SOCKS5-Proxy nachgewiesen
+  (`CONNECT 172.217.119.4:443`). Gegenprobe: bei totem Proxy faellt Lavalink sauber aus
+  (`loadType: error`) statt auf die Server-IP auszuweichen, also kein IP-Leak.
+  Neu im Repo: `deploy/lavalink/application.yml`, ein Compose-Dienst **hinter dem Profil
+  `lavalink`** (ein normales `docker compose up -d` startet ihn bewusst NICHT), der Client
+  `src/audio/lavalink.js` (selbst geschrieben, keine neue Abhaengigkeit — `ws` liegt schon da)
+  und 11 Offline-Tests gegen einen gefaelschten Lavalink-Server.
+  **Offen und bewusst nicht umgebaut:** ob lizenzierte Musik wirklich klingt, zeigt erst ein
+  echter Voice-Channel. Dafuer `test/lavalink-live.js` — startklar, braucht nur
+  `MUSIC_DISCORD_TOKEN` + `MUSIC_GUILD_ID`. Erst wenn der gruen ist, wird umgebaut.
+
 - **music-bot:** **Testbarkeit: `pnpm --filter discord-music-bot test`** — 8 Offline-Tests in ~5 s,
   ohne Token und ohne Netz, jetzt auch in CI. Sie laufen gegen den ECHTEN Bot-Code inklusive FFmpeg
   und `AudioPlayer`; gefaelscht sind nur Discord und yt-dlp. Moeglich durch drei Nahtstellen:
