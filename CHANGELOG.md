@@ -7,6 +7,24 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot:** **Der Bot spielte bei erfolgloser Suche einfach etwas anderes.** In Prod gemeldet:
+  `/play stieftochter massaker` lieferte "Heroin an Heiligabend". Die Timing-Logs zeigten den Weg,
+  und die nachgestellte YouTube-Trefferliste erklaerte ihn: der gesuchte Song kommt dort gar nicht
+  vor. Die Bewertung waehlte den **musikalischsten** Treffer der Liste — Topic-Kanal, Songlaenge —
+  und hatte keine Untergrenze, ab der sie haette aufgeben muessen.
+  Die eigentliche Fundstelle war nicht der bewertete yt-dlp-Pfad, sondern **Piped**: das ist wieder
+  erreichbar und nahm blind `items[0]`, ganz ohne Bewertung. Der yt-dlp-Pfad kam nie dran.
+  Beide Pfade pruefen jetzt die Wortueberdeckung zwischen Anfrage und Treffer — dasselbe Mass, das
+  SoundCloud laengst nutzt (dort steht im Kommentar: *lieber ehrlich scheitern*). Schwelle 0,6 und
+  damit bewusst ueber der Haelfte: bei zwei Suchwoertern muessen beide vorkommen, sonst kaeme
+  "Asylbewerber kocht seine Stieftochter" bei der Suche nach "stieftochter massaker" durch (genau
+  0,50). Gefiltert wird VOR der Bewertung, nicht nur beim Sieger.
+  Ergebnis: derselbe Suchbegriff findet den Track jetzt korrekt auf SoundCloud — er existiert, nur
+  nicht auf YouTube. Gegengeprueft, dass gute Anfragen weiter durchkommen (Gzuz, Queen, Rick
+  Astley, "millionaer", "lofi hip hop").
+  Die echte Trefferliste liegt als Testfixture bei, damit dieser Fall nicht zurueckkehrt.
+
+
 - **music-bot:** **Kurze Playing-Flacker verfaelschten die Startzeit-Messung.** Im Dev-Lauf gegen
   echtes Discord sichtbar geworden: ein scheiterndes yt-dlp bringt den Player kurz auf `Playing`,
   ohne dass ein Ton fliesst — einmal mit 22 s als "first audio". Solche Ausreisser waeren als

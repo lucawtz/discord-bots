@@ -823,8 +823,19 @@ async function searchTrack(query) {
     // Piped API für Textsuche (mit yt-dlp Fallback)
     let track;
     try {
-        const items = await pipedSearch(query, 1);
-        track = pipedToTrack(items[0]);
+        // Piped liefert dieselbe ungefilterte Relevanz wie ytsearch1 — blind
+        // items[0] zu nehmen war genau der Fehler, der am 2026-09-22 bei
+        // "stieftochter massaker" ein fremdes Lied abspielte. Der gesuchte
+        // Track war in der Liste gar nicht enthalten.
+        const items = await pipedSearch(query, 5);
+        const passend = items.filter(i =>
+            queryCoverage({ title: i.title, channel: i.uploaderName || i.uploader }, query) >= MIN_QUERY_COVERAGE);
+        if (passend.length === 0) {
+            // Kein Treffer, der zur Anfrage passt -> weiter zum bewerteten
+            // yt-dlp-Pfad und danach SoundCloud, statt hier zu raten.
+            throw new Error(`Piped: kein passender Treffer für "${query}"`);
+        }
+        track = pipedToTrack(passend[0]);
     } catch {
         try {
             track = await searchBestYtdlp(query);
@@ -1100,6 +1111,21 @@ function isMusicEntry(entry) {
     });
 }
 
+// Wie viel der Anfrage muss im Treffer stecken. Bewusst UEBER der Haelfte:
+// bei einer Anfrage aus zwei Woertern muessen beide vorkommen. Sonst genuegte
+// ein einziges geteiltes Wort — "Asylbewerber kocht seine Stieftochter" kaeme
+// bei der Suche nach "stieftochter massaker" durch.
+const MIN_QUERY_COVERAGE = 0.6;
+
+// Wortueberdeckung zwischen Suchbegriff und Treffer (Titel + Kanal) — dasselbe
+// Mass, das SoundCloud schon nutzt. Kurze Fuellwoerter zaehlen nicht mit.
+function queryCoverage(entry, query) {
+    const haystack = normalizeText(`${entry.title || ''} ${entry.channel || entry.uploader || ''}`);
+    const words = normalizeText(query).split(' ').filter(w => w.length > 2);
+    if (words.length === 0) return 1; // zu kurz zum Pruefen -> durchlassen
+    return words.filter(w => haystack.includes(w)).length / words.length;
+}
+
 // Holt mehrere YouTube-Treffer und waehlt den besten aus. ytsearch1 nimmt blind
 // den Top-Treffer — bei "millionaer" stehen auf den vorderen Plaetzen eine
 // Talkshow, eine vorgelesene Geschichte und ein 28-Minuten-Video.
@@ -1129,9 +1155,19 @@ function searchBestYtdlp(query, poolSize = 10) {
             const ranked = entries.filter(Boolean).map((entry, rank) => ({ entry, rank }));
             // Bevorzugt echte Musiktreffer; wenn der Filter alles wegwirft,
             // lieber irgendein Ergebnis als gar keins.
-            const musical = ranked.filter(r => isMusicEntry(r.entry));
-            const pool = musical.length > 0 ? musical : ranked;
-            if (pool.length === 0) return reject(new Error('Kein Ergebnis gefunden'));
+            // Zuerst nach Relevanz filtern, DANN bewerten. Nur den Sieger zu
+            // pruefen reicht nicht: dann gewinnt womoeglich ein Treffer, waehrend
+            // ein besser passender daneben liegt.
+            const relevant = ranked.filter(r => queryCoverage(r.entry, query) >= MIN_QUERY_COVERAGE);
+            if (relevant.length === 0) {
+                // Lieber ehrlich scheitern als still etwas Fremdes spielen — am
+                // 2026-09-22 spielte der Bot bei "stieftochter massaker" sonst
+                // "Heroin an Heiligabend". searchTrack faellt danach auf
+                // SoundCloud zurueck, wo der Song tatsaechlich liegt.
+                return reject(new Error(`Auf YouTube kein passender Treffer für "${query}"`));
+            }
+            const musical = relevant.filter(r => isMusicEntry(r.entry));
+            const pool = musical.length > 0 ? musical : relevant;
 
             let best = pool[0];
             let bestScore = -Infinity;
@@ -2707,7 +2743,7 @@ const ctx = {
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
     parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, buildLoadingEmbed, updateNowPlayingMsg,
-    quickMeta, deezerSuggest, interactionCard, client,
+    quickMeta, deezerSuggest, interactionCard, client, queryCoverage, MIN_QUERY_COVERAGE,
     cachedSourceFor, dropTrackCache,
     snapshotQueue, persistQueue, restoreQueues, sweepCacheDir,
     TEST_MODE, setSpawn, attachPlayerEvents,
