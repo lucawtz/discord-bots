@@ -7,6 +7,21 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **infra:** **Deployt.** `prod` auf `32418c3` (plus Compose-Fix), Server-Checkout von `coolify-deploy`
+  auf `prod` umgestellt, `scripts/deploy.sh music-bot` erstmals wie dokumentiert durchgelaufen.
+  Bot startet sauber, Ketten-Probe meldet beim ersten Lauf **`Kette ok — 130048 Bytes in 8482 ms`** —
+  die erste automatische Bestaetigung, dass YouTube ueber den Heim-Tunnel wirklich Audio liefert.
+  `/health` oeffentlich erreichbar unter `https://beatbyte.bytebots.de/health`.
+  26 Slash-Commands global neu registriert (Propagation bis ~1 h, danach hat `/play` Autocomplete).
+  **Stolperstein dabei:** `${LAVALINK_PASSWORD:?...}` in `compose.yml` liess den ersten Deploy
+  scheitern — Compose interpoliert die GANZE Datei, bevor Profile ausgewertet werden, der
+  Pflicht-Platzhalter blockierte also jeden compose-Befehl auf dem Server, auch fuer Dienste ohne
+  Lavalink-Bezug. Ersetzt durch einen leeren Default und `env_file: required: false`.
+  **Zweiter Stolperstein:** `npm run deploy` im Container braucht
+  `NODE_PATH=/repo/bots/music-bot/node_modules`, weil `libs/deploy-commands.js` unter `/repo/libs/`
+  liegt und die `node_modules` des Bots von dort nicht aufloesen kann. In CLAUDE.md festgehalten.
+
+
 - **infra:** **`prod` ist ab jetzt der einzige Produktions-Branch; `coolify-deploy` ist stillgelegt.**
   Der Server-Checkout hing auf `coolify-deploy` und holte per Refspec auch nur diesen Branch —
   `origin/prod` existierte dort gar nicht. `scripts/deploy.sh` macht aber `git reset --hard
