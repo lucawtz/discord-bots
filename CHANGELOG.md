@@ -7,6 +7,43 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot/infra:** **Lavalink-Beweislauf gefahren — Lavalink funktioniert, YouTube-Abdeckung nicht.**
+  Gegen den echten Dev-Bot in einem Voice-Channel getestet. **Was steht:** Voice-Verbindung in 2,5 s,
+  Wiedergabestart nach 1,2 s, **Seek auf 1:00 in 820 ms wieder unterwegs** (die heutige FFmpeg-Pipe
+  laedt dafuer den ganzen Track ab Byte 0 neu), Bassboost und Lautstaerke im laufenden Strom — und
+  **kein einziges TrackEndEvent** dabei, also nachweislich kein Track-Neustart.
+  **Was nicht steht:** nur **1 von 4** YouTube-Tracks spielt (`All clients failed to load the item`;
+  ANDROID_VR: "requires login", WEB: SABR ohne Audio-Formate, WEBEMBEDDED: "unavailable"). Das ist
+  kein Lavalink-Problem, sondern derselbe poToken-Zwang, den die yt-dlp-Pipeline heute mit dem
+  bgutil-POT-Provider loest — und der Test lief von einer **Privat-IP**, liegt also nicht am Server.
+  Zwei Wege: OAuth (Wegwerf-Google-Konto, Device-Code, Refresh-Token) oder poToken+visitorData, die
+  das Plugin zur Laufzeit per `POST /youtube` annimmt — dafuer laeuft der Provider in Prod bereits.
+  **Gefundener Protokoll-Fehler:** Lavalink 4.2 verlangt `channelId` im Voice-Objekt; fehlt es, kommt
+  ein nacktes `Bad Request` ohne Begruendung (die steht nur im Server-Log). Client korrigiert, und
+  der Test-Fake prueft das Voice-Objekt jetzt genauso streng wie der echte Server — der nachgiebige
+  Fake hatte den Fehler gruen durchgewunken.
+  Neu: `test/yt-probe.js` (welche Tracks spielen) und `test/voice-probe.js` (Voice-Pfad isoliert
+  ueber eine lokale Audiodatei, unabhaengig von YouTube).
+
+- **music-bot:** **poToken-Bruecke gebaut — und gemessen, dass sie NICHT reicht.**
+  `src/audio/potoken.js` holt visitorData von youtube.com, laesst den bgutil-Provider einen daran
+  gebundenen poToken erzeugen (`POST /get_pot`, `content_binding`) und schiebt das Paar per
+  `POST /youtube` in Lavalink; ein Refresher erneuert vor Ablauf (30 min Sicherheitsabstand,
+  Backoff bei Fehlern). 9 Offline-Tests gegen gefaelschte Gegenstellen.
+  **End-to-end gegen den echten Provider 1.3.1 geprueft** (lokal ohne Docker aus dem Quelltext
+  gebaut, dieselbe Version wie in Prod): visitorData 518 Zeichen in 280 ms, poToken 800 Zeichen in
+  441 ms, korrekt gebunden, 6 h gueltig — **Abdeckung trotzdem unveraendert 1 von 4.**
+  Grund, sichtbar erst in den Fehlern pro Client (`test/yt-clients.js`): `WEB` scheitert an
+  **SABR** ("No supported audio streams available" — YouTube liefert dort gar keine https-Formate
+  mehr, genau der Grund fuer `player_client=web`-Verzicht bei yt-dlp), `WEB_EMBEDDED_PLAYER` an
+  "unavailable", `ANDROID_VR` an "requires login". Der poToken betrifft laut README nur WEB und
+  WEBEMBEDDED — also genau die kaputten. Die Clients mit brauchbaren Formaten (TVHTML5 & Co.)
+  werden fuer die Wiedergabe nicht einmal versucht: es sind OAuth-Clients
+  (`Tv.supportsOAuth() == true`). Auch eine auf alle neun Clients erweiterte Liste aenderte nichts.
+  **Schlussfolgerung: ohne OAuth ist youtube-source in Lavalink nicht brauchbar.** Der poToken-Weg
+  ist damit erledigt; die Bruecke bleibt als einzige Nicht-OAuth-Massnahme liegen (nur aktiv mit
+  gesetztem `POT_PROVIDER_URL`). Offen und zu entscheiden: OAuth mit einem Wegwerf-Google-Konto.
+
 - **music-bot/infra:** **Lavalink als Audio-Backend vorbereitet — noch NICHT aktiv.**
   Machbarkeits-Pruefstand gelaufen (Lavalink 4.2.2 + youtube-plugin 1.18.2, Java 21): Start in
   1,9 s, Suche im Schnitt 764 ms gegen 1169 ms bei yt-dlp (warm 311 ms), 242 MB RSS mit
