@@ -122,10 +122,17 @@ function destroyQueue(guildId) {
         queue.player.stop(true);
     }
     if (queue.connection) {
-        queue.connection.removeAllListeners();
-        queue.connection.destroy();
+        // Defensiv: eine halb aufgebaute oder schon zerstoerte Verbindung darf
+        // den Abbau nicht abbrechen — sonst bleiben Timer und Prozesse zurueck.
+        try {
+            queue.connection.removeAllListeners?.();
+            queue.connection.destroy?.();
+        } catch (e) {
+            console.error('Voice-Verbindung liess sich nicht abbauen:', e.message);
+        }
     }
     queues.delete(guildId);
+    try { db.clearQueueState(guildId); } catch { /* egal */ }
     updateActivity(guildId);
 }
 
@@ -1662,10 +1669,32 @@ function buildFilterArgs(queue) {
 // Stelle, die schon lief, ist damit eine reine Dateioperation: kein Netz, kein
 // Tunnel, kein Warten.
 const CACHE_LIMIT_BYTES = 150 * 1024 * 1024; // Livestreams sonst endlos
+// Bewusst im Daten-Volume und nicht in os.tmpdir(): ein Deploy baut den
+// Container neu, /tmp ist dann weg. Im Volume ueberlebt der Mitschnitt — und
+// damit kann die Wiedergabe nach einem Neustart genau dort weitergehen, ohne
+// den Song erneut durch den Tunnel zu ziehen.
+const CACHE_DIR = path.join(__dirname, '..', 'data', 'cache');
+try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } catch { /* dann eben tmp */ }
+
+// Beim Start alles wegraeumen, was aelter als ein Tag ist. Ohne das laeuft das
+// Volume irgendwann voll, wenn ein Abbau mal nicht sauber durchlief.
+function sweepCacheDir(maxAgeMs = 24 * 60 * 60_000) {
+    let removed = 0;
+    try {
+        for (const name of fs.readdirSync(CACHE_DIR)) {
+            const file = path.join(CACHE_DIR, name);
+            try {
+                if (Date.now() - fs.statSync(file).mtimeMs > maxAgeMs) { fs.unlinkSync(file); removed++; }
+            } catch { /* egal */ }
+        }
+    } catch { /* Verzeichnis fehlt */ }
+    if (removed) console.log(`[cache] ${removed} alte Mitschnitte entfernt`);
+    return removed;
+}
 
 function startTrackCache(queue, ytdlpStdout) {
     dropTrackCache(queue);
-    const file = path.join(os.tmpdir(), `beatbyte-${queue.guildId || 'x'}-${Date.now()}.audio`);
+    const file = path.join(CACHE_DIR, `${queue.guildId || 'x'}-${Date.now()}.audio`);
     let out;
     try { out = fs.createWriteStream(file); } catch { return; }
     const cache = { file, bytes: 0, complete: false, aborted: false, stream: out };
@@ -1880,6 +1909,153 @@ function attachPlayerEvents(guildId, player, queue) {
             ctx.broadcast('stateUpdate', ctx.getGuildState(guildId));
         }
     });
+}
+
+// ── Warteschlange ueber Neustarts retten ─────────────────────────
+// Ein Deploy (scripts/deploy.sh) baut den Container neu und killt damit die
+// laufende Wiedergabe; die Queue war danach weg. Hier wird der Zustand
+// mitgeschrieben und beim Start wieder aufgenommen.
+//
+// Nur was zum Weiterspielen noetig ist. Absichtlich KEINE Nachrichten-IDs:
+// die Player-Karte wird nach dem Neustart neu gesendet.
+function snapshotQueue(guildId) {
+    const queue = queues.get(guildId);
+    if (!queue) return null;
+    const channelId = queue.connection?.joinConfig?.channelId;
+    if (!channelId || !queue.current) return null;
+
+    const slim = (t) => t && ({
+        title: t.title, url: t.url, duration: t.duration, durationSec: t.durationSec,
+        artist: t.artist, albumArt: t.albumArt, thumbnail: t.thumbnail,
+        requestedBy: t.requestedBy, _requestedById: t._requestedById,
+    });
+
+    return {
+        voiceChannelId: channelId,
+        textChannelId: queue.channel?.id || null,
+        current: slim(queue.current),
+        // Position, an der es weitergehen soll.
+        positionSec: Math.max(0, Math.round(getElapsed(queue))),
+        // Der Mitschnitt liegt im Volume und ueberlebt den Neustart — dann
+        // faellt beim Fortsetzen kein einziger Byte Netzverkehr an.
+        cacheFile: queue._cache && !queue._cache.aborted && queue._cache.bytes > 0 ? queue._cache.file : null,
+        cacheComplete: !!queue._cache?.complete,
+        tracks: queue.tracks.slice(0, 200).map(slim),
+        loopMode: queue.loopMode,
+        volume: queue.volume,
+        filter: queue.filter,
+        eqBands: queue.eqBands || null,
+        autoDj: !!queue.autoDj,
+        savedAt: Date.now(),
+    };
+}
+
+// Gebuendelt: der Fortschritts-Tick ruft das alle 10 s, dazu gezielt bei
+// Trackwechsel und Shutdown. Haeufiger waere sinnlos — sql.js schreibt die
+// ganze Datei neu.
+function persistQueue(guildId) {
+    try {
+        const snap = snapshotQueue(guildId);
+        if (snap) db.saveQueueState(guildId, snap);
+        else db.clearQueueState(guildId);
+    } catch (e) {
+        console.error('Queue-Zustand konnte nicht gesichert werden:', e.message);
+    }
+}
+
+function persistAllQueues() {
+    for (const guildId of queues.keys()) persistQueue(guildId);
+}
+
+// Beim Start: gespeicherte Zustaende wieder aufnehmen.
+const RESUME_MAX_AGE_MS = Number(process.env.RESUME_MAX_AGE_MS) || 15 * 60_000;
+
+async function restoreQueues() {
+    let states = [];
+    try { states = db.getQueueStates(); } catch (e) {
+        console.error('Queue-Zustaende nicht lesbar:', e.message);
+        return;
+    }
+    const keepFiles = new Set();
+
+    for (const { guildId, state } of states) {
+        try {
+            // Zu alt: nach einer laengeren Auszeit mitten im Song weiterzuspielen
+            // waere eher irritierend als hilfreich.
+            const age = Date.now() - (state.savedAt || 0);
+            if (age > RESUME_MAX_AGE_MS) {
+                console.log(`[resume] ${guildId}: Zustand ${Math.round(age / 60000)} min alt — verworfen`);
+                db.clearQueueState(guildId);
+                continue;
+            }
+
+            const guild = client.guilds.cache.get(guildId);
+            const channel = guild?.channels?.cache?.get(state.voiceChannelId);
+            if (!channel?.isVoiceBased()) { db.clearQueueState(guildId); continue; }
+
+            // Niemand mehr da -> nicht in einen leeren Kanal zurueckkehren.
+            const listeners = [...channel.members.values()].filter(m => !m.user.bot).length;
+            if (listeners === 0) {
+                console.log(`[resume] ${guildId}: niemand mehr im Kanal — nicht fortgesetzt`);
+                db.clearQueueState(guildId);
+                continue;
+            }
+
+            const queue = getQueue(guildId);
+            queue.tracks = (state.tracks || []).filter(Boolean);
+            queue.loopMode = state.loopMode || 'off';
+            queue.volume = typeof state.volume === 'number' ? state.volume : 1;
+            queue.filter = state.filter || 'off';
+            if (state.eqBands) queue.eqBands = state.eqBands;
+            queue.autoDj = !!state.autoDj;
+
+            const textChannel = state.textChannelId ? guild.channels.cache.get(state.textChannelId) : null;
+            await setupVoiceConnection(guildId, channel, guild, textChannel || undefined);
+
+            // Mitschnitt weiterverwenden, wenn er noch da ist — dann kostet das
+            // Fortsetzen kein Netz.
+            let localFile = null;
+            if (state.cacheFile && fs.existsSync(state.cacheFile)) {
+                localFile = state.cacheFile;
+                keepFiles.add(state.cacheFile);
+                let size = 0;
+                try { size = fs.statSync(localFile).size; } catch { /* egal */ }
+                queue._cache = { file: localFile, bytes: size, complete: !!state.cacheComplete, aborted: false, stream: null };
+            }
+
+            queue.current = state.current;
+            queue._playbackStart = Date.now();
+            queue._seekOffset = state.positionSec || 0;
+            queue._trackT0 = Date.now();
+
+            const resource = createResource(state.current.url, queue, (err) => {
+                console.error(`[resume] Stream-Fehler: ${err.message}`);
+                health?.recordStreamError(err.message);
+            }, state.positionSec || 0, localFile);
+            queue.player.play(resource);
+            updateActivity(guildId);
+
+            console.log(`[resume] ${guildId}: "${state.current.title}" ab ${state.positionSec}s`
+                + `${localFile ? ' aus dem Mitschnitt' : ' (neu geladen)'}, ${queue.tracks.length} in der Warteschlange`);
+
+            if (textChannel) {
+                autoDelete(textChannel.send({
+                    embeds: [buildLoadingEmbed(state.current, client, guildLocaleFor(guildId))],
+                }), DELETE_SHORT_MS);
+            }
+        } catch (e) {
+            console.error(`[resume] ${guildId} fehlgeschlagen: ${e.message}`);
+            try { db.clearQueueState(guildId); } catch { /* egal */ }
+        }
+    }
+
+    // Mitschnitte, die niemand mehr braucht, wegraeumen.
+    try {
+        for (const name of fs.readdirSync(CACHE_DIR)) {
+            const file = path.join(CACHE_DIR, name);
+            if (!keepFiles.has(file)) fs.unlink(file, () => {});
+        }
+    } catch { /* egal */ }
 }
 
 // ── Voice-Verbindung aufbauen (gemeinsame Logik) ─────────────────
@@ -2144,6 +2320,8 @@ background(setInterval(() => {
         // Sicherheitsnetz: naechsten Queue-Track vorladen, egal wie er reinkam
         // (Playlist, Auto-DJ, playnow) — prefetchNext ist idempotent.
         prefetchNext(guildId);
+        // Und die Position mitschreiben, damit ein Deploy hoechstens 10 s kostet.
+        persistQueue(guildId);
         if (!queue._nowPlayingMsg || queue._npLoading) continue;
         if (queue.player?.state?.status !== AudioPlayerStatus.Playing) continue;
         updateNowPlayingMsg(queue);
@@ -2351,6 +2529,7 @@ async function playNext(guildId, opts = {}) {
         }, 0, localFile);
         queue.player.play(resource);
         updateActivity(guildId);
+        persistQueue(guildId);
 
         // Naechsten Track im Hintergrund vorladen (macht /skip nahezu sofort)
         setTimeout(() => prefetchNext(guildId), 1500);
@@ -2504,6 +2683,7 @@ const ctx = {
     parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, buildLoadingEmbed, updateNowPlayingMsg,
     quickMeta, deezerSuggest, interactionCard, client,
     cachedSourceFor, dropTrackCache,
+    snapshotQueue, persistQueue, restoreQueues, sweepCacheDir,
     TEST_MODE, setSpawn, attachPlayerEvents,
 };
 
@@ -2687,6 +2867,8 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 
 // ── Graceful Shutdown: Prozesse beenden + DB flushen ────────────
 function gracefulShutdown() {
+    // Zuerst sichern, dann killen — sonst steht die Position nicht mehr fest.
+    try { persistAllQueues(); } catch (e) { console.error('Shutdown-Sicherung:', e.message); }
     for (const [guildId, queue] of queues) {
         for (const proc of queue.processes) {
             if (!proc.killed) proc.kill();
@@ -2748,6 +2930,11 @@ client.once(Events.ClientReady, () => {
         notifyInfo: (title, detail) => notifyOnline('BeatByte', `${title} — ${detail}`),
     }).start();
     ctx.health = health;
+
+    // Alte Mitschnitte wegraeumen, dann unterbrochene Wiedergaben aufnehmen.
+    // Beides nach dem Login, weil der Guild-Cache gebraucht wird.
+    sweepCacheDir();
+    restoreQueues().catch(e => console.error('Fortsetzen fehlgeschlagen:', e.message));
 
     // Periodischer #status-Post (No-op ohne STATUS_CHANNEL_ID)
     startStatusUpdater({

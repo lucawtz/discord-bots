@@ -7,6 +7,27 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot:** **Ein Deploy killt die laufende Wiedergabe nicht mehr.** Bisher baute
+  `scripts/deploy.sh music-bot` den Container neu, und Musik wie Warteschlange waren weg — mitten
+  im Abend. Jetzt liegt der Zustand pro Server als JSON in der neuen Tabelle `queue_state`
+  (aktueller Track, Position, Warteschlange, Loop, Lautstaerke, Filter, EQ, Auto-DJ) und wird beim
+  Start wieder aufgenommen. Geschrieben wird beim Trackwechsel, im vorhandenen 10-Sekunden-Tick
+  und — zuerst — beim SIGTERM, bevor die Prozesse sterben; ein Deploy kostet damit hoechstens
+  zehn Sekunden Position.
+  **Der Mitschnitt liegt dafuer im Daten-Volume statt in `/tmp`:** ein Deploy baut den Container
+  neu, `/tmp` ist dann weg. Im Volume ueberlebt er — und das Fortsetzen kostet keinen einzigen
+  Byte Netzverkehr, obwohl der Song in der Mitte weiterlaeuft.
+  Zwei bewusste Grenzen: ein Zustand aelter als 15 Minuten wird verworfen (mitten im Song
+  weiterzuspielen waere nach einer langen Auszeit eher irritierend), und in einen inzwischen
+  leeren Kanal kehrt der Bot nicht zurueck. Beim Start werden Mitschnitte aufgeraeumt, die
+  niemand mehr braucht, sowie alles aelter als ein Tag.
+  `bots/*/data/` ist jetzt in `.gitignore` — die Mitschnitte liegen dort.
+
+- **music-bot:** `destroyQueue` brach ab, wenn die Voice-Verbindung nur halb aufgebaut oder schon
+  zerstoert war (`removeAllListeners is not a function`) — danach blieben Timer und Prozesse
+  zurueck. Jetzt abgesichert.
+
+
 - **music-bot:** **Seek und Filterwechsel ziehen den Song nicht mehr komplett neu durch den Tunnel.**
   FFmpeg bekam den Ton als PIPE von yt-dlp, und auf einer Pipe kann es nicht springen: `-ss 120`
   vor `-i pipe:0` hiess, yt-dlp laedt ab Byte 0 NEU und FFmpeg wirft zwei Minuten weg. Dasselbe bei
