@@ -1895,9 +1895,21 @@ function attachPlayerEvents(guildId, player, queue) {
         if (!q) return;
         if (q._trackT0) {
             const firstAudioMs = Date.now() - q._trackT0;
-            console.log(`[timing] first-audio=${firstAudioMs}ms · "${q.current?.title}"`);
-            health?.recordTrackStart({ firstAudioMs, url: q.current?.url });
+            const started = q.current;
             q._trackT0 = null;
+            console.log(`[timing] first-audio=${firstAudioMs}ms · "${started?.title}"`);
+            // Erst als Messwert zaehlen, wenn die Wiedergabe auch TRAEGT. Ein
+            // scheiterndes yt-dlp erzeugt in der Retry-Schleife kurze
+            // Playing-Flacker (am 2026-09-22 im Dev-Lauf gesehen: 22 s "first
+            // audio" ohne einen einzigen Ton). Die wuerden p50 und p95
+            // verfaelschen — und genau die sollen ja etwas aussagen.
+            const settle = setTimeout(() => {
+                const now = queues.get(guildId);
+                if (now?.current === started && now.player?.state?.status !== AudioPlayerStatus.Idle) {
+                    health?.recordTrackStart({ firstAudioMs, url: started?.url });
+                }
+            }, 2500);
+            settle.unref?.();
         }
         if (!q._npLoading) return; // Fortsetzen nach Pause, kein Kartenwechsel
         q._npLoading = false;

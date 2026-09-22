@@ -7,6 +7,21 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot:** **Kurze Playing-Flacker verfaelschten die Startzeit-Messung.** Im Dev-Lauf gegen
+  echtes Discord sichtbar geworden: ein scheiterndes yt-dlp bringt den Player kurz auf `Playing`,
+  ohne dass ein Ton fliesst — einmal mit 22 s als "first audio". Solche Ausreisser waeren als
+  echte Messwerte in p50/p95 gelandet, also genau in den Zahlen, die etwas aussagen sollen. Ein
+  Messwert zaehlt jetzt erst, wenn die Wiedergabe 2,5 s spaeter noch traegt. Die Logzeile kommt
+  weiterhin sofort, sie ist ja zum Mitlesen da.
+
+- **infra:** Dev-Lauf gegen den echten Dev-Bot: **25 PASS, 1 SKIP, 0 FAIL**. Die neue
+  `/play`-Choreografie live bestaetigt (`deferReply+editReply+editReply`, **kein** `deleteReply` —
+  eine Nachricht, zwei Zustandswechsel), Voice-Verbindung `ready`, Suche und Handshake parallel in
+  694 ms. Wiedergabe startet lokal in ~850–1000 ms, bricht hier aber ab: diese Leitung liefert
+  403 auf googlevideo. `MUSIC_YTDLP_PROXY=direct` gehoert lokal in die `.env.local`, sonst zeigt
+  der Default auf den Compose-Namen `warp` und yt-dlp scheitert mit `getaddrinfo failed`.
+
+
 - **infra:** **Deployt.** `prod` auf `32418c3` (plus Compose-Fix), Server-Checkout von `coolify-deploy`
   auf `prod` umgestellt, `scripts/deploy.sh music-bot` erstmals wie dokumentiert durchgelaufen.
   Bot startet sauber, Ketten-Probe meldet beim ersten Lauf **`Kette ok — 130048 Bytes in 8482 ms`** —

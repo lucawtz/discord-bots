@@ -167,3 +167,21 @@ test('ein haengendes yt-dlp laeuft in die Zeitueberschreitung statt zu blockiere
     assert.notStrictEqual(mon.getHealth().chain.healthy, true);
     mon.stop();
 });
+
+// Der Messwert darf nur zaehlen, wenn die Wiedergabe traegt. Das prueft die
+// Verdrahtung in index.js, nicht health.js — deshalb hier nur die Regel selbst
+// als ausfuehrbare Dokumentation dessen, was recordTrackStart erwartet.
+test('recordTrackStart ohne Traegerpruefung wuerde p50 verfaelschen', () => {
+    const mon = make([{ bytes: 128 * 1024 }]);
+    mon.recordTrackStart({ firstAudioMs: 900, url: 'https://youtu.be/a' });
+    mon.recordTrackStart({ firstAudioMs: 1000, url: 'https://youtu.be/b' });
+    const sauber = mon.getHealth().playback.firstAudioP50Ms;
+
+    // So saehe es aus, wenn ein Playing-Flacker mitgezaehlt wuerde:
+    mon.recordTrackStart({ firstAudioMs: 22000, url: 'https://youtu.be/kaputt' });
+    const verfaelscht = mon.getHealth().playback.firstAudioP50Ms;
+
+    assert.strictEqual(sauber, 950);
+    assert.ok(verfaelscht > sauber, `ein Ausreisser zieht den p50 hoch (${sauber} -> ${verfaelscht})`);
+    mon.stop();
+});
