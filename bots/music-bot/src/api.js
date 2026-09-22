@@ -217,6 +217,29 @@ function startAPI(ctx, client) {
             // Neustartschleife. Der Zustand steht im Rumpf, nicht im Status.
             if (method === 'GET' && urlPath === '/health') {
                 const h = ctx.health ? ctx.health.getHealth() : { chain: { healthy: null }, playback: {} };
+                // Caddy proxied den Bot unter beatbyte.bytebots.de — /health ist
+                // damit oeffentlich. Fehlertexte kommen roh aus yt-dlp und
+                // nennen mitunter interne Namen (socks5://host.docker.internal,
+                // pot-provider:4416). Ohne API-Key wird das geschwaerzt; der
+                // Gesundheitszustand selbst bleibt offen, damit externes
+                // Monitoring ihn abfragen kann.
+                const trusted = !!apiKey && req.headers['x-api-key'] === apiKey;
+                const redact = (text) => !text ? text
+                    : String(text)
+                        .replace(/socks5h?:\/\/[^\s"']+/gi, 'socks5://<proxy>')
+                        .replace(/https?:\/\/(?:[\w.-]+:\d+|host\.docker\.internal[^\s"']*)/gi, '<intern>')
+                        .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, '<ip>')
+                        .replace(/\b(warp|pot-provider|lavalink|host\.docker\.internal)(:\d+)?\b/gi, '<intern>');
+                const chain = trusted ? h.chain : {
+                    ...h.chain,
+                    lastError: redact(h.chain.lastError),
+                };
+                const playback = trusted ? h.playback : {
+                    ...h.playback,
+                    errorsByReason: Object.fromEntries(
+                        Object.entries(h.playback.errorsByReason || {}).map(([k, v]) => [redact(k), v]),
+                    ),
+                };
                 return json(res, {
                     process: {
                         ok: true,
@@ -225,7 +248,8 @@ function startAPI(ctx, client) {
                         guilds: client.guilds.cache.size,
                         activePlayers: [...ctx.queues.values()].filter(q => q.current).length,
                     },
-                    ...h,
+                    chain,
+                    playback,
                 });
             }
 

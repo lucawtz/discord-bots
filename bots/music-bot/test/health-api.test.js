@@ -96,3 +96,26 @@ test('Statusseite haelt sich vor der ersten Probe zurueck', async () => {
     assert.match(html, /wird geprüft/, 'weder gruen noch rot, solange nichts gemessen wurde');
     assert.match(html, /#f59e0b/);
 });
+
+test('/health schwaerzt interne Namen fuer Fremde', async () => {
+    // Caddy stellt den Bot oeffentlich bereit. yt-dlp-Fehler nennen den Proxy
+    // und interne Hostnamen — die gehoeren nicht ins offene Netz.
+    setChain({
+        chain: { healthy: false, lastError: 'ProxyError: socks5://host.docker.internal:1080 unreachable (167.233.237.112:443)' },
+        playback: { errorsByReason: { 'pot-provider:4416 timeout': 2 } },
+    });
+    const body = await (await fetch(`${base}/health`)).json();
+
+    assert.strictEqual(body.chain.healthy, false, 'der Zustand bleibt sichtbar');
+    assert.ok(!/host\.docker\.internal/.test(body.chain.lastError), body.chain.lastError);
+    assert.ok(!/167\.233\.237\.112/.test(body.chain.lastError), body.chain.lastError);
+    assert.ok(!/1080/.test(body.chain.lastError), body.chain.lastError);
+    assert.ok(!JSON.stringify(body.playback.errorsByReason).includes('pot-provider'));
+    assert.match(body.chain.lastError, /ProxyError/, 'die Fehlerart bleibt lesbar');
+});
+
+test('/health zeigt mit API-Key den vollen Text', async () => {
+    setChain({ chain: { healthy: false, lastError: 'ProxyError: socks5://host.docker.internal:1080 unreachable' } });
+    const body = await (await fetch(`${base}/health`, { headers: { 'x-api-key': 'test-key' } })).json();
+    assert.match(body.chain.lastError, /host\.docker\.internal:1080/, 'zum Debuggen ungekuerzt');
+});
