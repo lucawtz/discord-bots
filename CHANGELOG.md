@@ -7,6 +7,35 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot:** **Die Wiedergabe-Kette meldet sich jetzt selbst, wenn sie bricht.** Bisher zeigte
+  `/status` IMMER einen gruenen Punkt und "Online", solange Node lief — ob yt-dlp, POT-Provider,
+  Heim-Tunnel und YouTube zusammen noch einen Song liefern, stand nirgends. Genau deshalb war der
+  WARP-Daemon 2026-08/09 vierundzwanzig Tage unbemerkt tot, und am 2026-09-22 brauchte es einen
+  Menschen mit einer Kommandozeile, um ueberhaupt festzustellen, ob der Bot noch spielt.
+  Neu `src/health.js` mit zwei Quellen:
+  **(1) Synthetische Probe** — laedt alle 15 Min. wirklich die ersten 64 KB eines bekannten Tracks
+  durch dieselben yt-dlp-Argumente wie die Wiedergabe (Proxy, POT, Cookies — ein vereinfachter
+  Aufruf wuerde genau die Schichten uebergehen, an denen es scheitert). Erfolg heisst *Bytes
+  angekommen*, nicht *Exit-Code 0*: yt-dlp endet auch sauber, wenn es nichts geladen hat.
+  Alarm erst nach der zweiten Fehlprobe und nur beim Uebergang, Entwarnung ebenso — ueber das
+  vorhandene `libs/notify`, das schon dedupliziert.
+  **(2) Passive Zaehler** aus der echten Wiedergabe: Start-bis-Ton (p50/p95), Fehler nach Grund und
+  vor allem der **SoundCloud-Anteil** — steigt er, bricht YouTube gerade weg. Das schlaegt frueher
+  an als die Probe.
+  Sichtbar an drei Stellen: `GET /health` (maschinenlesbar), die Statusseite (Punkt wird rot, der
+  Grund steht dabei) und der #status-Post. Bewusst **nicht** am Docker-Healthcheck: eine
+  YouTube-Sperre repariert kein Container-Neustart, autoheal liefe nur in eine Neustartschleife —
+  `/health` antwortet darum immer mit 200, der Zustand steht im Rumpf.
+  15 neue Tests (Probe-Auswertung, Alarm-Schwelle, keine Wiederholungsalarme, Erholung,
+  Zeitueberschreitung, und die Endpunkte gegen den echten API-Server).
+
+- **libs:** **`createRateLimiter` liess seinen Aufraeum-Timer laufen.** Drei Limiter in `api.js`,
+  drei Timer, und damit endete kein Testprozess, der die API startet. `unref()` ergaenzt; in Prod
+  aendert das nichts, weil Discord-Client und HTTP-Server den Prozess ohnehin wach halten.
+  Ebenso der Cleanup-Timer in `api.js`. `startAPI` gibt jetzt zusaetzlich `server` zurueck, damit
+  Tests den mit `API_PORT=0` vergebenen Port erfahren.
+
+
 - **music-bot/infra:** **OAuth + Remote-Cipher getestet — und festgestellt, dass der Testrechner
   die Frage gar nicht beantworten kann.** Drei Schichten nacheinander aufgebaut, jede hat die
   Fehler der vorigen behoben und die naechste sichtbar gemacht:

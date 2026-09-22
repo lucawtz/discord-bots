@@ -14,6 +14,9 @@ const { t, normalizeLocale } = require('./i18n');
 const { notifyError, notifyOnline } = require('../../../libs/notify');
 const { startStatusUpdater } = require('../../../libs/status');
 const { FOOTER } = require('../../../libs/links');
+const { createHealthMonitor } = require('./health');
+// Wird erst bei ClientReady gebaut; bis dahin sind alle Messpunkte No-ops (health?.).
+let health = null;
 
 // ── Test-Modus ────────────────────────────────────────────────────
 // BEATBYTE_TEST=1 laedt index.js als reines Modul: kein Discord-Login, kein
@@ -1795,7 +1798,9 @@ function attachPlayerEvents(guildId, player, queue) {
         const q = queues.get(guildId);
         if (!q) return;
         if (q._trackT0) {
-            console.log(`[timing] first-audio=${Date.now() - q._trackT0}ms · "${q.current?.title}"`);
+            const firstAudioMs = Date.now() - q._trackT0;
+            console.log(`[timing] first-audio=${firstAudioMs}ms · "${q.current?.title}"`);
+            health?.recordTrackStart({ firstAudioMs, url: q.current?.url });
             q._trackT0 = null;
         }
         if (!q._npLoading) return; // Fortsetzen nach Pause, kein Kartenwechsel
@@ -2225,6 +2230,7 @@ async function playNext(guildId, opts = {}) {
         // YouTube blockiert den Server -> denselben Titel von SoundCloud streamen
         if (track._needsSoundcloud) {
             track._needsSoundcloud = false;
+            health?.recordSoundcloudFallback();
             try {
                 const scUrl = await resolveSoundcloudUrl(track);
                 if (scUrl) {
@@ -2256,6 +2262,7 @@ async function playNext(guildId, opts = {}) {
             // Musik "Video unavailable" (UNPLAYABLE) oder - Extraktion klappt, Download nicht -
             // "HTTP Error 403: Forbidden" (2026-09-13); dazu SABR ohne Formate und ein toter
             // WARP-Proxy (ProxyError) -> in allen Faellen SoundCloud.
+            health?.recordStreamError(err.message);
             const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|http error 403|proxyerror|host unreachable/i.test(err.message);
             const isYtUrl = /youtube\.com|youtu\.be/.test(track.url || '');
             if (ytBlocked && isYtUrl && !track._scTried) {
@@ -2644,19 +2651,45 @@ client.once(Events.ClientReady, () => {
     _apiGetGuildState = api.getGuildState;
     _generateAccessCode = api.generateAccessCode;
 
+    // Ketten-Monitor: prueft in festem Takt, ob die Wiedergabe-Kette wirklich
+    // Audio liefert. Dieselben yt-dlp-Argumente wie beim Abspielen — ein
+    // vereinfachter Aufruf wuerde genau die Schichten uebergehen, an denen es
+    // erfahrungsgemaess scheitert (Proxy, POT, Cookies).
+    health = createHealthMonitor({
+        spawn: spawnProcess,
+        ytdlpPath,
+        buildProbeArgs: (url) => [
+            '-f', audioFormatFor(url),
+            '-o', '-', '--no-check-certificates', '--no-warnings',
+            '--force-ipv4', '--retries', '1', '--extractor-retries', '1',
+            ...cookieArgs, ...ytArgsFor(url), '--js-runtimes', 'node', url,
+        ],
+        notifyError: (title, err, context) => notifyError('BeatByte', title, err, context),
+        notifyInfo: (title, detail) => notifyOnline('BeatByte', `${title} — ${detail}`),
+    }).start();
+    ctx.health = health;
+
     // Periodischer #status-Post (No-op ohne STATUS_CHANNEL_ID)
     startStatusUpdater({
         client,
         botName: 'BeatByte',
         emoji: '🎵',
-        getState: () => ({
-            online: true,
-            guilds: client.guilds.cache.size,
-            extra: {
-                'Aktive Wiedergaben': [...queues.values()].filter(q => q.current).length,
-                'Web-API': `Port ${process.env.API_PORT || 3001} ✓`,
-            },
-        }),
+        getState: () => {
+            const h = health.getHealth();
+            return {
+                // Der Punkt wird rot, wenn die KETTE kaputt ist — nicht erst,
+                // wenn der Prozess weg ist. Genau das hat bisher gefehlt.
+                online: h.chain.healthy !== false,
+                guilds: client.guilds.cache.size,
+                extra: {
+                    'Aktive Wiedergaben': [...queues.values()].filter(q => q.current).length,
+                    'YouTube-Kette': health.statusLine(),
+                    'Start bis Ton (p50)': h.playback.firstAudioP50Ms ? `${h.playback.firstAudioP50Ms} ms` : '—',
+                    'SoundCloud-Anteil': `${Math.round(h.playback.soundcloudShare * 100)} %`,
+                    'Web-API': `Port ${process.env.API_PORT || 3001} ✓`,
+                },
+            };
+        },
     });
 });
 

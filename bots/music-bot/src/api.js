@@ -70,7 +70,9 @@ function startAPI(ctx, client) {
 
     // Cleanup abgelaufener Codes, Sessions & OAuth States
     const OAUTH_STATE_EXPIRY_MS = 10 * 60_000; // 10 Minuten
-    setInterval(() => {
+    // Aufraeum-Timer darf den Prozess nicht offenhalten — sonst endet ein
+    // Testlauf nie. In Prod haelt der Discord-Client den Prozess ohnehin wach.
+    const cleanupTimer = setInterval(() => {
         const now = Date.now();
         for (const [guildId, entry] of guildAccessCodes) {
             if (now - entry.createdAt > CODE_EXPIRY_MS) guildAccessCodes.delete(guildId);
@@ -83,6 +85,7 @@ function startAPI(ctx, client) {
             }
         }
     }, 60_000);
+    cleanupTimer.unref?.();
 
     // ── Auth ─────────────────────────────────────────────────────
     function authenticateRequest(req) {
@@ -207,14 +210,45 @@ function startAPI(ctx, client) {
             // ── Oeffentliche Endpunkte ───────────────────────────
 
             // GET /status
+            // GET /health — maschinenlesbar, fuer Monitoring und Kommandozeile.
+            // Bewusst IMMER 200, auch wenn die Kette gestoert ist: der
+            // Docker-Healthcheck haengt hier dran, und eine YouTube-Sperre
+            // repariert kein Container-Neustart — autoheal liefe sonst in eine
+            // Neustartschleife. Der Zustand steht im Rumpf, nicht im Status.
+            if (method === 'GET' && urlPath === '/health') {
+                const h = ctx.health ? ctx.health.getHealth() : { chain: { healthy: null }, playback: {} };
+                return json(res, {
+                    process: {
+                        ok: true,
+                        uptimeSec: Math.round(process.uptime()),
+                        rssMb: Number((process.memoryUsage().rss / 1048576).toFixed(1)),
+                        guilds: client.guilds.cache.size,
+                        activePlayers: [...ctx.queues.values()].filter(q => q.current).length,
+                    },
+                    ...h,
+                });
+            }
+
             if (method === 'GET' && urlPath === '/status') {
                 const uptime = process.uptime();
                 const h = Math.floor(uptime / 3600);
                 const m = Math.floor((uptime % 3600) / 60);
                 const s = Math.floor(uptime % 60);
                 const mem = process.memoryUsage();
+                // Die Seite zeigte bisher IMMER einen gruenen Punkt und "Online" —
+                // eine gestoerte Wiedergabe-Kette war darauf nicht zu sehen.
+                const health = ctx.health ? ctx.health.getHealth() : null;
+                const chainOk = health ? health.chain.healthy : null;
+                const dotColor = chainOk === false ? '#ef4444' : chainOk === true ? '#00e676' : '#f59e0b';
+                const chainLabel = chainOk === false ? 'YouTube-Kette gestört'
+                    : chainOk === true ? 'Online' : 'Online · Kette wird geprüft';
+                const chainDetail = chainOk === false
+                    ? '<div class="warn">' + String(health.chain.lastError || 'unbekannt').replace(/[<>&]/g, '') + '</div>'
+                    : '';
+                const p50 = health ? health.playback.firstAudioP50Ms : null;
+                const scShare = health ? Math.round(health.playback.soundcloudShare * 100) : 0;
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                return res.end(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BeatByte Status</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#16213e;border-radius:16px;padding:40px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)}h1{font-size:24px;margin-bottom:24px;text-align:center}.status{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:24px;font-size:18px}.dot{width:12px;height:12px;border-radius:50%;background:#00e676;animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.stat{background:#0f3460;border-radius:12px;padding:16px;text-align:center}.stat .value{font-size:28px;font-weight:bold;color:#e94560}.stat .label{font-size:12px;color:#999;margin-top:4px}.footer{text-align:center;margin-top:24px;font-size:12px;color:#555}</style></head><body><div class="card"><h1>BeatByte</h1><div class="status"><span class="dot"></span> Online</div><div class="grid"><div class="stat"><div class="value">${h}h ${m}m ${s}s</div><div class="label">Uptime</div></div><div class="stat"><div class="value">${(mem.rss/1024/1024).toFixed(1)} MB</div><div class="label">RAM</div></div><div class="stat"><div class="value">${client.guilds.cache.size}</div><div class="label">Server</div></div><div class="stat"><div class="value">${[...ctx.queues.values()].filter(q=>q.current).length}</div><div class="label">Aktive Streams</div></div></div><div class="footer">Coolify &bull; Node ${process.version}</div></div></body></html>`);
+                return res.end(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BeatByte Status</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}.card{background:#16213e;border-radius:16px;padding:40px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)}h1{font-size:24px;margin-bottom:24px;text-align:center}.status{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:24px;font-size:18px}.dot{width:12px;height:12px;border-radius:50%;background:${dotColor};animation:pulse 2s infinite}.warn{background:#3b1d1d;border:1px solid #ef4444;color:#fca5a5;border-radius:8px;padding:10px 12px;margin-bottom:20px;font-size:13px;text-align:center;word-break:break-word}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.stat{background:#0f3460;border-radius:12px;padding:16px;text-align:center}.stat .value{font-size:28px;font-weight:bold;color:#e94560}.stat .label{font-size:12px;color:#999;margin-top:4px}.footer{text-align:center;margin-top:24px;font-size:12px;color:#555}</style></head><body><div class="card"><h1>BeatByte</h1><div class="status"><span class="dot"></span> ${chainLabel}</div>${chainDetail}<div class="grid"><div class="stat"><div class="value">${h}h ${m}m ${s}s</div><div class="label">Uptime</div></div><div class="stat"><div class="value">${(mem.rss/1024/1024).toFixed(1)} MB</div><div class="label">RAM</div></div><div class="stat"><div class="value">${client.guilds.cache.size}</div><div class="label">Server</div></div><div class="stat"><div class="value">${[...ctx.queues.values()].filter(q=>q.current).length}</div><div class="label">Aktive Streams</div></div><div class="stat"><div class="value">${p50 ? p50 + ' ms' : '\u2014'}</div><div class="label">Start bis Ton (p50)</div></div><div class="stat"><div class="value">${scShare} %</div><div class="label">SoundCloud-Anteil</div></div></div><div class="footer">Node ${process.version} &bull; <a href="/health" style="color:#666">/health</a></div></div></body></html>`);
             }
 
             // POST /api/auth — Access Code -> Session Token
@@ -1381,7 +1415,8 @@ function startAPI(ctx, client) {
     process.once('SIGTERM', shutdown);
     process.once('SIGINT', shutdown);
 
-    return { broadcast, getGuildState, generateAccessCode, regenerateAccessCode };
+    // server mit herausgeben: Tests brauchen den vergebenen Port (API_PORT=0).
+    return { broadcast, getGuildState, generateAccessCode, regenerateAccessCode, server };
 }
 
 module.exports = { startAPI };

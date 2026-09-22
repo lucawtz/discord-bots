@@ -6,7 +6,10 @@
  */
 function createRateLimiter(maxRequests, windowMs) {
     const hits = new Map();
-    setInterval(() => {
+    // unref: der Aufraeum-Timer haelt den Prozess nicht am Leben. In Prod
+    // halten Discord-Client und HTTP-Server ihn ohnehin wach; ohne unref
+    // endet dagegen kein Testlauf, der einen Limiter anlegt.
+    const cleanup = setInterval(() => {
         const now = Date.now();
         for (const [ip, timestamps] of hits) {
             const valid = timestamps.filter(t => now - t < windowMs);
@@ -14,6 +17,7 @@ function createRateLimiter(maxRequests, windowMs) {
             else hits.set(ip, valid);
         }
     }, 60000);
+    cleanup.unref?.();
     return (ip) => {
         const now = Date.now();
         const timestamps = (hits.get(ip) || []).filter(t => now - t < windowMs);
