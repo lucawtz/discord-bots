@@ -5,6 +5,42 @@ Fortlaufendes Log aller Änderungen — auch solche, die NICHT im Code landen
 Neueste Einträge oben. Format: `## YYYY-MM-DD`, ein Bullet pro Änderung,
 mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
+## 2026-09-22
+
+- **music-bot:** **Testbarkeit: `pnpm --filter discord-music-bot test`** — 8 Offline-Tests in ~5 s,
+  ohne Token und ohne Netz, jetzt auch in CI. Sie laufen gegen den ECHTEN Bot-Code inklusive FFmpeg
+  und `AudioPlayer`; gefaelscht sind nur Discord und yt-dlp. Moeglich durch drei Nahtstellen:
+  `BEATBYTE_TEST=1` (kein Login, kein yt-dlp-Update, Timer per `unref`), `ctx.setSpawn()` und
+  `attachPlayerEvents()` (aus `setupVoiceConnection` herausgezogen). Dazu 3 Netz-Tests gegen die
+  echte Deezer-API (`test:net`, nicht in CI) und `test:live` fuer den vorhandenen `dev-test.js`.
+  Anleitung: `bots/music-bot/test/README.md`.
+- **music-bot:** **Timing-Logs** trennen die Wartezeit auf: `search+connect`, `extract` (erstes Byte
+  von yt-dlp — davor Extraktion/POT, danach Download) und `first-audio` (bis zum ersten Opus-Frame).
+  Dazu FFmpeg mit `-probesize 524288` statt der 5-MB-Default.
+
+- **music-bot:** **Drei Haertungen, die die Wiedergabe abreissen konnten** — gefunden durch die neuen
+  Tests: `updateActivity` (ungesichertes `client.user.setActivity` mitten in `playNext`, Fehler
+  loeste eine Retry-Schleife aus), das Rendern der Player-Karte (lag im selben try wie die
+  Wiedergabe — ab `player.play()` jetzt eigener Block), und `spawn(yt-dlp, -U)` ohne
+  `error`-Handler (fehlendes yt-dlp riss den Prozess ab). Dazu `localeFor`/`localeForGuild`
+  gegen DB-Lesefehler und der Avatar-Lookup in beiden Embeds abgesichert.
+
+- **music-bot:** **Autocomplete fuer `/play`** (Deezer, `Titel — Interpret · 2:32`). Der User waehlt
+  den Song aus, statt dass die Textsuche raet, und der Top-Treffer wird schon beim Tippen im
+  Hintergrund aufgeloest (`preResolveTrack` mit In-Flight-Sperre und Deckel auf 2 Prozesse).
+  **Braucht ein `npm run deploy` in `bots/music-bot`, sonst erscheinen keine Vorschlaege.**
+
+- **music-bot:** **Voice-Check laeuft vor `deferReply`.** Der Fehler "Du musst in einem Voice Channel
+  sein" war eine oeffentliche, nie geloeschte Kanalnachricht — jetzt ephemer.
+
+- **music-bot:** **`/play` fühlte sich unfertig an — jetzt eine Nachricht mit drei Zuständen.**
+  Vorher: Antwort auf `/play` wurde geloescht, bis zu 2,5 s Wartezeit aufs Cover, dann eine NEUE
+  "Lädt…"-Nachricht am Kanalende, die spaeter nochmal umgebaut wurde. Dazwischen stand im Kanal
+  nichts. Jetzt bleibt die Interaction-Antwort die Player-Karte und wird nur noch editiert:
+  Sofort-Karte aus Deezer (~200 ms, Titel/Interpret/Cover/Laenge) → Player-Karte → "Spielt jetzt"
+  mit aktiven Buttons. Kein `deleteReply`, keine zweite Nachricht, kein Springen. Das Warten aufs
+  Cover ist ersatzlos weg (wird nachgezogen), Voice-Handshake und Quellensuche laufen parallel.
+
 ## 2026-09-17
 
 - **music-bot:** **Falscher Song bei der Textsuche.** Piped ist tot (alle drei Instanzen), also lief

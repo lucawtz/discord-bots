@@ -34,6 +34,12 @@ jobs:
           echo ">> Soundboard Bot"
           find bots/soundboard-bot/src -name "*.js" -exec node --check {} +
 
+      # Offline-Tests: echter Bot-Code gegen Fakes fuer Discord und yt-dlp.
+      # Netz-Tests (Deezer) sind hier bewusst uebersprungen — CI soll nicht an
+      # einer fremden API haengen. Lokal: pnpm --filter discord-music-bot test:net
+      - name: Test music-bot
+        run: pnpm --filter discord-music-bot test
+
       - name: Build music-bot webapp
         run: pnpm --filter discord-music-bot-app build
 

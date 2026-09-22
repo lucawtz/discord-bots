@@ -14,6 +14,26 @@ const { t, normalizeLocale } = require('./i18n');
 const { notifyError, notifyOnline } = require('../../../libs/notify');
 const { startStatusUpdater } = require('../../../libs/status');
 const { FOOTER } = require('../../../libs/links');
+
+// ── Test-Modus ────────────────────────────────────────────────────
+// BEATBYTE_TEST=1 laedt index.js als reines Modul: kein Discord-Login, kein
+// yt-dlp-Update-Prozess, und die Hintergrund-Timer halten den Node-Prozess
+// nicht offen. Damit laesst sich der komplette ctx offline gegen Fakes testen
+// (test/), ohne Token und ohne echte Voice-Verbindung. Prod und dev-test.js
+// setzen die Variable nicht und verhalten sich unveraendert.
+const TEST_MODE = process.env.BEATBYTE_TEST === '1';
+// Aufraeum-Timer duerfen den Prozess im Test nicht am Leben halten.
+const background = (timer) => { if (TEST_MODE) timer.unref?.(); return timer; };
+
+// Alle Kindprozesse (yt-dlp, FFmpeg) laufen ueber diese Indirektion. Tests
+// ersetzen sie per ctx.setSpawn(), um yt-dlp durch eine Datei zu ersetzen und
+// die Pipeline offline durchzuspielen. Prod ruft unveraendert child_process.spawn.
+let spawnProcess = spawn;
+function setSpawn(fn) {
+    if (!TEST_MODE) throw new Error('setSpawn ist nur mit BEATBYTE_TEST=1 erlaubt');
+    spawnProcess = fn || spawn;
+}
+
 // Server-Sprache fuer Hintergrund-Nachrichten ohne Interaction (Now-Playing-Embed):
 // explizite Einstellung (guild_settings.language), sonst Default 'de'.
 function guildLocaleFor(guildId) {
@@ -182,9 +202,13 @@ const audioFormatFor = (target) => (/soundcloud\.com/i.test(target || '')
     : 'bestaudio/bestaudio*/best');
 
 // ── yt-dlp Auto-Update (im Hintergrund, blockiert nicht den Start) ──
-spawn(ytdlpPath, ['-U']).on('close', (code) => {
-    if (code === 0) console.log('yt-dlp: Update geprüft');
-});
+// Der 'error'-Handler ist Pflicht: fehlt yt-dlp (falscher Pfad, Testrechner),
+// wirft ein unbehandeltes 'error'-Event den ganzen Prozess ab.
+if (!TEST_MODE) {
+    spawn(ytdlpPath, ['-U'])
+        .on('close', (code) => { if (code === 0) console.log('yt-dlp: Update geprüft'); })
+        .on('error', (e) => console.error('yt-dlp: Update nicht möglich:', e.message));
+}
 
 // ── Spotify API (Client Credentials) ────────────────────────────
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
@@ -765,17 +789,26 @@ function pipedToTrack(item) {
 // ── Track URL Cache (avoid repeated YouTube lookups) ─────────────
 const trackCache = new Map(); // query -> { track, ts }
 const TRACK_CACHE_TTL = 30 * 60 * 1000; // 30 min
-setInterval(() => {
+background(setInterval(() => {
     const now = Date.now();
     for (const [k, v] of trackCache) { if (now - v.ts > TRACK_CACHE_TTL) trackCache.delete(k); }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000));
 
-// Pre-resolve: resolve YouTube URLs in background for faster playback
+// Pre-Resolve: die teure Quellensuche schon im Hintergrund erledigen, waehrend
+// der User noch tippt (Autocomplete) oder im Web-Player scrollt. Beim spaeteren
+// /play trifft searchTrack dann den Cache statt einen yt-dlp-Prozess zu starten.
+// Zwei Bremsen, weil Autocomplete pro Tastendruck feuert:
+//  - _preResolving verhindert denselben Query doppelt (Cache greift erst danach)
+//  - PRE_RESOLVE_MAX_INFLIGHT deckelt die parallelen yt-dlp-Prozesse
+const _preResolving = new Set();
+const PRE_RESOLVE_MAX_INFLIGHT = 2;
 function preResolveTrack(query) {
-    if (!query || query.startsWith('http') || trackCache.has(query)) return;
+    if (!query || trackCache.has(query) || _preResolving.has(query)) return;
+    if (_preResolving.size >= PRE_RESOLVE_MAX_INFLIGHT) return;
+    _preResolving.add(query);
     searchTrack(query).then(track => {
         trackCache.set(query, { track, ts: Date.now() });
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => _preResolving.delete(query));
 }
 
 // ── Suche: Piped API mit yt-dlp Fallback ─────────────────────────
@@ -943,7 +976,7 @@ function fuzzyMatch(a, b) {
 // ── yt-dlp Fallback-Suche ────────────────────────────────────────
 function searchTrackYtdlp(searchQuery) {
     return new Promise((resolve, reject) => {
-        const proc = spawn(ytdlpPath, [
+        const proc = spawnProcess(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
             ...cookieArgs, ...ytArgsFor(searchQuery), '--js-runtimes', 'node', searchQuery,
@@ -1074,7 +1107,7 @@ function isMusicEntry(entry) {
 // Talkshow, eine vorgelesene Geschichte und ein 28-Minuten-Video.
 function searchBestYtdlp(query, poolSize = 10) {
     return new Promise((resolve, reject) => {
-        const proc = spawn(ytdlpPath, [
+        const proc = spawnProcess(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
             ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', `ytsearch${poolSize}:${query}`,
@@ -1144,6 +1177,35 @@ async function deezerReference(query) {
     }
 }
 
+// ── Sofort-Metadaten fuer die Player-Karte ───────────────────────
+// Deezer antwortet in ~150ms mit Titel, Interpret, Laenge und einem
+// quadratischen Cover. Die eigentliche Quellensuche (yt-dlp/Piped) braucht fuer
+// dieselbe Information Sekunden — deshalb wird die Karte aus diesen Daten
+// gebaut und angezeigt, bevor ueberhaupt feststeht, woher gestreamt wird.
+async function quickMeta(query) {
+    const hits = await deezerSuggest(query, 1);
+    return hits[0] || null;
+}
+
+// Deezer-Treffer als Anzeige-Objekte (Autocomplete + Sofort-Karte).
+async function deezerSuggest(query, limit = 5) {
+    try {
+        const data = await deezerFetch(`/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+        return (data.data || []).filter(Boolean).map(hit => ({
+            title: hit.title || '',
+            artist: hit.artist?.name || '',
+            duration: formatDuration(hit.duration || 0),
+            durationSec: hit.duration || 0,
+            albumArt: hit.album?.cover_big || hit.album?.cover_medium || null,
+            // Genau dieser String geht als /play-Query raus: eindeutig genug fuer
+            // die Quellensuche und identisch mit dem Pre-Resolve-Cache-Key.
+            query: [hit.artist?.name, hit.title].filter(Boolean).join(' ').trim(),
+        })).filter(h => h.query);
+    } catch {
+        return [];
+    }
+}
+
 // Wortueberdeckung zwischen Suchbegriff/Interpret und Titel+Uploader.
 function soundcloudScore(result, query, reference) {
     const haystack = normalizeText(`${result.title} ${result.uploader}`);
@@ -1205,7 +1267,7 @@ async function searchSoundcloudBest(query) {
 // Rohe SoundCloud-Suche (Liste mit Titel/Uploader/Dauer)
 function soundcloudSearchRaw(query, limit = 5) {
     return new Promise((resolve, reject) => {
-        const proc = spawn(ytdlpPath, [
+        const proc = spawnProcess(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
             `scsearch${limit}:${query}`,
@@ -1249,7 +1311,7 @@ async function resolveSoundcloudUrl(track) {
 
 function searchTracksYtdlp(query, limit = 5) {
     return new Promise((resolve, reject) => {
-        const proc = spawn(ytdlpPath, [
+        const proc = spawnProcess(ytdlpPath, [
             '--dump-single-json', '--no-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
             ...cookieArgs, ...YT_EXTRACTOR_ARGS, '--js-runtimes', 'node', `ytsearch${limit}:${query}`,
@@ -1453,7 +1515,7 @@ async function searchPlaylist(url) {
 
     // Amazon Music & alles andere über yt-dlp
     return new Promise((resolve, reject) => {
-        const proc = spawn(ytdlpPath, [
+        const proc = spawnProcess(ytdlpPath, [
             '--dump-single-json', '--yes-playlist', '--no-check-certificates',
             '--no-warnings', '--flat-playlist', '--force-ipv4',
             ...cookieArgs, ...ytArgsFor(url), '--js-runtimes', 'node', url,
@@ -1536,15 +1598,20 @@ function createProgressBar(elapsed, total, length = 20) {
     return `\`${formatDuration(elapsed)}\` ${bar} \`${formatDuration(total)}\``;
 }
 
+// Der Bot-Status ist Beiwerk. Frueher stand der Aufruf ungesichert mitten in
+// playNext — ein noch nicht bereiter client.user riss damit die ganze Wiedergabe
+// ab. Ein fehlgeschlagenes Presence-Update darf nie Musik verhindern.
 function updateActivity(guildId) {
-    const queue = queues.get(guildId);
-    if (queue?.current) {
-        client.user.setActivity(queue.current.title, { type: ActivityType.Listening });
-    } else {
-        const activeQueues = [...queues.values()].filter(q => q.current);
-        if (activeQueues.length === 0) {
+    if (!client.user) return;
+    try {
+        const queue = queues.get(guildId);
+        if (queue?.current) {
+            client.user.setActivity(queue.current.title, { type: ActivityType.Listening });
+        } else if (![...queues.values()].some(q => q.current)) {
             client.user.setActivity('/play', { type: ActivityType.Listening });
         }
+    } catch (e) {
+        console.error('Status konnte nicht gesetzt werden:', e.message);
     }
 }
 
@@ -1582,8 +1649,9 @@ function buildFilterArgs(queue) {
 
 // ── Audio-Stream (yt-dlp → FFmpeg → OggOpus) ────────────────────
 function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
+    const spawnedAt = Date.now();
     // localFile: vorgeladene Audio-Datei (Prefetch) -> yt-dlp entfaellt komplett
-    const ytdlp = localFile ? null : spawn(ytdlpPath, [
+    const ytdlp = localFile ? null : spawnProcess(ytdlpPath, [
         '-f', audioFormatFor(url),
         '-o', '-', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
@@ -1592,10 +1660,12 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
 
     const filterArgs = buildFilterArgs(queue);
 
-    const ffmpeg = spawn(ffmpegPath, [
+    const ffmpeg = spawnProcess(ffmpegPath, [
         '-loglevel', 'error',
         // Input-Optionen muessen VOR -i stehen, sonst ignoriert FFmpeg sie
-        '-analyzeduration', '0',
+        // probesize: Default sind 5 MB. Zusammen mit analyzeduration=0 reicht ein
+        // Bruchteil, um Codec und Kanaele zu erkennen — FFmpeg gibt frueher aus.
+        '-analyzeduration', '0', '-probesize', '524288',
         ...(seekSeconds > 0 ? ['-ss', String(seekSeconds)] : []),
         '-i', localFile || 'pipe:0',
         // Nur die erste Audiospur, kein Video/Cover/Untertitel
@@ -1618,6 +1688,10 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
     if (ytdlp) {
         ytdlp.stdout.pipe(ffmpeg.stdin);
         ffmpeg.stdin.on('error', () => {}); // Broken pipe ignorieren
+
+        // Das erste Byte von yt-dlp trennt die zwei Wartezeiten sauber:
+        // davor Extraktion (Player-JS, POT-Token), danach Download ueber den Tunnel.
+        ytdlp.stdout.once('data', () => console.log(`[timing] extract=${Date.now() - spawnedAt}ms · ${url}`));
 
         let stderrOutput = '';
         ytdlp.stderr.on('data', (d) => { stderrOutput += d.toString(); });
@@ -1688,7 +1762,7 @@ function prefetchNext(guildId) {
     if (!next || !next.url || queue._prefetch) return;
 
     const file = path.join(os.tmpdir(), `prefetch-${guildId}`);
-    const proc = spawn(ytdlpPath, [
+    const proc = spawnProcess(ytdlpPath, [
         '-f', audioFormatFor(next.url),
         '-o', file, '--force-overwrites', '--no-check-certificates', '--no-warnings',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
@@ -1702,6 +1776,45 @@ function prefetchNext(guildId) {
         else { queue._prefetch = null; fs.unlink(file, () => {}); }
     });
     proc.on('error', () => { if (queue._prefetch === pf) queue._prefetch = null; });
+}
+
+// ── Player-Events ────────────────────────────────────────────────
+// Bewusst eine eigene Funktion und nicht inline in setupVoiceConnection: hier
+// haengt die sichtbare Wiedergabe-Logik (Kartenwechsel, Weiterschalten,
+// Fehler-Retry). So laesst sie sich im Test an einen AudioPlayer ohne echte
+// Voice-Verbindung haengen.
+function attachPlayerEvents(guildId, player, queue) {
+    player.on(AudioPlayerStatus.Idle, () => {
+        setTimeout(() => playNext(guildId), 200);
+    });
+
+    // Sobald die Wiedergabe wirklich startet: Puffer-Karte -> "Spielt jetzt".
+    // Bewusst OHNE auf das Cover zu warten — das hat den Wechsel frueher um bis
+    // zu eine Sekunde verzoegert. Fehlt es noch, wird die Karte danach nachgezogen.
+    player.on(AudioPlayerStatus.Playing, () => {
+        const q = queues.get(guildId);
+        if (!q) return;
+        if (q._trackT0) {
+            console.log(`[timing] first-audio=${Date.now() - q._trackT0}ms · "${q.current?.title}"`);
+            q._trackT0 = null;
+        }
+        if (!q._npLoading) return; // Fortsetzen nach Pause, kein Kartenwechsel
+        q._npLoading = false;
+        updateNowPlayingMsg(q);
+        q._artPromise?.then(() => updateNowPlayingMsg(q));
+    });
+
+    player.on('error', (error) => {
+        console.error('Player error:', error.message);
+        autoDelete(queue.channel?.send(`❌ Wiedergabefehler: ${error.message}`), DELETE_ERROR_MS);
+        playNext(guildId);
+    });
+
+    player.on('stateChange', (oldState, newState) => {
+        if (oldState.status !== newState.status) {
+            ctx.broadcast('stateUpdate', ctx.getGuildState(guildId));
+        }
+    });
 }
 
 // ── Voice-Verbindung aufbauen (gemeinsame Logik) ─────────────────
@@ -1732,31 +1845,7 @@ async function setupVoiceConnection(guildId, voiceChannel, guild, textChannel) {
     queue.player = player;
     if (textChannel) queue.channel = textChannel;
 
-    // Player Events
-    player.on(AudioPlayerStatus.Idle, () => {
-        setTimeout(() => playNext(guildId), 200);
-    });
-
-    // Sobald die Wiedergabe wirklich startet: "Lädt…"-Platzhalter -> volles Embed
-    player.on(AudioPlayerStatus.Playing, async () => {
-        const q = queues.get(guildId);
-        if (!q || !q._npLoading) return;
-        q._npLoading = false;
-        try { await q._artPromise; } catch { /* egal, dann ohne Cover */ }
-        updateNowPlayingMsg(q);
-    });
-
-    player.on('error', (error) => {
-        console.error('Player error:', error.message);
-        autoDelete(queue.channel?.send(`❌ Wiedergabefehler: ${error.message}`), DELETE_ERROR_MS);
-        playNext(guildId);
-    });
-
-    player.on('stateChange', (oldState, newState) => {
-        if (oldState.status !== newState.status) {
-            ctx.broadcast('stateUpdate', ctx.getGuildState(guildId));
-        }
-    });
+    attachPlayerEvents(guildId, player, queue);
 
     // Disconnect-Handling: Kick sauber akzeptieren, Netz-Blips reconnecten.
     // WICHTIG: Nach einem Kick haengt die Connection in "Signalling" — darauf
@@ -1844,19 +1933,29 @@ async function joinChannel(guildId, channelId) {
     return setupVoiceConnection(guildId, channel, guild);
 }
 
+// Bot-Avatar fuer die Embed-Kopfzeile. Bewusst defensiv: ein fehlendes
+// client.user (Start-Race, Test) darf kein Embed und damit keine Wiedergabe
+// kippen — dann eben eine Kopfzeile ohne Bild.
+function botIcon(clientOrInteraction) {
+    const user = clientOrInteraction?.user || clientOrInteraction;
+    return typeof user?.displayAvatarURL === 'function' ? user.displayAvatarURL() : undefined;
+}
+
 // ── Player-Buttons erstellen (2 Reihen) ─────────────────────────
-function createPlayerButtons(loopMode, isPaused = false) {
+// disabled: waehrend der Song noch puffert. Die Karte hat dann schon dieselbe
+// Hoehe wie spaeter — beim Umschalten auf "Spielt jetzt" springt nichts mehr.
+function createPlayerButtons(loopMode, isPaused = false, disabled = false) {
     const loopEmoji = loopMode === 'song' ? '🔂' : '🔁';
     const loopStyle = loopMode !== 'off' ? ButtonStyle.Primary : ButtonStyle.Secondary;
 
     const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('music_pause').setEmoji(isPaused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('music_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('music_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('music_pause').setEmoji(isPaused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(disabled),
+        new ButtonBuilder().setCustomId('music_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+        new ButtonBuilder().setCustomId('music_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger).setDisabled(disabled),
     );
     const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('music_loop').setEmoji(loopEmoji).setStyle(loopStyle),
+        new ButtonBuilder().setCustomId('music_shuffle').setEmoji('🔀').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+        new ButtonBuilder().setCustomId('music_loop').setEmoji(loopEmoji).setStyle(loopStyle).setDisabled(disabled),
         new ButtonBuilder().setLabel('Web Player').setEmoji('🎧').setStyle(ButtonStyle.Link).setURL('https://beatbyte.bytebots.de'),
     );
     return [row1, row2];
@@ -1864,7 +1963,7 @@ function createPlayerButtons(loopMode, isPaused = false) {
 
 // ── Now Playing Embed bauen ──────────────────────────────────────
 function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed, loc = guildLocaleFor(queue.guildId)) {
-    const botUser = clientOrInteraction.user || clientOrInteraction;
+    const iconURL = botIcon(clientOrInteraction);
     const isPaused = queue.player?.state?.status === AudioPlayerStatus.Paused;
 
     const descLines = [];
@@ -1893,7 +1992,7 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed, loc = 
     }
 
     const embed = new EmbedBuilder()
-        .setAuthor({ name: isPaused ? t('np.paused', loc) : t('np.nowPlaying', loc), iconURL: botUser.displayAvatarURL() })
+        .setAuthor({ name: isPaused ? t('np.paused', loc) : t('np.nowPlaying', loc), iconURL })
         .setDescription(descLines.join('\n'))
         .setThumbnail(track.albumArt || track.thumbnail || null)
         .setColor(isPaused ? 0x95a5a6 : 0x6E41CC)
@@ -1902,15 +2001,23 @@ function buildNowPlayingEmbed(track, queue, clientOrInteraction, elapsed, loc = 
     return embed;
 }
 
-// Platzhalter-Embed, solange der Song noch lädt (wird bei Wiedergabestart ersetzt)
+// Karte, solange der Song noch puffert. Bewusst im selben Aufbau wie das
+// Now-Playing-Embed (Titel, Interpret, Fortschrittsbalken, Statuszeile): beim
+// Wiedergabestart wird nur derselbe Embed ueberschrieben, die Nachricht bleibt
+// stehen und nichts springt.
 function buildLoadingEmbed(track, clientOrInteraction, loc = 'de') {
-    const botUser = clientOrInteraction.user || clientOrInteraction;
+    const iconURL = botIcon(clientOrInteraction);
     const lines = [`### ${track.title}`];
     if (track.artist) lines.push(`*${track.artist}*`);
     lines.push('');
-    lines.push(t('np.loadingLine', loc));
+    lines.push(createProgressBar(0, parseDuration(track.duration)));
+
+    const status = [t('np.buffering', loc)];
+    if (track.requestedBy) status.push(track.requestedBy);
+    lines.push(`-# ${status.join('  ·  ')}`);
+
     return new EmbedBuilder()
-        .setAuthor({ name: t('np.loadingTitle', loc), iconURL: botUser.displayAvatarURL() })
+        .setAuthor({ name: t('np.loadingTitle', loc), iconURL })
         .setDescription(lines.join('\n'))
         .setThumbnail(track.albumArt || track.thumbnail || null)
         .setColor(0x95a5a6);
@@ -1966,7 +2073,7 @@ function updateNowPlayingMsg(queue) {
 
 // ── Live-Progress: laufende Now-Playing-Embeds alle 10s aktualisieren ──
 // (10s = Discord-Edit-freundlich und entspricht ~1 Segment des 20er-Balkens)
-setInterval(() => {
+background(setInterval(() => {
     for (const [guildId, queue] of queues.entries()) {
         if (!queue.current) continue;
         // Sicherheitsnetz: naechsten Queue-Track vorladen, egal wie er reinkam
@@ -1976,7 +2083,7 @@ setInterval(() => {
         if (queue.player?.state?.status !== AudioPlayerStatus.Playing) continue;
         updateNowPlayingMsg(queue);
     }
-}, 10_000);
+}, 10_000));
 
 // ── Wiedergabe ────────────────────────────────────────────────────
 // ── Auto-DJ: Aehnlichen Track finden ─────────────────────────────
@@ -2023,7 +2130,11 @@ async function findAutoDjTrack(lastTrack, queue) {
     return picked || null;
 }
 
-async function playNext(guildId) {
+// opts.sink: Ziel fuer die Player-Karte. Ohne Angabe wird eine neue Nachricht in
+// queue.channel gesendet (Skip, Auto-DJ, Queue-Ende). /play reicht stattdessen
+// seine eigene Interaction-Antwort rein — dann wird genau diese Nachricht
+// weitergeschrieben, statt sie zu loeschen und eine neue zu senden.
+async function playNext(guildId, opts = {}) {
     const queue = queues.get(guildId);
     if (!queue || queue.playLock) return;
 
@@ -2089,6 +2200,10 @@ async function playNext(guildId) {
         queue.skipVotes.clear();
         queue._playbackStart = Date.now();
         queue._seekOffset = 0;
+        // Messpunkt: bis zum ersten Opus-Frame (Playing-Handler loggt die Differenz).
+        // Ohne die Zahl laesst sich nicht sagen, ob die Wartezeit in der Extraktion
+        // oder im Download ueber den Tunnel steckt.
+        queue._trackT0 = Date.now();
         // Cover schon mal im Hintergrund nachladen (falls keins vorhanden), damit
         // es beim Umschalten aufs volle Embed bereitsteht. Danach die Web-App
         // informieren, damit sie sofort das quadratische Cover zeigt.
@@ -2164,25 +2279,46 @@ async function playNext(guildId) {
         // Naechsten Track im Hintergrund vorladen (macht /skip nahezu sofort)
         setTimeout(() => prefetchNext(guildId), 1500);
 
-        // Erst "Lädt…"-Platzhalter senden; der Playing-Handler ersetzt ihn durch
-        // das volle Embed, sobald die Wiedergabe tatsächlich startet.
-        if (queue.channel) {
+        // Player-Karte sofort zeigen — ohne aufs Cover zu warten. Frueher lagen
+        // hier bis zu 2,5s Wartezeit, in denen im Kanal gar nichts stand.
+        // Nachgeladene Album-Art landet beim Umschalten auf "Spielt jetzt" im
+        // Embed; kommt sie noch waehrend des Pufferns, wird die Karte aktualisiert.
+        // Eigener try-Block: Die Musik laeuft ab hier bereits. Ein Fehler beim
+        // Rendern der Karte darf sie nicht mehr abbrechen — vorher landete so
+        // ein UI-Fehler im Playback-Catch und loeste eine Retry-Schleife aus.
+        try {
+        const sink = opts.sink || (queue.channel ? (payload) => queue.channel.send(payload) : null);
+        if (sink) {
             queue._npLoading = true;
-            // Kurz aufs quadratische Cover warten (max 2.5s), damit Platzhalter und
-            // volles Embed dasselbe Bild in derselben Groesse zeigen.
-            Promise.race([queue._artPromise, new Promise(r => setTimeout(r, 2500))])
-                .then(() => {
-                    if (queue.current !== track) return; // Track wurde schon gewechselt
-                    return queue.channel.send({ embeds: [buildLoadingEmbed(track, client, guildLocaleFor(queue.guildId))] })
-                        .then(msg => {
-                            queue._nowPlayingMsg = msg;
-                            // Falls der Song beim Ankommen der Nachricht schon läuft: sofort umschalten
-                            if (!queue._npLoading) updateNowPlayingMsg(queue);
-                        });
+            const loc = guildLocaleFor(queue.guildId);
+            Promise.resolve(sink({
+                embeds: [buildLoadingEmbed(track, client, loc)],
+                components: createPlayerButtons(queue.loopMode, false, true),
+            }))
+                .then(msg => {
+                    if (queue.current !== track) {
+                        // Zwischenzeitlich weitergeschaltet (Retry, Skip): diese
+                        // Karte gehoert zu einem Track, der nicht mehr laeuft —
+                        // und der neue Lauf hat seine eigene. Also weg damit.
+                        Promise.resolve(msg?.delete?.()).catch(() => {});
+                        return;
+                    }
+                    queue._nowPlayingMsg = msg;
+                    // Song laeuft schon, bevor die Nachricht da war -> direkt umschalten
+                    if (!queue._npLoading) return updateNowPlayingMsg(queue);
+                    // Cover kam erst nach dem Senden -> Karte einmal nachziehen
+                    queue._artPromise?.then(() => {
+                        if (queue.current === track && queue._npLoading && queue._nowPlayingMsg === msg) {
+                            msg.edit({ embeds: [buildLoadingEmbed(track, client, loc)] }).catch(() => {});
+                        }
+                    });
                 })
-                .catch(e => console.error('Now-Playing-Embed konnte nicht gesendet werden:', e?.message || e));
+                .catch(e => console.error('Player-Karte konnte nicht gesendet werden:', e?.message || e));
         } else {
             console.error('Now-Playing: queue.channel ist nicht gesetzt – kein Embed gesendet');
+        }
+        } catch (uiError) {
+            console.error('Player-Karte fehlgeschlagen (Wiedergabe laeuft weiter):', uiError.message);
         }
     } catch (error) {
         console.error('Playback error:', error.message);
@@ -2203,6 +2339,27 @@ function autoDelete(msgPromise, ms = DELETE_EMBED_MS) {
     msgPromise
         .then(msg => setTimeout(() => msg.delete().catch(() => {}), ms))
         .catch(() => {});
+}
+
+// Die Antwort auf /play als Player-Karte weiterverwenden. Das Handle verhaelt
+// sich wie eine Message (edit/delete), damit updateNowPlayingMsg und
+// releaseNowPlaying nichts von der Interaction wissen muessen.
+// Edits laufen bevorzugt ueber den Webhook-Token — die Route, die Discord fuer
+// Interaction-Antworten vorsieht. Sie gilt nur 15 Minuten; danach (langer Song,
+// Fortschrittsbalken) faellt es auf die normale Nachrichten-Route zurueck.
+function interactionCard(interaction, message) {
+    let tokenDead = false; // einmal abgelaufen -> nicht bei jedem Tick neu versuchen
+    return {
+        id: message.id,
+        edit: (payload) => {
+            if (tokenDead) return message.edit(payload);
+            return interaction.editReply(payload).catch(() => {
+                tokenDead = true;
+                return message.edit(payload);
+            });
+        },
+        delete: () => message.delete(),
+    };
 }
 
 // "Now Playing"-Nachricht nicht sofort löschen, sondern erst nach 24h entfernen.
@@ -2258,7 +2415,9 @@ const ctx = {
     AudioPlayerStatus, VoiceConnectionStatus, StreamType,
     DELETE_SHORT_MS, DELETE_EMBED_MS, DELETE_ERROR_MS,
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-    parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, updateNowPlayingMsg,
+    parseDuration, getElapsed, createProgressBar, formatDuration, createPlayerButtons, buildNowPlayingEmbed, buildLoadingEmbed, updateNowPlayingMsg,
+    quickMeta, deezerSuggest, interactionCard, client,
+    TEST_MODE, setSpawn, attachPlayerEvents,
 };
 
 // ── i18n: t + Locale-Aufloesung ───────────────────────────────────
@@ -2266,14 +2425,20 @@ const ctx = {
 // Server-Locale (guildLocale) > User-Locale (interaction.locale) > 'de'.
 ctx.t = t;
 ctx.localeFor = (interaction) => {
-    const stored = interaction.guildId ? db.getGuildSettings(interaction.guildId).language : null;
+    // DB-Zugriff abgesichert: ein Lesefehler darf keinen Command abbrechen —
+    // dann eben die Locale aus der Interaction.
+    let stored = null;
+    try {
+        stored = interaction.guildId ? db.getGuildSettings(interaction.guildId).language : null;
+    } catch { /* DB nicht bereit */ }
     if (stored === 'de' || stored === 'en') return stored;
     return normalizeLocale(interaction.guildLocale) || normalizeLocale(interaction.locale) || 'de';
 };
 // Fuer geteilte/persistente Nachrichten ohne Interaction (Now-Playing-Embed):
 // nur die Server-Einstellung, sonst Default 'de'.
 ctx.localeForGuild = (guildId) => {
-    const stored = guildId ? db.getGuildSettings(guildId).language : null;
+    let stored = null;
+    try { stored = guildId ? db.getGuildSettings(guildId).language : null; } catch { /* DB nicht bereit */ }
     return (stored === 'de' || stored === 'en') ? stored : 'de';
 };
 
@@ -2495,13 +2660,16 @@ client.once(Events.ClientReady, () => {
     });
 });
 
-db.init().then(() => {
-    console.log('📦 Datenbank initialisiert');
-    client.login(process.env.DISCORD_TOKEN);
-}).catch(err => {
-    console.error('❌ Datenbank-Fehler:', err.message);
-    process.exit(1);
-});
+// Im Test-Modus bleibt der Bot offline — index.js ist dann nur ein Modul.
+if (!TEST_MODE) {
+    db.init().then(() => {
+        console.log('📦 Datenbank initialisiert');
+        client.login(process.env.DISCORD_TOKEN);
+    }).catch(err => {
+        console.error('❌ Datenbank-Fehler:', err.message);
+        process.exit(1);
+    });
+}
 
 // Nur fuer den lokalen Dev-Test-Runner: gibt Zugriff auf client + ctx.
 // In Prod ist index.js der Entrypoint und wird nie require()d -> ohne Wirkung.

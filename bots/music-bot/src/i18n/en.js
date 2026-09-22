@@ -83,7 +83,7 @@ module.exports = {
     'np.paused': '⏸ Paused',
     'np.inQueue': (v) => `${v.n} in queue`,
     'np.loadingTitle': 'Loading…',
-    'np.loadingLine': '-# ⏳ Loading…',
+    'np.buffering': '⏳ Buffering…',
 
     // ── /queue ──
     'queue.nowPlaying': '**▶️ Now playing:**',
