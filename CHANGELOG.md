@@ -7,6 +7,19 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **music-bot:** **Haengendes yt-dlp blockierte die Wiedergabe unbegrenzt.** In Prod gemeldet:
+  `/play` blieb auf "Puffert…" stehen und tat nichts mehr. Der Prozess lief zwei Minuten ohne ein
+  einziges Byte und ohne CPU-Last — er wartete still auf ein Netz, das nicht antwortete. Erst ein
+  Abbruch von Hand loeste den Retry aus, der dann sofort klappte.
+  Der Wiedergabe-Pfad hatte **kein Zeitlimit** — die Gesundheitsprobe hat eins, das Abspielen
+  nicht. Jetzt bricht ein Waechter nach `STREAM_STALL_MS` (45 s, grosszuegig: die Extraktion
+  braucht ueber den Tunnel regulaer 8–15 s) ab, wenn kein erstes Byte kommt. Dazu
+  `--socket-timeout 20`, damit haengende Einzelverbindungen in einen Fehler laufen statt den
+  ganzen Versuch stillzulegen. Eine Zeitueberschreitung zaehlt jetzt wie eine YouTube-Sperre und
+  faellt auf SoundCloud zurueck — wenn ueber den Tunnel gar nichts kommt, hilft nur ein
+  Quellenwechsel.
+
+
 - **music-bot:** **Der Bot spielte bei erfolgloser Suche einfach etwas anderes.** In Prod gemeldet:
   `/play stieftochter massaker` lieferte "Heroin an Heiligabend". Die Timing-Logs zeigten den Weg,
   und die nachgestellte YouTube-Trefferliste erklaerte ihn: der gesuchte Song kommt dort gar nicht

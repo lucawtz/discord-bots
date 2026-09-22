@@ -1698,6 +1698,14 @@ function buildFilterArgs(queue) {
 // Stelle, die schon lief, ist damit eine reine Dateioperation: kein Netz, kein
 // Tunnel, kein Warten.
 const CACHE_LIMIT_BYTES = 150 * 1024 * 1024; // Livestreams sonst endlos
+// Wie lange auf das ERSTE Byte gewartet wird, bevor der Versuch abgebrochen
+// wird. Ohne dieses Limit haengt die Wiedergabe unbegrenzt: yt-dlp wartet dann
+// still auf ein Netz, das nicht antwortet, und im Kanal steht ewig "Puffert…".
+// Am 2026-09-22 in Prod genau so passiert — zwei Minuten ohne ein einziges Byte
+// und ohne CPU-Last, bis von Hand abgebrochen wurde. Danach klappte der Retry.
+// Grosszuegig bemessen: die Extraktion (Player-JS, POT, Signatur) braucht ueber
+// den Tunnel regulaer 8-15 s.
+const STREAM_STALL_MS = Number(process.env.STREAM_STALL_MS) || 45_000;
 // Bewusst im Daten-Volume und nicht in os.tmpdir(): ein Deploy baut den
 // Container neu, /tmp ist dann weg. Im Volume ueberlebt der Mitschnitt — und
 // damit kann die Wiedergabe nach einem Neustart genau dort weitergehen, ohne
@@ -1770,6 +1778,9 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
     const ytdlp = localFile ? null : spawnProcess(ytdlpPath, [
         '-f', audioFormatFor(url),
         '-o', '-', '--no-check-certificates', '--no-warnings',
+        // socket-timeout: haengende Einzelverbindungen laufen in einen Fehler,
+        // statt den ganzen Versuch stillzulegen.
+        '--socket-timeout', '20',
         '--force-ipv4', '--retries', '3', '--extractor-retries', '3',
         ...cookieArgs, ...ytArgsFor(url), '--js-runtimes', 'node', url,
     ]);
@@ -1810,7 +1821,24 @@ function createStream(url, queue, onError, seekSeconds = 0, localFile = null) {
 
         // Das erste Byte von yt-dlp trennt die zwei Wartezeiten sauber:
         // davor Extraktion (Player-JS, POT-Token), danach Download ueber den Tunnel.
-        ytdlp.stdout.once('data', () => console.log(`[timing] extract=${Date.now() - spawnedAt}ms · ${url}`));
+        // Kommt es gar nicht, greift der Waechter und bricht ab — sonst puffert
+        // der Kanal bis in alle Ewigkeit.
+        let gotFirstByte = false;
+        const stallWatch = setTimeout(() => {
+            if (gotFirstByte) return;
+            console.error(`yt-dlp lieferte nach ${STREAM_STALL_MS} ms nichts — abgebrochen: ${url}`);
+            try { if (!ytdlp.killed) ytdlp.kill(); } catch { /* egal */ }
+            try { ffmpeg.kill(); } catch { /* egal */ }
+            onError?.(new Error(`Zeitueberschreitung: keine Daten nach ${Math.round(STREAM_STALL_MS / 1000)} s`));
+        }, STREAM_STALL_MS);
+        stallWatch.unref?.();
+
+        ytdlp.stdout.once('data', () => {
+            gotFirstByte = true;
+            clearTimeout(stallWatch);
+            console.log(`[timing] extract=${Date.now() - spawnedAt}ms · ${url}`);
+        });
+        ytdlp.on('close', () => clearTimeout(stallWatch));
 
         let stderrOutput = '';
         ytdlp.stderr.on('data', (d) => { stderrOutput += d.toString(); });
@@ -2568,7 +2596,9 @@ async function playNext(guildId, opts = {}) {
             // Musik "Video unavailable" (UNPLAYABLE) oder - Extraktion klappt, Download nicht -
             // "HTTP Error 403: Forbidden" (2026-09-13); dazu SABR ohne Formate.
             // Proxy-Fehler stehen bewusst NICHT hier: die behandelt proxyIssue.
-            const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|http error 403/i.test(err.message);
+            // Zeitueberschreitung zaehlt mit: wenn YouTube ueber den Tunnel gar
+            // nicht antwortet, ist ein Quellenwechsel die einzige Chance.
+            const ytBlocked = /not a bot|sign in to confirm|video unavailable|this video is not available|requested format is not available|http error 403|zeitueberschreitung/i.test(err.message);
             const isYtUrl = /youtube\.com|youtu\.be/.test(track.url || '');
             if (proxyIssue && !track._retried) {
                 track._retried = true;
