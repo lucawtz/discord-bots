@@ -7,6 +7,18 @@ mit Bereich (`music-bot:`, `soundboard-bot:`, `website:`, `infra:`).
 
 ## 2026-09-22
 
+- **infra:** **`prod` ist ab jetzt der einzige Produktions-Branch; `coolify-deploy` ist stillgelegt.**
+  Der Server-Checkout hing auf `coolify-deploy` und holte per Refspec auch nur diesen Branch —
+  `origin/prod` existierte dort gar nicht. `scripts/deploy.sh` macht aber `git reset --hard
+  origin/prod` und waere mit *unknown revision* abgebrochen; die Deploys liefen also von Hand.
+  Dabei liefen die Branches auseinander: `prod` hatte den Fix gegen falsche/beschleunigte
+  SoundCloud-Treffer, `coolify-deploy` die mweb-Pinnung (403 beim Download) und `ytProxy.js`
+  (Ausweich-Proxy-Kette). Keiner hatte beides. Der Merge fuehrt sie zusammen und ist Nachfahre
+  beider Branches, `prod` liess sich also per Fast-Forward darauf schieben — nichts ging verloren.
+  Server-Clone auf `prod` umgestellt, `coolify-deploy` geloescht, Stand davor als Tag
+  `stand-vor-2026-09-22` gesichert. `deploy.sh` funktioniert damit endlich wie dokumentiert.
+
+
 - **music-bot:** **Ein Deploy killt die laufende Wiedergabe nicht mehr.** Bisher baute
   `scripts/deploy.sh music-bot` den Container neu, und Musik wie Warteschlange waren weg — mitten
   im Abend. Jetzt liegt der Zustand pro Server als JSON in der neuen Tabelle `queue_state`
