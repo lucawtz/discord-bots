@@ -146,6 +146,13 @@ services:
     #   docker compose --profile lavalink up -d lavalink
     profiles: ["lavalink"]
     restart: unless-stopped
+    ports:
+      # NUR auf die Loopback-Adresse des Servers, nicht nach aussen. Gedacht
+      # fuer den Beweislauf: ein SSH-Forward (ssh -L 2333:localhost:2333)
+      # erreicht Lavalink damit vom Entwicklungsrechner, ohne dass der Port
+      # im Internet steht. Der Bot selbst spricht den Dienst ueber den
+      # Compose-Netznamen an und braucht diese Freigabe nicht.
+      - "127.0.0.1:2333:2333"
     environment:
       _JAVA_OPTIONS: >-
         -Xmx192m
